@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Éditeur de CV</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header id="toolbar">
+    <h1>Éditeur de CV</h1>
+    <nav class="tabs" role="tablist" aria-label="Pages">
+      <button id="tabBase" class="tab-btn" type="button" role="tab">CV de base</button>
+      <button id="tabCreate" class="tab-btn" type="button" role="tab">Nouveau CV</button>
+    </nav>
+    <div class="actions">
+      <button id="printBtn" class="ghost" type="button" title="Impression via le navigateur">Imprimer</button>
+      <button id="pdfBtn" type="button" title="PDF vectoriel : texte net et lisible par les ATS">Télécharger PDF</button>
+      <button id="resetBtn" class="ghost danger" type="button">Réinitialiser</button>
+    </div>
+  </header>
+
+  <input type="file" id="photoFile" accept="image/*" hidden>
+
+  <main id="layout" class="tab-create">
+    <!-- Onglet « Nouveau CV » : l'offre d'abord, le CV proposé en dessous. -->
+    <section class="panel-box" id="offerPanel">
+      <h2>Offre d'emploi</h2>
+      <p class="hint">
+        Collez l'<strong>URL</strong> ou le <strong>texte</strong> de l'offre,
+        puis analysez-la&nbsp;: le CV ci-contre se réordonne pour elle, sans
+        toucher au CV de base.
+      </p>
+      <textarea id="jobText" rows="5" placeholder="https://exemple.fr/offre… ou texte de l'offre"></textarea>
+      <div class="panel-actions">
+        <button id="analyzeBtn" type="button">Analyser l'offre</button>
+        <button id="clearAnalysisBtn" class="ghost" type="button">Effacer</button>
+      </div>
+      <div id="results"></div>
+    </section>
+
+    <!-- La feuille CV, partagée par les deux onglets : ordre proposé dans
+         « Nouveau CV » (si une analyse est en cours), ordre de base sinon.
+         #cvScale est un cadre de mise à l'échelle pur (voir styles.css et
+         app.js) : dans l'onglet « CV de base » il n'a aucun effet (le CV
+         garde sa taille réelle), dans « Nouveau CV » il réduit visuellement
+         le CV à la largeur de la colonne — sans changer sa largeur interne
+         de 210mm, donc sans changer un seul retour à la ligne par rapport au
+         PDF exporté. -->
+    <div id="cvColumn">
+      <!-- Choix du modèle et de la couleur du bandeau, juste au-dessus du CV. -->
+      <div id="cvTools">
+        <div class="seg" role="group" aria-label="Modèle de CV">
+          <button id="tplPro" class="seg-btn" type="button" title="Modèle classique une colonne">Pro</button>
+          <button id="tplDesign" class="seg-btn" type="button" title="Modèle avec barre latérale">Design</button>
+        </div>
+
+        <!-- Couleur du bandeau : n'a de sens que pour le modèle « design ».
+             Les pastilles sont générées par app.js à partir de SIDE_PRESETS. -->
+        <div class="side-color" id="sideColorCtl" role="group" aria-label="Couleur du bandeau">
+          <span class="side-color-label">Bandeau</span>
+          <div class="swatches" id="sideSwatches"></div>
+          <!-- Dernières couleurs utilisées (remplies par app.js, masquées si vides) -->
+          <div class="swatches swatches-recent" id="recentSwatches" role="group"
+               aria-label="Dernières couleurs utilisées"></div>
+          <!-- La pipette ouvre l'encadré ci-dessous (couleur libre + OK) -->
+          <button class="swatch-custom" id="pipetteBtn" type="button" title="Couleur libre (pipette)"
+                  aria-haspopup="true" aria-expanded="false" aria-controls="colorPopover">
+            <svg class="pipette-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.7 3.3a2.4 2.4 0 0 0-3.4 0l-2.6 2.6-1-1-1.4 1.4 1 1-8 8-.8 3.2a.8.8 0 0 0 1 1l3.2-.8 8-8 1 1 1.4-1.4-1-1 2.6-2.6a2.4 2.4 0 0 0 0-3.4zM8.6 17.6l-2.7.7.7-2.7 7.4-7.4 2 2z"/></svg>
+          </button>
+          <!-- Encadré de couleur libre (sélecteur maison : le sélecteur natif
+               du navigateur ne peut pas accueillir de bouton OK). Aperçu en
+               direct pendant le choix, « OK » valide et mémorise la couleur
+               dans les récentes puis referme l'encadré. -->
+          <div class="color-popover" id="colorPopover" hidden>
+            <!-- Nuances (saturation / luminosité) de la teinte choisie -->
+            <div class="cp-sv" id="cpSv" aria-label="Nuance">
+              <div class="cp-sv-cursor" id="cpSvCursor"></div>
+            </div>
+            <div class="cp-row">
+              <!-- Pipette d'écran (API EyeDropper ; masquée si indisponible) -->
+              <button id="cpEyedropBtn" type="button" class="cp-eyedrop"
+                      title="Prélever une couleur à l'écran">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.7 3.3a2.4 2.4 0 0 0-3.4 0l-2.6 2.6-1-1-1.4 1.4 1 1-8 8-.8 3.2a.8.8 0 0 0 1 1l3.2-.8 8-8 1 1 1.4-1.4-1-1 2.6-2.6a2.4 2.4 0 0 0 0-3.4zM8.6 17.6l-2.7.7.7-2.7 7.4-7.4 2 2z"/></svg>
+              </button>
+              <span class="cp-preview" id="cpPreview" title="Couleur choisie"></span>
+              <input type="range" id="cpHue" min="0" max="360" step="1" aria-label="Teinte">
+            </div>
+            <div class="cp-row cp-rgb">
+              <label>R<input id="cpR" type="number" min="0" max="255" inputmode="numeric"></label>
+              <label>G<input id="cpG" type="number" min="0" max="255" inputmode="numeric"></label>
+              <label>B<input id="cpB" type="number" min="0" max="255" inputmode="numeric"></label>
+            </div>
+            <div class="cp-row cp-hex">
+              <label>HEX<input id="cpHex" type="text" spellcheck="false" autocomplete="off"
+                              maxlength="7" placeholder="#1f3a5f"></label>
+            </div>
+            <button id="sideColorOkBtn" type="button"
+                    title="Valider et mémoriser cette couleur">OK</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="cvScale">
+        <div id="cv" class="sheet" aria-label="CV éditable"></div>
+      </div>
+    </div>
+
+    <!-- Onglet « CV de base » : import/export JSON puis les CV sauvegardés, à côté du CV. -->
+    <aside id="versionsPanel">
+      <section class="panel-box" id="jsonBox">
+        <h2>Import / export JSON</h2>
+        <p class="hint">
+          Exportez l'état complet de vos CV (CV de base, CV sauvegardés, offre
+          en cours) dans un fichier à conserver ou à transférer vers un autre
+          navigateur&nbsp;; importez ensuite ce fichier pour tout restaurer à
+          l'identique.
+        </p>
+        <div class="panel-actions">
+          <button id="importBtn" class="ghost" type="button">Importer JSON</button>
+          <input type="file" id="importFile" accept="application/json,.json" hidden>
+          <button id="exportBtn" class="ghost" type="button">Exporter JSON</button>
+        </div>
+      </section>
+
+      <section class="panel-box" id="versionsBox">
+        <h2>CV sauvegardés</h2>
+        <p class="hint">
+          Les nouveaux CV enregistrés depuis l'onglet «&nbsp;Nouveau CV&nbsp;»
+          apparaissent ici. Vous pouvez aussi sauvegarder le CV de base affiché
+          sous un nom.
+        </p>
+        <div class="version-new">
+          <input id="versionName" type="text" placeholder="Nom du CV (ex. : Offre ACME)">
+          <button id="saveVersionBtn" type="button">Sauvegarder</button>
+        </div>
+        <ul id="versionList"></ul>
+      </section>
+
+      <!-- Tailles de police : un réglage par type de texte, groupé par zone
+           (bandeau à gauche / colonne principale à droite). Les champs sont
+           construits par app.js à partir de CV_FONT_ROLES (pdf.js), et
+           dépendent du modèle affiché. -->
+      <section class="panel-box" id="fontBox">
+        <h2>Taille des textes</h2>
+        <p class="hint">
+          Réglez la taille (en pixels) de chaque type de texte du CV affiché.
+          Le modèle «&nbsp;design&nbsp;» règle séparément le bandeau de gauche
+          et la colonne de droite. Chaque modèle garde ses propres tailles.
+        </p>
+        <div id="fontControls"></div>
+        <div class="panel-actions">
+          <button id="fontResetBtn" class="ghost" type="button">Tailles par défaut</button>
+        </div>
+      </section>
+    </aside>
+  </main>
+
+  <script src="pdf.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

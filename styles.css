@@ -1,0 +1,1497 @@
+:root {
+  --accent: #2563eb;
+  --accent-soft: #dbeafe;
+  --ink: #1f2937;
+  --muted: #6b7280;
+  --line: #e5e7eb;
+  --bg: #f3f4f6;
+  --danger: #dc2626;
+  --ok: #16a34a;
+  /* Fond des affordances d'édition, posées par-dessus le CV : translucide,
+     pour laisser deviner le texte qu'elles recouvrent sans cesser d'être
+     lisibles. La barre latérale la redéfinit avec sa propre teinte. */
+  --btn-bg: rgba(255, 255, 255, 0.85);
+  /* Couleur du bandeau du modèle « design ». app.js réécrit --side-bg et
+     --side-fg sur la feuille (.sheet) selon le choix de l'utilisateur ;
+     ces valeurs ne sont que le repli si le script ne s'exécute pas. */
+  --side-bg: #1f3a5f;
+  --side-fg: #fff;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  line-height: 1.45;
+}
+
+/* ---------- Barre d'outils ---------- */
+
+#toolbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 24px;
+  background: #fff;
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+#toolbar h1 {
+  font-size: 18px;
+  margin: 0;
+}
+
+/* ---------- Onglets « Nouveau CV » / « CV de base » ---------- */
+
+.tabs {
+  display: flex;
+  gap: 2px;
+}
+
+.tab-btn {
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: none;
+  color: var(--muted);
+  font-weight: 600;
+  padding: 6px 14px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.tab-btn:hover {
+  color: var(--accent);
+  filter: none;
+}
+
+.tab-btn.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+#toolbar .actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+button {
+  font: inherit;
+  font-size: 14px;
+  padding: 7px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
+
+button:hover { filter: brightness(1.08); }
+
+button.ghost {
+  background: #fff;
+  color: var(--accent);
+}
+
+button.ghost.danger {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+  filter: none;
+}
+
+/* Barre au-dessus du CV : modèle Pro / Design + couleur du bandeau */
+
+#cvTools {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+/* Sélecteur de modèle Pro / Design */
+
+.seg {
+  display: flex;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.seg-btn {
+  border: none;
+  border-radius: 0;
+  background: #fff;
+  color: var(--accent);
+  padding: 7px 16px;
+}
+
+.seg-btn.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* Couleur du bandeau (modèle « design ») */
+
+.side-color {
+  position: relative; /* ancre l'encadré de couleur libre sous la pipette */
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Masqué sur le modèle « pro », qui n'a pas de bandeau */
+.side-color[hidden] { display: none; }
+
+.side-color-label {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.swatches {
+  display: flex;
+  gap: 5px;
+}
+
+.swatch {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  background: var(--swatch, #000);
+  cursor: pointer;
+}
+
+.swatch:hover { filter: none; transform: scale(1.12); }
+
+/* Pastille active : anneau détaché, lisible quelle que soit la teinte */
+.swatch.active {
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--accent);
+}
+
+/* Dernières couleurs utilisées : séparées de la palette fixe par un filet,
+   invisibles tant qu'aucune couleur libre n'a été employée */
+.swatches-recent:not(:empty) {
+  border-left: 1px solid var(--line);
+  padding-left: 8px;
+}
+
+/* Bouton pipette : pastille à la couleur libre courante, icône par-dessus.
+   Ouvre l'encadré .color-popover. */
+.swatch-custom {
+  position: relative; /* ancre l'icône pipette au centre de la pastille */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  background: var(--swatch, #fff);
+  cursor: pointer;
+}
+
+.swatch-custom:hover { filter: none; transform: scale(1.12); }
+
+/* Icône pipette par-dessus la couleur courante : blanche avec un liseré
+   sombre, lisible sur toute teinte. Ne capte pas les clics. */
+.swatch-custom .pipette-icon {
+  width: 13px;
+  height: 13px;
+  fill: #fff;
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.8));
+  pointer-events: none;
+}
+
+.swatch-custom.active {
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--accent);
+}
+
+/* Encadré ouvert par la pipette : sélecteur de couleur maison + « OK ».
+   (Le sélecteur natif du navigateur ne peut pas accueillir de bouton.) */
+.color-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 232px;
+  padding: 12px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.15);
+}
+
+.color-popover[hidden] { display: none; }
+
+/* Zone de nuances : blanc → teinte en X, transparent → noir en Y */
+.cp-sv {
+  position: relative;
+  height: 130px;
+  border-radius: 6px;
+  cursor: crosshair;
+  touch-action: none; /* le glisser ne doit pas faire défiler la page */
+  background:
+    linear-gradient(to top, #000, transparent),
+    linear-gradient(to right, #fff, hsl(var(--cp-hue, 0), 100%, 50%));
+}
+
+.cp-sv-cursor {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(0, 0, 0, 0.3);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.cp-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cp-eyedrop {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.cp-eyedrop svg {
+  width: 15px;
+  height: 15px;
+  fill: var(--ink, #222);
+}
+
+.cp-preview {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  flex: none;
+}
+
+/* Curseur de teinte : piste arc-en-ciel, poignée ronde */
+#cpHue {
+  flex: 1;
+  height: 12px;
+  margin: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  border-radius: 6px;
+  background: linear-gradient(to right,
+    #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+  cursor: pointer;
+}
+
+#cpHue::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: hsl(var(--cp-hue, 0), 100%, 50%);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+}
+
+#cpHue::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+}
+
+/* Champs R / G / B */
+.cp-rgb {
+  justify-content: space-between;
+}
+
+.cp-rgb label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.cp-rgb input {
+  width: 56px;
+  padding: 4px 6px;
+  font: inherit;
+  font-size: 13px;
+  text-align: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+/* Champ HEX, sur toute la largeur sous R/G/B */
+.cp-hex label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.cp-hex input {
+  flex: 1;
+  padding: 4px 8px;
+  font: inherit;
+  font-size: 13px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.color-popover #sideColorOkBtn {
+  align-self: stretch;
+  padding: 6px 14px;
+  font-size: 13px;
+}
+
+/* ---------- Mise en page ---------- */
+
+main {
+  display: grid;
+  /* Colonne du CV figée à 210mm (jamais en minmax) : la mise en page du
+     texte à l'écran doit rester identique quelle que soit la largeur de la
+     fenêtre, pour correspondre exactement au PDF. Une fenêtre trop étroite
+     provoque un défilement horizontal plutôt qu'un rétrécissement du texte. */
+  grid-template-columns: 210mm 380px;
+  justify-content: center;
+  gap: 24px;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 24px;
+  align-items: start;
+}
+
+/* Onglet « Nouveau CV » : l'offre à gauche (33 %), le CV réduit à droite
+   (67 %) — l'offre est mise en avant, le CV n'est qu'un aperçu de la
+   proposition. Les CV sauvegardés n'existent que dans l'onglet « CV de
+   base ». L'ordre des colonnes est inversé par rapport à main (CV puis
+   panneau) car l'offre précède le CV dans le DOM (ordre de lecture ATS du
+   PDF : le CV doit rester en premier dans le fichier, l'inversion visuelle
+   passe uniquement par la grille). */
+main.tab-create { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); }
+main.tab-create #offerPanel { grid-column: 1; grid-row: 1; }
+main.tab-create #cvColumn { grid-column: 2; grid-row: 1; }
+main.tab-create #versionsPanel { display: none; }
+
+/* Onglet « CV de base » : CV + CV sauvegardés côte à côte, pas d'offre. */
+main.tab-base #offerPanel { display: none; }
+
+@media (max-width: 980px) {
+  main, main.tab-create { grid-template-columns: 1fr; }
+  main.tab-create #offerPanel { grid-column: 1; grid-row: 1; }
+  main.tab-create #cvColumn { grid-column: 1; grid-row: 2; }
+  #versionsPanel, main.tab-create #offerPanel { position: static; max-height: none; }
+}
+
+/* ---------- Mise à l'échelle du CV (onglet « Nouveau CV ») ----------
+   #cvScale n'a d'effet que dans cet onglet : ailleurs (onglet « CV de
+   base », backend PDF — qui ne reçoit que cvEl.outerHTML, jamais ce cadre —,
+   impression, voir plus bas) le sélecteur ne matche rien et le CV garde sa
+   taille réelle. `--cv-scale` est calculée par app.js (updateCvScale) à
+   partir de la largeur réelle du cadre : le CV garde sa largeur INTERNE de
+   210mm (donc les mêmes retours à la ligne qu'à taille réelle et dans le
+   PDF), seul son rendu visuel est réduit. */
+main.tab-create #cvScale {
+  /* Plafonné à la taille réelle du CV (210mm) : sans ce plafond, dès que la
+     colonne dépasse cette largeur — cas courant en mise en page une colonne
+     (<980px) où le CV n'a plus l'offre à côté pour se partager la largeur —
+     le cadre s'étirerait plus large que le CV réel, laissant un vide à
+     droite et, via aspect-ratio, une hauteur disproportionnée en dessous. */
+  width: min(100%, 210mm);
+  aspect-ratio: 210 / 297;
+  overflow: hidden;
+}
+
+main.tab-create #cvScale #cv {
+  width: 210mm;
+  min-height: 297mm;
+  transform: scale(var(--cv-scale, 1));
+  transform-origin: top left;
+}
+
+/* ---------- Feuille CV : format A4 (210 × 297 mm) ---------- */
+
+.sheet {
+  position: relative; /* ancre les boutons « + Ajouter… » alignés à droite */
+  background: #fff;
+  border-radius: 6px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+  width: 210mm;
+  min-height: 297mm;
+  padding: 14mm 16mm;
+}
+
+[contenteditable] {
+  outline: none;
+  border-radius: 3px;
+}
+
+[contenteditable]:hover { background: #f8fafc; }
+[contenteditable]:focus { background: var(--accent-soft); }
+
+/* ---------- Ordre de lecture du PDF ----------
+   L'extraction de texte d'un PDF suit l'ordre de PEINTURE, et un élément
+   positionné est peint après tout le contenu resté en flux. Les affordances
+   d'édition ci-dessous imposent des ancres (position: relative) un peu partout
+   dans la feuille ; laisser le reste en flux disloquerait l'ordre du texte —
+   le nom se retrouvait par exemple extrait après le résumé et les titres de
+   section, ce qu'un ATS lirait de travers.
+
+   On positionne donc TOUS les blocs de la feuille : ils repassent dans la même
+   couche et sont peints dans l'ordre du DOM, qui est l'ordre à lire (nom,
+   contact, résumé, puis chaque section suivie de son contenu). `position:
+   relative` sans décalage ne change rien à la mise en page.
+
+   Toute nouvelle brique de contenu doit rejoindre cette liste. */
+
+.cv-header, .cv-header-main, .cv-name, .cv-title,
+.cv-contact-block, .contact-item, .cv-links, .link-item,
+.cv-summary, .cv-section-title, .side-title, .cv-skills,
+.cv-skill-groups, .skill-group, .cv-interests, .interest-item,
+.sheet .main, .sheet .side,
+.exp, .exp-head, ul.bullets, li.bullet {
+  position: relative;
+}
+
+/* ---------- Affordances d'édition ----------
+   Poignées ⠿, contrôles ✕ / ↑ / ↓, boutons « + Ajouter… » et encadré
+   « + Photo » n'existent pas dans le PDF. Deux règles les gouvernent :
+
+   1. Au repos, ils sont retirés du flux (display: none) : la feuille affichée
+      est alors exactement ce qui sera exporté.
+   2. Réaffichés, ils le sont TOUJOURS en superposition (position: absolute) :
+      ils ne reprennent jamais de place dans le flux, donc la mise en page ne
+      bouge pas d'un pixel entre le repos, le survol et le PDF. Leur fond est
+      légèrement translucide — on devine le texte dessous — et ils passent
+      au-dessus du contenu (z-index).
+
+   Les boutons d'ajout n'ont pas de coordonnées : `position: absolute` sans
+   top/left les laisse à leur « position statique », c'est-à-dire là où le flux
+   les aurait mis — ils s'affichent donc à leur place naturelle, sous leur
+   liste, mais sans plus la pousser.
+
+   Ils restent affichés tant qu'un champ du CV est en cours d'édition
+   (:focus-within), sinon ils s'évanouiraient sous le curseur pendant la frappe.
+
+   À l'impression, aucune règle :hover / :focus-within ne s'applique (pas de
+   souris) : le PDF reprend l'état au repos. */
+
+.drag-handle,
+.add-bullet, .add-exp, .add-edu, .add-project, .add-link, .add-contact,
+.add-group, .add-interest,
+.photo-box:not(:has(.cv-photo)) { display: none; }
+
+#cv:is(:hover, :focus-within) :is(.drag-handle, .photo-box:not(:has(.cv-photo))) { display: block; }
+
+#cv:is(:hover, :focus-within)
+  :is(.add-bullet, .add-exp, .add-edu, .add-project, .add-link, .add-contact,
+    .add-group, .add-interest) {
+  display: inline-block;
+}
+
+/* ---------- Fondu à l'apparition / disparition ----------
+   `display` reste le commutateur : c'est lui, et lui seul, qui garantit que
+   ces éléments n'existent pas dans le PDF (une opacité nulle laisserait leur
+   texte dans le fichier, lisible par un ATS). Mais `display` bascule d'un coup.
+   D'où `allow-discrete` : la bascule attend la fin du fondu pour disparaître,
+   et se fait dès son début pour apparaître. `@starting-style` fournit l'état de
+   départ du fondu d'entrée — sans lui, un élément qui n'était pas rendu surgit
+   à son opacité finale, sans transition.
+
+   La liste des états visibles est répétée dans @starting-style : c'est le prix
+   à payer, il n'y a pas de raccourci en CSS. */
+
+.drag-handle,
+.bullet-controls, .exp-controls, .photo-controls,
+.add-bullet, .add-exp, .add-edu, .add-project, .add-link, .add-contact,
+.add-group, .add-interest,
+.photo-box:not(:has(.cv-photo)) {
+  opacity: 0;
+  transition: opacity 120ms ease, display 120ms allow-discrete;
+}
+
+#cv:is(:hover, :focus-within) :is(.drag-handle, .add-bullet, .add-exp, .add-edu,
+  .add-project, .add-link, .add-contact, .add-group, .add-interest,
+  .photo-box:not(:has(.cv-photo))),
+li.bullet:hover .bullet-controls,
+.link-item:hover .bullet-controls,
+.contact-item:hover .bullet-controls,
+.skill-group:hover .bullet-controls,
+.interest-item:hover .bullet-controls,
+.exp:hover .exp-controls,
+.photo-box:hover .photo-controls {
+  opacity: 1;
+}
+
+@starting-style {
+  #cv:is(:hover, :focus-within) :is(.drag-handle, .add-bullet, .add-exp, .add-edu,
+    .add-project, .add-link, .add-contact, .add-group, .add-interest,
+  .photo-box:not(:has(.cv-photo))),
+  li.bullet:hover .bullet-controls,
+  .link-item:hover .bullet-controls,
+  .contact-item:hover .bullet-controls,
+  .skill-group:hover .bullet-controls,
+  .interest-item:hover .bullet-controls,
+  .exp:hover .exp-controls,
+  .photo-box:hover .photo-controls {
+    opacity: 0;
+  }
+}
+
+/* ---------- Le champ édité passe devant son bouton ----------
+   Un bouton est cliqué avant le texte qu'il recouvre : c'est voulu, mais tant
+   qu'on écrit dans un champ, celui qui est posé dessus doit s'effacer — sinon
+   il masque la frappe et vole le clic quand on veut poser le curseur en fin de
+   ligne. Il revient dès qu'on quitte le champ.
+
+   `:has(… :focus)` plutôt que `:focus-within` : le bouton prend lui-même le
+   focus quand on le clique, il se masquerait alors sous le curseur.
+
+   Les paires ci-dessous sont celles que le CV superpose réellement (relevé des
+   intersections champ/bouton dans les deux modèles). Le `#cv` en tête n'est pas
+   décoratif : sans lui ces règles perdraient en spécificité face à la règle
+   d'affichage ci-dessus, qui en porte un. */
+
+/* ✕ / ↑ / ↓ d'une ligne — posés sur la fin de cette ligne */
+#cv li.bullet:has(.bullet-text:focus) .bullet-controls,
+#cv .link-item:has([contenteditable]:focus) .bullet-controls,
+#cv .contact-item:has([contenteditable]:focus) .bullet-controls,
+#cv .skill-group:has([contenteditable]:focus) .bullet-controls,
+#cv .interest-item:has([contenteditable]:focus) .bullet-controls,
+/* ✕ / ↑ / ↓ d'une expérience/formation/projet — posés sur son titre */
+#cv .exp:has(.exp-role:focus) .exp-controls,
+/* « + Ajouter un tiret » — retombe sur le titre du bloc suivant */
+#cv .exp:has(+ .exp .exp-head [contenteditable]:focus) .add-bullet,
+/* « + Ajouter un lien » — retombe sur la première ligne du résumé */
+#cv .cv-header:has(~ .cv-summary:focus) .add-link,
+/* « + Ajouter un champ » — retombe sur le premier lien */
+#cv .cv-contact-block:has(~ .cv-links [contenteditable]:focus) .add-contact,
+/* Pastille « + Photo » — posée sur le coin haut-droit de l'en-tête */
+#cv .cv-header:has([contenteditable]:focus) .photo-box:not(:has(.cv-photo)) {
+  /* `opacity` autant que `display` : la règle d'affichage ci-dessus continue
+     de s'appliquer (le CV est toujours survolé) et imposerait sinon son
+     opacité pleine, escamotant le fondu de sortie. */
+  opacity: 0;
+  display: none;
+}
+
+.cv-name {
+  font-size: var(--fs-name, 28px);
+  font-weight: 700;
+}
+
+.cv-title {
+  font-size: var(--fs-title, 17px);
+  color: var(--accent);
+  font-weight: 600;
+  margin-top: 2px;
+}
+
+.cv-contact-block { margin-top: 6px; }
+
+.contact-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: var(--fs-contact, 13px);
+  padding: 1px 0;
+}
+
+/* Plus d'intitulé : la valeur est seule sur sa ligne, donc en couleur de
+   texte normale (le gris ne servait qu'à la détacher du libellé en gras). */
+.contact-value {
+  color: var(--ink);
+  font-size: var(--fs-contact-value, 12.5px);
+  word-break: break-all;
+  flex: 1;
+  min-width: 0;
+}
+
+.contact-item .bullet-controls { display: none; }
+.contact-item:hover .bullet-controls { display: flex; }
+
+.cv-summary {
+  font-size: var(--fs-summary, 14px);
+  margin-top: 12px;
+}
+
+.cv-section-title {
+  font-size: var(--fs-section, 15px);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  border-bottom: 2px solid var(--accent);
+  padding-bottom: 3px;
+  margin: 26px 0 10px;
+}
+
+/* ---------- En-tête modèle pro (texte + photo) ---------- */
+
+.cv-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+}
+
+.cv-header-main { flex: 1; min-width: 0; }
+
+/* ---------- Photo ---------- */
+
+.photo-box {
+  position: relative;
+  flex: none;
+  width: 110px;
+}
+
+.cv-photo {
+  display: block;
+  width: 110px;
+  height: 110px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.photo-placeholder {
+  width: 110px;
+  height: 110px;
+  border-radius: 50%;
+  border: 1px dashed var(--line);
+  background: #fafafa;
+  color: var(--muted);
+  font-size: 13px;
+  padding: 0;
+}
+
+.photo-placeholder:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  filter: none;
+}
+
+/* Sans photo, rien n'est réservé dans le PDF : le grand cercle en pointillés
+   deviendrait un trou de 110px au survol. On le réduit donc à une pastille
+   compacte, posée hors flux dans un espace libre — le coin de l'en-tête en
+   Pro, la marge haute du bandeau en Design (voir plus bas). */
+.photo-box:not(:has(.cv-photo)) {
+  position: absolute;
+  /* Ancrée sur .sheet : ses paddings (14mm / 16mm) placent la pastille au coin
+     haut-droit du contenu, là où l'en-tête laisse du blanc. */
+  top: 14mm;
+  right: 16mm;
+  z-index: 2;
+  width: auto;
+}
+
+.photo-box:not(:has(.cv-photo)) .photo-placeholder {
+  width: auto;
+  height: auto;
+  border-radius: 8px;
+  padding: 4px 10px;
+  background: var(--btn-bg);
+}
+
+.photo-controls {
+  position: absolute;
+  top: 0;
+  right: -6px;
+  z-index: 2;
+  display: none;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.photo-box:hover .photo-controls { display: flex; }
+
+/* ---------- Liens externes ---------- */
+
+.cv-links { margin-top: 8px; }
+
+.link-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: var(--fs-contact, 13px);
+  padding: 1px 0;
+}
+
+/* .link-url est un <a> réel (cliquable à l'écran et dans le PDF) ; on efface
+   le style bleu/souligné par défaut du lien pour garder l'apparence d'origine.
+   Il porte désormais le texte libre du lien, pas l'URL. */
+.link-url,
+.link-url:visited {
+  display: inline-block;
+  color: var(--ink);
+  font-size: var(--fs-contact-value, 12.5px);
+  /* Un texte court (« Portfolio ») ne se coupe qu'en dernier recours, à la
+     différence d'une URL : plus de break-all systématique. */
+  overflow-wrap: anywhere;
+  flex: 1;
+  min-width: 0;
+  text-decoration: none;
+}
+
+.link-url:hover { text-decoration: underline; }
+
+.link-item .bullet-controls { display: none; }
+.link-item:hover .bullet-controls { display: flex; }
+
+/* ---------- Expériences ---------- */
+
+.exp {
+  position: relative;
+  padding: 6px 8px;
+  margin: 0 -8px 14px;
+  border-radius: 6px;
+}
+
+.exp:hover { background: #fafafa; }
+
+.exp-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.exp-role { font-weight: 700; font-size: var(--fs-item, 15px); }
+.exp-company { color: var(--muted); font-size: var(--fs-detail, 14px); }
+.exp-period { color: var(--muted); font-size: var(--fs-period, 13px); white-space: nowrap; }
+
+/* z-index indispensable : .exp-head est positionné (voir « Ordre de lecture du
+   PDF ») et vient après dans le DOM — à z-index égal il se peindrait par-dessus
+   ces boutons et capterait leurs clics. */
+.exp-controls {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  z-index: 2;
+  display: none;
+  gap: 4px;
+}
+
+.exp:hover .exp-controls { display: flex; }
+
+/* ---------- Tirets ---------- */
+
+ul.bullets {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+}
+
+li.bullet {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 2px 0;
+  border-radius: 4px;
+}
+
+li.bullet.dragging { opacity: 0.4; background: var(--accent-soft); }
+
+/* Dans la marge intérieure de la feuille : ne recouvre aucun texte. */
+.drag-handle {
+  position: absolute;
+  left: -18px;
+  top: 2px;
+  cursor: grab;
+  color: #cbd5e1;
+  user-select: none;
+  font-size: 14px;
+  line-height: 1.45;
+  padding: 0 2px;
+}
+
+li.bullet:hover .drag-handle { color: var(--muted); }
+
+/* Même taille (et donc même hauteur de ligne) que le texte du tiret : sinon,
+   dès que --fs-bullet s'écarte de la taille héritée, la puce se décale par
+   rapport à la première ligne du tiret. */
+.bullet-dot { flex: none; color: var(--ink); font-size: var(--fs-bullet, 14px); }
+
+.bullet-text {
+  flex: 1;
+  font-size: var(--fs-bullet, 14px);
+  min-width: 0;
+}
+
+/* Superposés à la fin de la ligne, jamais insérés dedans (sinon .bullet-text
+   perdrait de la largeur et le texte se recouperait au survol). */
+.bullet-controls {
+  position: absolute;
+  right: 0;
+  top: 0;
+  z-index: 2;
+  display: none;
+  gap: 2px;
+}
+
+li.bullet:hover .bullet-controls { display: flex; }
+
+/* ---------- Proposition : indicateurs de modification ----------
+   Après analyse d'une offre, le CV affiché est la PROPOSITION. Au survol du
+   CV, chaque tiret déplacé porte un badge « était n°X » (sa position dans le
+   CV de base) et une teinte de fond. Mêmes règles de vie que les affordances
+   d'édition : superposés (aucune place prise dans le flux), absents au repos
+   — donc absents du PDF et de l'impression. */
+
+.diff-badge {
+  position: absolute;
+  right: 0;
+  top: 0;
+  z-index: 2;
+  display: none;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  border-radius: 5px;
+  padding: 1px 7px;
+  background: var(--accent-soft);
+  color: #1e40af;
+  opacity: 0;
+  transition: opacity 120ms ease, display 120ms allow-discrete;
+}
+
+#cv:is(:hover, :focus-within) .diff-badge {
+  display: inline-block;
+  opacity: 1;
+}
+
+@starting-style {
+  #cv:is(:hover, :focus-within) .diff-badge { opacity: 0; }
+}
+
+/* Au survol d'un tiret précis, les contrôles ✕ / ↑ / ↓ reprennent la place
+   du badge (tous deux sont ancrés en fin de ligne). */
+#cv li.bullet:hover .diff-badge {
+  display: none;
+  opacity: 0;
+}
+
+#cv:is(:hover, :focus-within) li.bullet.moved {
+  background: color-mix(in srgb, var(--accent-soft) 45%, #fff);
+}
+
+.icon-btn {
+  border: 1px solid var(--line);
+  background: var(--btn-bg);
+  color: var(--muted);
+  padding: 0 6px;
+  height: 22px;
+  line-height: 20px;
+  font-size: 12px;
+  border-radius: 5px;
+}
+
+.icon-btn:hover { color: var(--accent); border-color: var(--accent); filter: none; }
+.icon-btn.del:hover { color: var(--danger); border-color: var(--danger); }
+
+/* display : voir « Affordances d'édition » (masqués hors survol du CV).
+   `top` non renseigné : chacun garde sa position statique verticale — sa place
+   naturelle sous sa liste — mais hors du flux, donc sans plus rien pousser.
+   Compacts (≈21px) pour tenir dans l'interligne que le CV laisse déjà sous
+   chaque liste, au lieu de mordre sur le bloc suivant. Fond translucide +
+   z-index pour rester lisibles par-dessus ce qu'ils chevauchent malgré tout. */
+.add-bullet, .add-exp, .add-edu, .add-project, .add-link, .add-contact,
+.add-group, .add-interest {
+  position: absolute;
+  z-index: 2;
+  margin-top: 2px;
+  background: var(--btn-bg);
+  border: 1px dashed var(--line);
+  color: var(--muted);
+  font-size: 12px;
+  padding: 1px 8px;
+}
+
+/* Ancrés à droite : les lignes du CV s'y terminent court, un bouton y masque
+   donc rarement du texte. `.add-bullet` reste à gauche, sa place d'origine :
+   il tombe dans la marge sous les tirets, et ne croise ainsi jamais
+   « + Ajouter une expérience », qui lui est à droite. */
+.add-exp, .add-edu, .add-project, .add-link, .add-contact,
+.add-group, .add-interest { right: 0; }
+
+.add-bullet:hover, .add-exp:hover, .add-edu:hover, .add-project:hover, .add-link:hover, .add-contact:hover,
+.add-group:hover, .add-interest:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  filter: none;
+}
+
+/* ---------- Formation / projets / compétences ----------
+   Formation et Projets réutilisent la structure et les classes d'une
+   expérience (.exp, .exp-head, .exp-role, .exp-company, .bullets…), sans
+   période : même hiérarchie visuelle (titre en gras, détail atténué, points
+   en dessous), aucune règle dédiée nécessaire ici. */
+
+.cv-skills { font-size: var(--fs-skills, 14px); }
+
+/* Sous-groupes de compétences et centres d'intérêt : ils suivent la taille
+   « Compétences » (--fs-skills / --fs-side-skills), aucun réglage de plus.
+   `white-space: pre-wrap` : ces champs sont multilignes, leurs sauts de ligne
+   doivent survivre à l'écran comme au PDF. */
+.cv-skill-groups { margin-top: 8px; }
+
+.skill-group { margin-top: 8px; font-size: var(--fs-skills, 14px); }
+.skill-group:first-child { margin-top: 0; }
+.skill-group-label { font-weight: 600; }
+.skill-group-text { white-space: pre-wrap; }
+
+.cv-interests { margin-top: 6px; }
+
+.interest-item {
+  font-size: var(--fs-skills, 14px);
+  padding: 1px 0;
+  margin-top: 6px;
+}
+
+.interest-item:first-child { margin-top: 0; }
+.interest-text { white-space: pre-wrap; }
+
+.skill-group .bullet-controls,
+.interest-item .bullet-controls { display: none; }
+.skill-group:hover .bullet-controls,
+.interest-item:hover .bullet-controls { display: flex; }
+
+/* ---------- Modèle « design » : barre latérale ---------- */
+
+.sheet.design {
+  display: grid;
+  grid-template-columns: 51mm minmax(0, 1fr);
+  padding: 0;
+  overflow: hidden;
+}
+
+/* Dans le DOM, .main précède .side (ordre de lecture ATS dans le PDF) ;
+   la grille replace la barre latérale à gauche. */
+.sheet.design .side { grid-column: 1; grid-row: 1; }
+.sheet.design .main { grid-column: 2; grid-row: 1; }
+
+.sheet.design .side {
+  /* Nuances dérivées du couple --side-bg / --side-fg. Elles sont déclarées
+     ICI (et non sur :root) parce qu'un var() dans une custom property est
+     substitué sur l'élément qui la déclare : sur .side, les valeurs posées
+     par app.js sur .sheet sont déjà héritées. Les ratios sont ceux de
+     SIDE_RATIO dans pdf.js — le PDF calcule exactement les mêmes teintes. */
+  --side-ink: color-mix(in srgb, var(--side-fg) 88%, var(--side-bg));
+  --side-rule: color-mix(in srgb, var(--side-fg) 40%, var(--side-bg));
+  --side-ring: color-mix(in srgb, var(--side-fg) 55%, var(--side-bg));
+  /* Même translucidité que --btn-bg, mais sur la teinte du bandeau : les
+     boutons y sont ainsi cohérents sans une seule règle de fond dédiée. */
+  --btn-bg: color-mix(in srgb, var(--side-bg) 85%, transparent);
+  background: var(--side-bg);
+  color: var(--side-fg);
+  padding: 12mm 6mm;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.sheet.design .main {
+  padding: 14mm 10mm;
+  min-width: 0;
+}
+
+/* ---------- Modèle « design » : densité ----------
+   La colonne de droite porte Expériences + Formation + Projets : tout doit
+   tenir sur une seule page A4. Ces règles resserrent marges, interlignes et
+   titres — uniquement pour ce modèle (le modèle « pro » garde sa densité).
+   Les tailles ci-dessous sont reprises à l'identique dans pdf.js
+   (générateur de secours) pour que le PDF colle au rendu écran. */
+
+.sheet.design .main {
+  padding: 10mm 9mm;
+  line-height: 1.34;
+}
+
+.sheet.design .side {
+  padding: 10mm 5.5mm;
+  line-height: 1.34;
+}
+
+/* Le nom n'existe, dans ce modèle, que dans le bandeau : cette règle est la
+   plus spécifique qui le vise, donc c'est ICI que sa taille se règle (et non
+   sur `.side .cv-name` plus bas, moins spécifique). */
+.sheet.design .cv-name { font-size: var(--fs-side-name, 24px); }
+.sheet.design .cv-title { font-size: var(--fs-title, 15px); }
+
+.sheet.design .cv-summary {
+  font-size: var(--fs-summary, 13px);
+  margin-top: 8px;
+}
+
+.sheet.design .cv-section-title {
+  font-size: var(--fs-section, 13.5px);
+  margin: 14px 0 6px;
+}
+
+.sheet.design .exp {
+  padding: 4px 6px;
+  margin: 0 -6px 8px;
+}
+
+.sheet.design .exp-role { font-size: var(--fs-item, 13.5px); }
+.sheet.design .exp-company { font-size: var(--fs-detail, 12.5px); }
+.sheet.design .exp-period { font-size: var(--fs-period, 12px); }
+
+.sheet.design ul.bullets { margin-top: 3px; }
+.sheet.design li.bullet { padding: 0; }
+.sheet.design .bullet-text,
+.sheet.design .bullet-dot { font-size: var(--fs-bullet, 12.5px); }
+
+/* Les boutons d'ajout sont déjà compacts et hors flux : le modèle design,
+   plus dense, n'a plus besoin de les resserrer davantage. */
+
+.side-title {
+  font-size: var(--fs-side-section, 12px);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--side-fg);
+  border-bottom: 2px solid var(--side-rule);
+  padding-bottom: 3px;
+  margin: 14px 0 6px;
+}
+
+.side .photo-box { width: 110px; margin: 0 auto; }
+.side .cv-photo,
+.side .photo-placeholder { width: 110px; height: 110px; }
+
+.side .cv-photo { border: 3px solid var(--side-ring); }
+
+.side .photo-placeholder {
+  background: color-mix(in srgb, var(--side-fg) 8%, var(--side-bg));
+  border-color: color-mix(in srgb, var(--side-fg) 45%, var(--side-bg));
+  color: var(--side-fg);
+}
+
+/* Sans photo : la pastille se loge dans la marge haute du bandeau (10mm),
+   au-dessus du nom — elle ne recouvre donc rien. */
+.side .photo-box:not(:has(.cv-photo)) {
+  top: 8px;
+  right: auto;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+/* Le fond vient de --btn-bg (teinte du bandeau, translucide). */
+.side .photo-box:not(:has(.cv-photo)) .photo-placeholder {
+  width: auto;
+  height: auto;
+}
+
+.side [contenteditable]:hover { background: color-mix(in srgb, var(--side-fg) 10%, var(--side-bg)); }
+.side [contenteditable]:focus { background: color-mix(in srgb, var(--side-fg) 20%, var(--side-bg)); }
+
+.side .cv-name {
+  color: var(--side-fg);
+  text-align: center;
+  margin-top: 10px;
+}
+
+.side .cv-contact-block { margin-top: 0; }
+
+.side .contact-value,
+.side .cv-skills,
+.side .skill-group-text,
+.side .interest-text,
+.side .link-url,
+.side .link-url:visited {
+  color: var(--side-ink);
+}
+
+.side .contact-value,
+.side .link-url,
+.side .link-url:visited { font-size: var(--fs-side-contact-value, 11.5px); }
+.side .cv-skills,
+.side .skill-group,
+.side .interest-item { font-size: var(--fs-side-skills, 11.5px); }
+.side .skill-group-label { color: var(--side-fg); }
+
+.side .contact-item { flex-wrap: wrap; gap: 4px 8px; font-size: var(--fs-side-contact, 12px); padding: 0; }
+
+.side .cv-links { margin-top: 0; }
+.side .link-item { flex-wrap: wrap; gap: 4px 8px; font-size: var(--fs-side-contact, 12px); padding: 0; }
+.side .bullet-dot { color: var(--side-ink); }
+
+/* Le fond vient de --btn-bg, redéfini sur .side avec la teinte du bandeau. */
+.side .icon-btn {
+  border-color: var(--side-rule);
+  color: var(--side-fg);
+}
+
+.side .add-link,
+.side .add-contact,
+.side .add-group,
+.side .add-interest {
+  border-color: color-mix(in srgb, var(--side-fg) 35%, var(--side-bg));
+  color: color-mix(in srgb, var(--side-fg) 75%, var(--side-bg));
+}
+
+.side .add-link:hover,
+.side .add-contact:hover,
+.side .add-group:hover,
+.side .add-interest:hover {
+  color: var(--side-fg);
+  border-color: var(--side-fg);
+}
+
+/* ---------- Panneau des CV sauvegardés (onglet « CV de base ») ---------- */
+
+#versionsPanel,
+main.tab-create #offerPanel {
+  position: sticky;
+  top: 72px;
+  max-height: calc(100vh - 96px);
+  overflow-y: auto;
+}
+
+#versionsPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.panel-box {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 18px;
+}
+
+.panel-box h2 { margin: 0 0 8px; font-size: 16px; }
+
+.panel-box .hint { font-size: 13px; color: var(--muted); margin: 0 0 10px; }
+
+#jobText {
+  width: 100%;
+  font: inherit;
+  font-size: 13px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  resize: vertical;
+}
+
+#jobText:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+
+.panel-actions {
+  display: flex;
+  gap: 8px;
+  margin: 10px 0 4px;
+}
+
+/* ---------- Versions ---------- */
+
+.version-new {
+  display: flex;
+  gap: 6px;
+}
+
+.version-new input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 13px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 9px;
+}
+
+.version-new input:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+
+#versionList {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.version-item {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.version-item.active {
+  border-color: var(--accent);
+  background: #f6f9ff;
+}
+
+.version-name {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.version-meta {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin: 2px 0 7px;
+}
+
+.version-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.version-actions button {
+  font-size: 12px;
+  padding: 3px 10px;
+}
+
+/* ---------- Tailles de police ----------
+   Une ligne par type de texte : intitulé à gauche, champ compact à droite.
+   Les groupes (bandeau / colonne principale) ne s'affichent que quand le
+   modèle en compte plusieurs — le modèle « pro » n'a pas de titre de groupe. */
+
+#fontControls {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.fs-group h3 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.fs-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.fs-label {
+  flex: none;
+  width: 108px;
+  font-size: 13px;
+}
+
+/* Curseur : réglage rapide à la souris, le champ chiffré restant là pour une
+   valeur précise. Les deux se suivent (voir syncFontRow dans app.js). */
+.fs-slider {
+  flex: 1;
+  min-width: 60px;
+  height: 4px;
+  margin: 0;
+  padding: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  border-radius: 2px;
+  background: var(--line);
+  cursor: pointer;
+}
+
+.fs-slider::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: none;
+  background: var(--accent);
+}
+
+.fs-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: none;
+  background: var(--accent);
+}
+
+.fs-slider:focus-visible { outline: 2px solid var(--accent-soft); outline-offset: 3px; }
+
+.fs-input {
+  flex: none;
+  width: 58px;
+  font: inherit;
+  font-size: 13px;
+  text-align: right;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 4px 6px;
+}
+
+.fs-input:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+
+.fs-unit {
+  flex: none;
+  width: 16px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* ---------- Résultats d'analyse ---------- */
+
+#results { margin-top: 12px; }
+
+.keywords-box { margin-bottom: 14px; }
+
+.keywords-box .label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 6px;
+}
+
+.chip {
+  display: inline-block;
+  background: var(--accent-soft);
+  color: #1e40af;
+  font-size: 12px;
+  border-radius: 20px;
+  padding: 2px 9px;
+  margin: 0 4px 4px 0;
+}
+
+.chip.small { font-size: 11px; padding: 1px 7px; }
+
+.fetch-note {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0 0 10px;
+}
+
+/* Encadré « Nouveau CV proposé » */
+
+.proposal-box {
+  border: 1px solid var(--accent);
+  background: #f6f9ff;
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 6px;
+}
+
+.proposal-box h3 { margin: 0 0 6px; font-size: 14px; }
+
+.proposal-box .hint { margin-bottom: 10px; }
+
+.proposal-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.proposal-actions button {
+  font-size: 13px;
+  padding: 5px 12px;
+}
+
+.proposal-exp-line {
+  font-size: 12.5px;
+  color: var(--muted);
+  padding: 2px 0;
+}
+
+.proposal-exp-line strong { color: var(--ink); font-weight: 600; }
+
+/* CTA : nom + enregistrement du nouveau CV */
+
+.proposal-save {
+  display: flex;
+  gap: 6px;
+  margin: 10px 0 8px;
+}
+
+.proposal-save input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 13px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 9px;
+}
+
+.proposal-save input:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+
+.proposal-save button { white-space: nowrap; }
+
+.apply-note { color: var(--ok); font-size: 13px; font-weight: 600; }
+
+.empty-note { font-size: 13px; color: var(--muted); }
+
+/* ---------- Impression : page A4 identique au rendu écran ---------- */
+
+@page {
+  size: A4;
+  margin: 0;
+}
+
+@media print {
+  html, body { width: 210mm; background: #fff; }
+  #toolbar, #cvTools, #offerPanel, #versionsPanel { display: none; }
+  main { display: block; padding: 0; margin: 0; max-width: none; }
+  .sheet { box-shadow: none; border-radius: 0; margin: 0; }
+  /* Largeur, hauteur et marges internes : mêmes règles qu'à l'écran (210 × 297 mm). */
+
+  /* Filet de sécurité : neutralise la mise à l'échelle de l'onglet « Nouveau
+     CV » (voir #cvScale ci-dessus) si l'impression est lancée depuis cet
+     onglet — sans quoi le PDF imprimé sortirait réduit et rogné. */
+  #cvScale { width: auto !important; aspect-ratio: auto !important; overflow: visible !important; }
+  #cvScale #cv { transform: none !important; }
+
+  /* Les affordances d'édition (poignées, boutons d'ajout, « + Photo ») sont
+     déjà hors du flux au repos et ne reviennent que sur :hover / :focus-within,
+     qui ne s'appliquent pas sans souris : le PDF reprend la feuille au repos.
+     Filet de sécurité pour les contrôles flottants ✕ / ↑ / ↓ : */
+  .bullet-controls, .exp-controls, .photo-controls, .diff-badge { display: none !important; }
+
+  li.bullet.moved { background: none !important; }
+  .exp:hover { background: none; }
+  [contenteditable]:hover, [contenteditable]:focus { background: none; }
+
+  /* Pagination propre si le CV dépasse une page */
+  li.bullet, .link-item, .contact-item, .exp-head,
+  .skill-group, .interest-item { break-inside: avoid; }
+  .cv-section-title, .side-title { break-after: avoid; }
+}
