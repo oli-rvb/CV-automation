@@ -458,6 +458,12 @@ button:disabled {
 
 .photo-crop.dragging { cursor: grabbing; }
 
+/* Retour visuel pendant le survol d'un fichier à déposer. */
+.photo-crop.drop-over {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
 .photo-crop img {
   position: absolute;
   top: 0;

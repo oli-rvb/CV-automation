@@ -1668,13 +1668,13 @@ function closePhotoModal() {
   cropUI.img = null;
 }
 
-// Charger / remplacer l'image : ouvre le sélecteur de fichier natif.
-photoLoadBtnEl.addEventListener('click', () => photoFileEl.click());
-
-photoFileEl.addEventListener('change', (e) => {
-  const file = e.target.files[0];
-  e.target.value = '';
-  if (!file) return;
+// Lit un fichier image (sélecteur ou glisser-déposer), le réduit, puis le
+// charge dans l'éditeur au cadrage « couverture » centré.
+function loadPhotoFile(file) {
+  if (!file || !file.type.startsWith('image/')) {
+    alert('Veuillez déposer un fichier image.');
+    return;
+  }
   const url = URL.createObjectURL(file);
   const img = new Image();
   img.onload = () => {
@@ -1688,6 +1688,31 @@ photoFileEl.addEventListener('change', (e) => {
     alert('Impossible de lire cette image.');
   };
   img.src = url;
+}
+
+// Charger / remplacer l'image : ouvre le sélecteur de fichier natif.
+photoLoadBtnEl.addEventListener('click', () => photoFileEl.click());
+
+photoFileEl.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  loadPhotoFile(file);
+});
+
+// Glisser-déposer d'une image directement dans le cadre.
+['dragenter', 'dragover'].forEach((type) => {
+  photoCropEl.addEventListener(type, (e) => {
+    e.preventDefault();
+    photoCropEl.classList.add('drop-over');
+  });
+});
+['dragleave', 'dragend'].forEach((type) => {
+  photoCropEl.addEventListener(type, () => photoCropEl.classList.remove('drop-over'));
+});
+photoCropEl.addEventListener('drop', (e) => {
+  e.preventDefault();
+  photoCropEl.classList.remove('drop-over');
+  loadPhotoFile(e.dataTransfer.files && e.dataTransfer.files[0]);
 });
 
 // Zoom : l'échelle de la barre est un multiple du cadrage « couverture » ; le

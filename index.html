@@ -30,14 +30,15 @@
     <div class="app-modal-card">
       <h2 id="photoModalTitle">Photo de profil</h2>
       <p class="app-modal-hint" id="photoModalHint">
-        Chargez une image, puis glissez-la pour la centrer et ajustez le zoom.
+        Chargez une image (ou déposez-la dans le cadre), puis glissez-la pour la
+        centrer et ajustez le zoom.
       </p>
 
       <!-- Cadre carré : l'image y est déplaçable (glisser) et zoomable. La
            partie visible dans le cadre est ce qui sera conservé. -->
       <div class="photo-crop" id="photoCrop" aria-label="Zone de recadrage">
         <img id="photoCropImg" alt="" draggable="false" hidden>
-        <div class="photo-crop-empty" id="photoCropEmpty">Aucune image</div>
+        <div class="photo-crop-empty" id="photoCropEmpty">Déposez une image ici</div>
       </div>
 
       <label class="photo-zoom" id="photoZoomRow" hidden>
