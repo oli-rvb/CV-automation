@@ -22,6 +22,41 @@
 
   <input type="file" id="photoFile" accept="image/*" hidden>
 
+  <!-- Pop-up de la photo de profil : ouverte par le crayon (✎). Elle propose
+       de charger une image puis de la recadrer / recentrer (glisser + zoom)
+       avant de valider. La photo finale (carré) alimente le CV et le PDF. -->
+  <div class="photo-modal" id="photoModal" hidden role="dialog" aria-modal="true"
+       aria-labelledby="photoModalTitle">
+    <div class="photo-modal-card">
+      <h2 id="photoModalTitle">Photo de profil</h2>
+      <p class="photo-modal-hint" id="photoModalHint">
+        Chargez une image, puis glissez-la pour la centrer et ajustez le zoom.
+      </p>
+
+      <!-- Cadre carré : l'image y est déplaçable (glisser) et zoomable. La
+           partie visible dans le cadre est ce qui sera conservé. -->
+      <div class="photo-crop" id="photoCrop" aria-label="Zone de recadrage">
+        <img id="photoCropImg" alt="" draggable="false" hidden>
+        <div class="photo-crop-empty" id="photoCropEmpty">Aucune image</div>
+      </div>
+
+      <label class="photo-zoom" id="photoZoomRow" hidden>
+        <span aria-hidden="true">−</span>
+        <input type="range" id="photoZoom" min="1" max="4" step="0.01" value="1"
+               aria-label="Zoom de la photo">
+        <span aria-hidden="true">+</span>
+      </label>
+
+      <div class="photo-modal-actions">
+        <button type="button" id="photoLoadBtn" class="ghost">Charger une image</button>
+        <div class="photo-modal-actions-right">
+          <button type="button" id="photoCancelBtn" class="ghost">Annuler</button>
+          <button type="button" id="photoApplyBtn" disabled>Valider</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <main id="layout" class="tab-create">
     <!-- Onglet « Nouveau CV » : l'offre d'abord, le CV proposé en dessous. -->
     <section class="panel-box" id="offerPanel">
