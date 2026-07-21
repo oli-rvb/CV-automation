@@ -380,6 +380,118 @@ button:disabled {
   font-size: 13px;
 }
 
+/* ---------- Pop-up de la photo de profil (recadrage / centrage) ---------- */
+
+.photo-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(17, 24, 39, 0.55);
+}
+
+.photo-modal[hidden] { display: none; }
+
+.photo-modal-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 320px;
+  max-width: 100%;
+  padding: 20px;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+}
+
+.photo-modal-card h2 {
+  margin: 0;
+  font-size: 16px;
+  color: var(--ink);
+}
+
+.photo-modal-hint {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+/* Cadre carré de recadrage : image déplaçable au glisser, débord masqué. */
+.photo-crop {
+  position: relative;
+  align-self: center;
+  width: 260px;
+  height: 260px;
+  overflow: hidden;
+  border-radius: 50%;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  cursor: grab;
+  touch-action: none; /* le glisser ne doit pas faire défiler la page */
+  user-select: none;
+}
+
+.photo-crop.dragging { cursor: grabbing; }
+
+.photo-crop img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  max-width: none; /* les tailles sont imposées en pixels par app.js */
+  pointer-events: none;
+  user-select: none;
+}
+
+.photo-crop-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* Les règles display: flex ci-dessus/dessous priment sur l'attribut hidden :
+   on rétablit explicitement le masquage. */
+.photo-crop-empty[hidden],
+.photo-zoom[hidden] { display: none; }
+
+.photo-zoom {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.photo-zoom input[type='range'] {
+  flex: 1;
+  accent-color: var(--accent);
+}
+
+.photo-modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.photo-modal-actions-right {
+  display: flex;
+  gap: 8px;
+}
+
+.photo-modal-actions button {
+  padding: 7px 14px;
+  font-size: 13px;
+}
+
 /* ---------- Mise en page ---------- */
 
 main {

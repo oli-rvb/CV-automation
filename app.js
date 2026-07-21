@@ -126,6 +126,9 @@ function defaultCV() {
         'Réorganisez les tirets par glisser-déposer (poignée ⠿) ou avec les flèches, ' +
         'et collez une offre d’emploi dans le panneau de droite pour obtenir un ordre suggéré.',
       photo: '',
+      // Original conservé (réduit) + transformation, pour re-recadrer plus tard.
+      photoSrc: '',
+      photoCrop: null,
       links: [
         { id: uid(), label: 'Portfolio', url: 'monportfolio.fr' },
         { id: uid(), label: 'GitHub', url: 'github.com/pseudo' },
@@ -262,6 +265,15 @@ function normalizeCV(data) {
       contact: normalizeContact(p, base),
       summary: typeof p.summary === 'string' ? p.summary : base.profile.summary,
       photo: typeof p.photo === 'string' ? p.photo : '',
+      photoSrc: typeof p.photoSrc === 'string' ? p.photoSrc : '',
+      photoCrop:
+        p.photoCrop && typeof p.photoCrop === 'object'
+          ? {
+              s: Number(p.photoCrop.s) || 0,
+              ox: Number(p.photoCrop.ox) || 0,
+              oy: Number(p.photoCrop.oy) || 0,
+            }
+          : null,
       links: (Array.isArray(p.links) ? p.links : base.profile.links).map((l) => ({
         id: (l && l.id) || uid(),
         label: String((l && l.label) ?? ''),
@@ -1541,11 +1553,13 @@ cvEl.addEventListener('click', (e) => {
       break;
     }
     case 'photo-set': {
-      photoFileEl.click();
+      openPhotoModal();
       return;
     }
     case 'photo-del': {
       state.profile.photo = '';
+      state.profile.photoSrc = '';
+      state.profile.photoCrop = null;
       break;
     }
     default:
@@ -1554,7 +1568,110 @@ cvEl.addEventListener('click', (e) => {
   rerender();
 });
 
-/* ---------- Photo : lecture + recadrage carré + réduction ---------- */
+/* ---------- Photo : pop-up de recadrage / centrage ---------- */
+
+const photoModalEl = $('#photoModal');
+const photoCropEl = $('#photoCrop');
+const photoCropImgEl = $('#photoCropImg');
+const photoCropEmptyEl = $('#photoCropEmpty');
+const photoZoomRowEl = $('#photoZoomRow');
+const photoZoomEl = $('#photoZoom');
+const photoLoadBtnEl = $('#photoLoadBtn');
+const photoCancelBtnEl = $('#photoCancelBtn');
+const photoApplyBtnEl = $('#photoApplyBtn');
+
+const CROP_FRAME = 260; // taille (px) du cadre de recadrage à l'écran
+const PHOTO_OUT = 300; // taille (px) de la photo finale (carré)
+const MAX_ZOOM = 4; // zoom maximal, en multiple du cadrage « couverture »
+const SRC_MAX = 900; // dimension max de l'original conservé (recadrage ultérieur)
+
+// État courant de l'éditeur : image source + transformation (échelle, position).
+// L'image est placée dans le cadre à `s` × sa taille naturelle, coin haut-gauche
+// aux coordonnées (ox, oy) exprimées en pixels du cadre.
+const cropUI = { img: null, nw: 0, nh: 0, minS: 1, s: 1, ox: 0, oy: 0 };
+
+// Garde l'image toujours couvrante : elle ne peut pas laisser de vide au bord.
+function clampCropOffset() {
+  const w = cropUI.nw * cropUI.s;
+  const h = cropUI.nh * cropUI.s;
+  cropUI.ox = Math.min(0, Math.max(CROP_FRAME - w, cropUI.ox));
+  cropUI.oy = Math.min(0, Math.max(CROP_FRAME - h, cropUI.oy));
+}
+
+function applyCropTransform() {
+  clampCropOffset();
+  photoCropImgEl.style.width = cropUI.nw * cropUI.s + 'px';
+  photoCropImgEl.style.height = cropUI.nh * cropUI.s + 'px';
+  photoCropImgEl.style.left = cropUI.ox + 'px';
+  photoCropImgEl.style.top = cropUI.oy + 'px';
+}
+
+// Installe une image dans l'éditeur, en restaurant un recadrage sauvegardé si
+// possible, sinon en la centrant au cadrage « couverture ».
+function setCropImage(img, crop) {
+  cropUI.img = img;
+  cropUI.nw = img.naturalWidth;
+  cropUI.nh = img.naturalHeight;
+  cropUI.minS = CROP_FRAME / Math.min(cropUI.nw, cropUI.nh);
+  if (crop && crop.s >= cropUI.minS) {
+    cropUI.s = crop.s;
+    cropUI.ox = crop.ox;
+    cropUI.oy = crop.oy;
+  } else {
+    cropUI.s = cropUI.minS;
+    cropUI.ox = (CROP_FRAME - cropUI.nw * cropUI.s) / 2;
+    cropUI.oy = (CROP_FRAME - cropUI.nh * cropUI.s) / 2;
+  }
+  photoCropImgEl.src = img.src;
+  photoCropImgEl.hidden = false;
+  photoCropEmptyEl.hidden = true;
+  photoZoomRowEl.hidden = false;
+  photoApplyBtnEl.disabled = false;
+  photoZoomEl.value = String(Math.min(MAX_ZOOM, Math.max(1, cropUI.s / cropUI.minS)));
+  applyCropTransform();
+}
+
+// Réduit l'image (max SRC_MAX px) et renvoie un data URL conservable, servant
+// à la fois d'aperçu dans l'éditeur et d'original pour un recadrage ultérieur.
+function downscaledSource(img) {
+  const scale = Math.min(1, SRC_MAX / Math.max(img.naturalWidth, img.naturalHeight));
+  const w = Math.max(1, Math.round(img.naturalWidth * scale));
+  const h = Math.max(1, Math.round(img.naturalHeight * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+  return canvas.toDataURL('image/jpeg', 0.9);
+}
+
+function openPhotoModal() {
+  photoModalEl.hidden = false;
+  cropUI.img = null;
+  photoCropImgEl.hidden = true;
+  photoCropImgEl.removeAttribute('src');
+  photoCropEmptyEl.hidden = false;
+  photoZoomRowEl.hidden = true;
+  photoApplyBtnEl.disabled = true;
+  // Précharge la photo existante pour permettre un simple recentrage : on
+  // reprend l'original conservé (recadrage restaurable) ou, à défaut d'original
+  // (CV anciens), la photo déjà recadrée.
+  const src = state.profile.photoSrc || state.profile.photo;
+  if (src) {
+    const img = new Image();
+    img.onload = () => {
+      if (!photoModalEl.hidden) setCropImage(img, state.profile.photoSrc ? state.profile.photoCrop : null);
+    };
+    img.src = src;
+  }
+}
+
+function closePhotoModal() {
+  photoModalEl.hidden = true;
+  cropUI.img = null;
+}
+
+// Charger / remplacer l'image : ouvre le sélecteur de fichier natif.
+photoLoadBtnEl.addEventListener('click', () => photoFileEl.click());
 
 photoFileEl.addEventListener('change', (e) => {
   const file = e.target.files[0];
@@ -1564,22 +1681,80 @@ photoFileEl.addEventListener('change', (e) => {
   const img = new Image();
   img.onload = () => {
     URL.revokeObjectURL(url);
-    const SIZE = 300;
-    const s = Math.min(img.naturalWidth, img.naturalHeight);
-    const canvas = document.createElement('canvas');
-    canvas.width = SIZE;
-    canvas.height = SIZE;
-    canvas
-      .getContext('2d')
-      .drawImage(img, (img.naturalWidth - s) / 2, (img.naturalHeight - s) / 2, s, s, 0, 0, SIZE, SIZE);
-    state.profile.photo = canvas.toDataURL('image/jpeg', 0.85);
-    rerender();
+    const reduced = new Image();
+    reduced.onload = () => setCropImage(reduced, null);
+    reduced.src = downscaledSource(img);
   };
   img.onerror = () => {
     URL.revokeObjectURL(url);
     alert('Impossible de lire cette image.');
   };
   img.src = url;
+});
+
+// Zoom : l'échelle de la barre est un multiple du cadrage « couverture » ; le
+// point image situé au centre du cadre reste fixe pendant le zoom.
+photoZoomEl.addEventListener('input', () => {
+  if (!cropUI.img) return;
+  const newS = cropUI.minS * parseFloat(photoZoomEl.value);
+  const cx = (CROP_FRAME / 2 - cropUI.ox) / cropUI.s;
+  const cy = (CROP_FRAME / 2 - cropUI.oy) / cropUI.s;
+  cropUI.s = newS;
+  cropUI.ox = CROP_FRAME / 2 - cx * newS;
+  cropUI.oy = CROP_FRAME / 2 - cy * newS;
+  applyCropTransform();
+});
+
+// Glisser pour recentrer l'image dans le cadre.
+let cropDrag = null;
+photoCropEl.addEventListener('pointerdown', (e) => {
+  if (!cropUI.img) return;
+  cropDrag = { x: e.clientX, y: e.clientY, ox: cropUI.ox, oy: cropUI.oy };
+  photoCropEl.setPointerCapture(e.pointerId);
+  photoCropEl.classList.add('dragging');
+});
+photoCropEl.addEventListener('pointermove', (e) => {
+  if (!cropDrag) return;
+  cropUI.ox = cropDrag.ox + (e.clientX - cropDrag.x);
+  cropUI.oy = cropDrag.oy + (e.clientY - cropDrag.y);
+  applyCropTransform();
+});
+function endCropDrag() {
+  if (!cropDrag) return;
+  cropDrag = null;
+  photoCropEl.classList.remove('dragging');
+}
+photoCropEl.addEventListener('pointerup', endCropDrag);
+photoCropEl.addEventListener('pointercancel', endCropDrag);
+
+// Valider : rend la portion visible du cadre en un carré PHOTO_OUT × PHOTO_OUT.
+photoApplyBtnEl.addEventListener('click', () => {
+  if (!cropUI.img) {
+    closePhotoModal();
+    return;
+  }
+  clampCropOffset();
+  const sx = -cropUI.ox / cropUI.s;
+  const sy = -cropUI.oy / cropUI.s;
+  const sSize = CROP_FRAME / cropUI.s;
+  const canvas = document.createElement('canvas');
+  canvas.width = PHOTO_OUT;
+  canvas.height = PHOTO_OUT;
+  canvas.getContext('2d').drawImage(cropUI.img, sx, sy, sSize, sSize, 0, 0, PHOTO_OUT, PHOTO_OUT);
+  state.profile.photo = canvas.toDataURL('image/jpeg', 0.85);
+  state.profile.photoSrc = cropUI.img.src;
+  state.profile.photoCrop = { s: cropUI.s, ox: cropUI.ox, oy: cropUI.oy };
+  closePhotoModal();
+  rerender();
+});
+
+photoCancelBtnEl.addEventListener('click', closePhotoModal);
+// Fermeture par clic sur le fond ou par Échap.
+photoModalEl.addEventListener('mousedown', (e) => {
+  if (e.target === photoModalEl) closePhotoModal();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !photoModalEl.hidden) closePhotoModal();
 });
 
 /* ---------- Drag & drop des tirets ---------- */
