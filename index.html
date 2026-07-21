@@ -25,11 +25,11 @@
   <!-- Pop-up de la photo de profil : ouverte par le crayon (✎). Elle propose
        de charger une image puis de la recadrer / recentrer (glisser + zoom)
        avant de valider. La photo finale (carré) alimente le CV et le PDF. -->
-  <div class="photo-modal" id="photoModal" hidden role="dialog" aria-modal="true"
+  <div class="app-modal" id="photoModal" hidden role="dialog" aria-modal="true"
        aria-labelledby="photoModalTitle">
-    <div class="photo-modal-card">
+    <div class="app-modal-card">
       <h2 id="photoModalTitle">Photo de profil</h2>
-      <p class="photo-modal-hint" id="photoModalHint">
+      <p class="app-modal-hint" id="photoModalHint">
         Chargez une image, puis glissez-la pour la centrer et ajustez le zoom.
       </p>
 
@@ -47,11 +47,36 @@
         <span aria-hidden="true">+</span>
       </label>
 
-      <div class="photo-modal-actions">
+      <div class="app-modal-actions">
         <button type="button" id="photoLoadBtn" class="ghost">Charger une image</button>
-        <div class="photo-modal-actions-right">
+        <div class="app-modal-actions-right">
           <button type="button" id="photoCancelBtn" class="ghost">Annuler</button>
           <button type="button" id="photoApplyBtn" disabled>Valider</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pop-up d'adresse de lien : ouverte par le bouton 🔗 d'un lien. L'URL cible
+       ne s'affiche pas sur le CV ; on la saisit ici. Vide, le texte reste mais
+       cesse d'être cliquable. -->
+  <div class="app-modal" id="linkModal" hidden role="dialog" aria-modal="true"
+       aria-labelledby="linkModalTitle">
+    <div class="app-modal-card">
+      <h2 id="linkModalTitle">Adresse du lien</h2>
+      <p class="app-modal-hint">
+        Saisissez l'adresse de destination. Laissez le champ vide pour retirer le lien.
+      </p>
+      <label class="link-field">
+        <span id="linkFieldLabel">Adresse</span>
+        <input type="url" id="linkUrlInput" spellcheck="false" autocomplete="off"
+               placeholder="ex. : linkedin.com/in/pseudo">
+      </label>
+      <div class="app-modal-actions">
+        <span></span>
+        <div class="app-modal-actions-right">
+          <button type="button" id="linkCancelBtn" class="ghost">Annuler</button>
+          <button type="button" id="linkApplyBtn">Valider</button>
         </div>
       </div>
     </div>

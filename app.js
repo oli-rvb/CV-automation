@@ -1504,16 +1504,14 @@ cvEl.addEventListener('click', (e) => {
       state.profile.links.push({ id: uid(), label: 'Nouveau lien', url: '' });
       break;
     }
-    // L'URL cible ne s'affiche pas sur le CV : elle se saisit ici. Vide ou
-    // annulé, le texte reste mais cesse d'être cliquable.
+    // L'URL cible ne s'affiche pas sur le CV : elle se saisit dans la pop-up.
+    // Vide ou annulé, le texte reste mais cesse d'être cliquable.
     case 'link-url': {
       const row = btn.closest('[data-link-id]');
       const link = row && state.profile.links.find((x) => x.id === row.dataset.linkId);
       if (!link) return;
-      const url = prompt('Adresse du lien (ex. : linkedin.com/in/pseudo)', link.url || '');
-      if (url === null) return;
-      link.url = url.trim();
-      break;
+      openLinkModal(link);
+      return;
     }
     case 'link-del': {
       const row = btn.closest('[data-link-id]');
@@ -1748,8 +1746,60 @@ photoCancelBtnEl.addEventListener('click', closePhotoModal);
 photoModalEl.addEventListener('mousedown', (e) => {
   if (e.target === photoModalEl) closePhotoModal();
 });
+
+/* ---------- Lien : pop-up d'adresse (URL cible) ---------- */
+
+const linkModalEl = $('#linkModal');
+const linkUrlInputEl = $('#linkUrlInput');
+const linkFieldLabelEl = $('#linkFieldLabel');
+const linkCancelBtnEl = $('#linkCancelBtn');
+const linkApplyBtnEl = $('#linkApplyBtn');
+
+// Lien en cours d'édition (référence directe dans state.profile.links).
+let editingLink = null;
+
+function openLinkModal(link) {
+  editingLink = link;
+  linkFieldLabelEl.textContent = link.label ? `Adresse pour « ${link.label} »` : 'Adresse';
+  linkUrlInputEl.value = link.url || '';
+  linkModalEl.hidden = false;
+  linkUrlInputEl.focus();
+  linkUrlInputEl.select();
+}
+
+function closeLinkModal() {
+  linkModalEl.hidden = true;
+  editingLink = null;
+}
+
+function applyLinkModal() {
+  if (editingLink) {
+    editingLink.url = linkUrlInputEl.value.trim();
+    closeLinkModal();
+    rerender();
+  } else {
+    closeLinkModal();
+  }
+}
+
+linkApplyBtnEl.addEventListener('click', applyLinkModal);
+linkCancelBtnEl.addEventListener('click', closeLinkModal);
+// Entrée valide, Échap annule ; clic sur le fond annule aussi.
+linkUrlInputEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    applyLinkModal();
+  }
+});
+linkModalEl.addEventListener('mousedown', (e) => {
+  if (e.target === linkModalEl) closeLinkModal();
+});
+
+// Échap ferme la pop-up ouverte (photo ou lien).
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && !photoModalEl.hidden) closePhotoModal();
+  if (e.key !== 'Escape') return;
+  if (!photoModalEl.hidden) closePhotoModal();
+  else if (!linkModalEl.hidden) closeLinkModal();
 });
 
 /* ---------- Drag & drop des tirets ---------- */
