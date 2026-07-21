@@ -1162,7 +1162,9 @@ li.bullet:hover .bullet-controls { display: flex; }
 
 .sheet.design {
   display: grid;
-  grid-template-columns: 51mm minmax(0, 1fr);
+  /* Bandeau coloré à 55 mm sur les 210 mm de l'A4 (identique à SIDE_W dans
+     pdf.js, pour un rendu écran/PDF cohérent). */
+  grid-template-columns: 55mm minmax(0, 1fr);
   padding: 0;
   overflow: hidden;
 }

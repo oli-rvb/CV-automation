@@ -24,6 +24,12 @@ const PT_PER_MM = 72 / 25.4;
 const PAGE_W = 210 * PT_PER_MM; // 595.28
 const PAGE_H = 297 * PT_PER_MM; // 841.89
 
+// Largeur du bandeau coloré du modèle « design » : 55 mm sur les 210 mm de
+// l'A4. Sert à la fois au fond coloré (makeDoc) et à la mise en page
+// (renderDesign) ; doit rester identique à la colonne de grille de styles.css
+// (.sheet.design → grid-template-columns).
+const SIDE_W = 55 * PT_PER_MM;
+
 // 1 px CSS = 0.75 pt : les tailles reprennent celles de styles.css
 const PX = 0.75;
 
@@ -368,7 +374,7 @@ function makeDoc(state) {
     const page = { ops: [], annots: [] };
     if (state.template === 'design') {
       // Fond de la barre latérale répété sur chaque page
-      page.ops.push(`${rgb(doc.side.bg)} rg 0 0 ${num(64 * PT_PER_MM)} ${num(PAGE_H)} re f`);
+      page.ops.push(`${rgb(doc.side.bg)} rg 0 0 ${num(SIDE_W)} ${num(PAGE_H)} re f`);
     }
     doc.pages.push(page);
     return page;
@@ -709,7 +715,7 @@ function renderPro(doc, state, photo) {
 function renderDesign(doc, state, photo) {
   // Mesures reprises de styles.css (section « Modèle design : densité ») :
   // .side padding 10mm 5.5mm, .main padding 10mm 9mm.
-  const sideW = 51 * PT_PER_MM;
+  const sideW = SIDE_W;
   const sidePad = 5.5 * PT_PER_MM;
   const mainPad = 9 * PT_PER_MM;
   const MT = 10 * PT_PER_MM;
