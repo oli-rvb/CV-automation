@@ -709,7 +709,10 @@ function bulletsUl(bullets, ownerId) {
 }
 
 function experiencesBlock() {
-  const frag = document.createDocumentFragment();
+  // Enveloppe (titre + expériences + bouton d'ajout) dans un conteneur : c'est
+  // lui, et non tout le CV, qui déclenche l'apparition du « + Ajouter une
+  // expérience » au survol (voir la règle de scoping par section dans styles.css).
+  const frag = el('section', { class: 'cv-block' });
   frag.append(sectionTitle('Expériences professionnelles'));
   state.experiences.forEach((exp, i) => {
     const controls = el(
@@ -752,7 +755,9 @@ function experiencesBlock() {
 // et mêmes classes qu'une expérience (exp / exp-head / exp-role / exp-company),
 // sans période ni réordonnancement de l'élément lui-même.
 function subsectionsBlock(title, items, kind, addLabel, side = false) {
-  const frag = document.createDocumentFragment();
+  // Même conteneur que les expériences : le bouton d'ajout ne se révèle qu'au
+  // survol de ce bloc (voir styles.css).
+  const frag = el('section', { class: 'cv-block' });
   frag.append(sectionTitle(title, side));
   items.forEach((it) => {
     const controls = el('div', { class: 'exp-controls' }, iconBtn('✕', `${kind}-del`, 'Supprimer', 'del'));

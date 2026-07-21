@@ -645,7 +645,14 @@ main.tab-create #cvScale #cv {
    les aurait mis — ils s'affichent donc à leur place naturelle, sous leur
    liste, mais sans plus la pousser.
 
-   Ils restent affichés tant qu'un champ du CV est en cours d'édition
+   Chaque affordance est rattachée à SA section, non au CV entier : le
+   « + Ajouter une expérience » n'apparaît qu'au survol du bloc Expériences, le
+   « + Ajouter un lien » qu'au survol des liens, la poignée d'un tiret qu'au
+   survol de son expérience… Le conteneur de rattachement (`.cv-block`, `.exp`,
+   `.cv-links`, `.cv-contact-block`, `.cv-skill-groups`, `.cv-interests`,
+   `.cv-header`/`.side` pour la photo) porte le `:hover`.
+
+   Ils restent affichés tant qu'un champ de LEUR section est en cours d'édition
    (:focus-within), sinon ils s'évanouiraient sous le curseur pendant la frappe.
 
    À l'impression, aucune règle :hover / :focus-within ne s'applique (pas de
@@ -656,11 +663,16 @@ main.tab-create #cvScale #cv {
 .add-group, .add-interest,
 .photo-box:not(:has(.cv-photo)) { display: none; }
 
-#cv:is(:hover, :focus-within) :is(.drag-handle, .photo-box:not(:has(.cv-photo))) { display: block; }
+.exp:is(:hover, :focus-within) .drag-handle,
+.cv-header:is(:hover, :focus-within) .photo-box:not(:has(.cv-photo)),
+.side:is(:hover, :focus-within) .photo-box:not(:has(.cv-photo)) { display: block; }
 
-#cv:is(:hover, :focus-within)
-  :is(.add-bullet, .add-exp, .add-edu, .add-project, .add-link, .add-contact,
-    .add-group, .add-interest) {
+.exp:is(:hover, :focus-within) .add-bullet,
+.cv-block:is(:hover, :focus-within) :is(.add-exp, .add-edu, .add-project),
+.cv-links:is(:hover, :focus-within) .add-link,
+.cv-contact-block:is(:hover, :focus-within) .add-contact,
+.cv-skill-groups:is(:hover, :focus-within) .add-group,
+.cv-interests:is(:hover, :focus-within) .add-interest {
   display: inline-block;
 }
 
@@ -685,9 +697,14 @@ main.tab-create #cvScale #cv {
   transition: opacity 120ms ease, display 120ms allow-discrete;
 }
 
-#cv:is(:hover, :focus-within) :is(.drag-handle, .add-bullet, .add-exp, .add-edu,
-  .add-project, .add-link, .add-contact, .add-group, .add-interest,
-  .photo-box:not(:has(.cv-photo))),
+.exp:is(:hover, :focus-within) :is(.drag-handle, .add-bullet),
+.cv-block:is(:hover, :focus-within) :is(.add-exp, .add-edu, .add-project),
+.cv-links:is(:hover, :focus-within) .add-link,
+.cv-contact-block:is(:hover, :focus-within) .add-contact,
+.cv-skill-groups:is(:hover, :focus-within) .add-group,
+.cv-interests:is(:hover, :focus-within) .add-interest,
+.cv-header:is(:hover, :focus-within) .photo-box:not(:has(.cv-photo)),
+.side:is(:hover, :focus-within) .photo-box:not(:has(.cv-photo)),
 li.bullet:hover .bullet-controls,
 .link-item:hover .bullet-controls,
 .contact-item:hover .bullet-controls,
@@ -699,9 +716,14 @@ li.bullet:hover .bullet-controls,
 }
 
 @starting-style {
-  #cv:is(:hover, :focus-within) :is(.drag-handle, .add-bullet, .add-exp, .add-edu,
-    .add-project, .add-link, .add-contact, .add-group, .add-interest,
-  .photo-box:not(:has(.cv-photo))),
+  .exp:is(:hover, :focus-within) :is(.drag-handle, .add-bullet),
+  .cv-block:is(:hover, :focus-within) :is(.add-exp, .add-edu, .add-project),
+  .cv-links:is(:hover, :focus-within) .add-link,
+  .cv-contact-block:is(:hover, :focus-within) .add-contact,
+  .cv-skill-groups:is(:hover, :focus-within) .add-group,
+  .cv-interests:is(:hover, :focus-within) .add-interest,
+  .cv-header:is(:hover, :focus-within) .photo-box:not(:has(.cv-photo)),
+  .side:is(:hover, :focus-within) .photo-box:not(:has(.cv-photo)),
   li.bullet:hover .bullet-controls,
   .link-item:hover .bullet-controls,
   .contact-item:hover .bullet-controls,
