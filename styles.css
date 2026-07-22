@@ -1259,9 +1259,12 @@ li.bullet:hover .bullet-controls { display: flex; }
   margin: 14px 0 6px;
 }
 
-.side .photo-box { width: 110px; margin: 0 auto; }
+/* Photo de 39 mm de diamètre, contour compris (box-sizing: border-box, donc
+   la bordure de 3 px est incluse dans la largeur). Le PDF applique le même
+   diamètre extérieur (renderDesign). */
+.side .photo-box { width: 39mm; margin: 0 auto; }
 .side .cv-photo,
-.side .photo-placeholder { width: 110px; height: 110px; }
+.side .photo-placeholder { width: 39mm; height: 39mm; }
 
 .side .cv-photo { border: 3px solid var(--side-ring); }
 

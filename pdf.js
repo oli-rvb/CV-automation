@@ -756,7 +756,10 @@ function renderDesign(doc, state, photo) {
   const stSide = { size: fs.section * PX, color: S.fg, ruleColor: S.rule, mt: 14 * PX, mb: 6 * PX };
 
   if (photo) {
-    const photoSize = 110 * PX;
+    // 39 mm de diamètre extérieur, contour compris (identique à styles.css :
+    // .side .cv-photo). L'anneau est tracé au bord de l'image, il n'ajoute
+    // donc rien au-delà de photoSize.
+    const photoSize = 39 * PT_PER_MM;
     opPhoto(side.page(), sidePad + (side.width - photoSize) / 2, side.y, photoSize, S.ring);
     side.y += photoSize;
   }
