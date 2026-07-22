@@ -84,7 +84,9 @@
   </div>
 
   <main id="layout" class="tab-create">
-    <!-- Onglet « Nouveau CV » : l'offre d'abord, le CV proposé en dessous. -->
+    <!-- Onglet « Nouveau CV », colonne de gauche : l'offre d'emploi, puis
+         l'import/export JSON juste en dessous. -->
+    <div id="createLeft">
     <section class="panel-box" id="offerPanel">
       <h2>Offre d'emploi</h2>
       <p class="hint">
@@ -99,6 +101,24 @@
       </div>
       <div id="results"></div>
     </section>
+
+    <!-- Import/export JSON : sauvegarde/transfert de l'état complet, placé
+         sous l'offre dans l'onglet « Nouveau CV ». -->
+    <section class="panel-box" id="jsonBox">
+      <h2>Import / export JSON</h2>
+      <p class="hint">
+        Exportez l'état complet de vos CV (CV de base, CV sauvegardés, offre
+        en cours) dans un fichier à conserver ou à transférer vers un autre
+        navigateur&nbsp;; importez ensuite ce fichier pour tout restaurer à
+        l'identique.
+      </p>
+      <div class="panel-actions">
+        <button id="importBtn" class="ghost" type="button">Importer JSON</button>
+        <input type="file" id="importFile" accept="application/json,.json" hidden>
+        <button id="exportBtn" class="ghost" type="button">Exporter JSON</button>
+      </div>
+    </section>
+    </div><!-- #createLeft -->
 
     <!-- La feuille CV, partagée par les deux onglets : ordre proposé dans
          « Nouveau CV » (si une analyse est en cours), ordre de base sinon.
@@ -167,23 +187,8 @@
       </div>
     </div>
 
-    <!-- Onglet « CV de base » : import/export JSON puis les CV sauvegardés, à côté du CV. -->
+    <!-- Onglet « CV de base » : les CV sauvegardés, à côté du CV. -->
     <aside id="versionsPanel">
-      <section class="panel-box" id="jsonBox">
-        <h2>Import / export JSON</h2>
-        <p class="hint">
-          Exportez l'état complet de vos CV (CV de base, CV sauvegardés, offre
-          en cours) dans un fichier à conserver ou à transférer vers un autre
-          navigateur&nbsp;; importez ensuite ce fichier pour tout restaurer à
-          l'identique.
-        </p>
-        <div class="panel-actions">
-          <button id="importBtn" class="ghost" type="button">Importer JSON</button>
-          <input type="file" id="importFile" accept="application/json,.json" hidden>
-          <button id="exportBtn" class="ghost" type="button">Exporter JSON</button>
-        </div>
-      </section>
-
       <section class="panel-box" id="versionsBox">
         <h2>CV sauvegardés</h2>
         <p class="hint">

@@ -550,18 +550,20 @@ main {
    PDF : le CV doit rester en premier dans le fichier, l'inversion visuelle
    passe uniquement par la grille). */
 main.tab-create { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); }
-main.tab-create #offerPanel { grid-column: 1; grid-row: 1; }
+main.tab-create #createLeft { grid-column: 1; grid-row: 1; }
 main.tab-create #cvColumn { grid-column: 2; grid-row: 1; }
 main.tab-create #versionsPanel { display: none; }
 
-/* Onglet « CV de base » : CV + CV sauvegardés côte à côte, pas d'offre. */
-main.tab-base #offerPanel { display: none; }
+/* Colonne de gauche de « Nouveau CV » : l'offre puis l'import/export JSON,
+   empilés. Masquée entièrement dans « CV de base ». */
+#createLeft { display: flex; flex-direction: column; gap: 16px; }
+main.tab-base #createLeft { display: none; }
 
 @media (max-width: 980px) {
   main, main.tab-create { grid-template-columns: 1fr; }
-  main.tab-create #offerPanel { grid-column: 1; grid-row: 1; }
+  main.tab-create #createLeft { grid-column: 1; grid-row: 1; }
   main.tab-create #cvColumn { grid-column: 1; grid-row: 2; }
-  #versionsPanel, main.tab-create #offerPanel { position: static; max-height: none; }
+  #versionsPanel, main.tab-create #createLeft { position: static; max-height: none; }
 }
 
 /* ---------- Mise à l'échelle du CV (onglet « Nouveau CV ») ----------
@@ -1354,7 +1356,7 @@ li.bullet:hover .bullet-controls { display: flex; }
 /* ---------- Panneau des CV sauvegardés (onglet « CV de base ») ---------- */
 
 #versionsPanel,
-main.tab-create #offerPanel {
+main.tab-create #createLeft {
   position: sticky;
   top: 72px;
   max-height: calc(100vh - 96px);
@@ -1647,7 +1649,7 @@ main.tab-create #offerPanel {
 
 @media print {
   html, body { width: 210mm; background: #fff; }
-  #toolbar, #cvTools, #offerPanel, #versionsPanel { display: none; }
+  #toolbar, #cvTools, #createLeft, #versionsPanel { display: none; }
   main { display: block; padding: 0; margin: 0; max-width: none; }
   .sheet { box-shadow: none; border-radius: 0; margin: 0; }
   /* Largeur, hauteur et marges internes : mêmes règles qu'à l'écran (210 × 297 mm). */
