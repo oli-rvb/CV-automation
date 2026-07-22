@@ -682,6 +682,7 @@ function renderPro(doc, state, photo) {
 
   col.y += 12 * PX;
   paragraph(col, state.profile.summary, { size: f.summary * PX, color: C.ink });
+  col.y += 10 * PX; // air supplémentaire avant le premier titre de section (cf. styles.css)
 
   const st = { size: f.section * PX, color: C.accent, ruleColor: C.accent, mt: 26 * PX, mb: 10 * PX };
   const expSizes = { role: f.item, company: f.detail, period: f.period, bullet: f.bullet, gap: 14 };
@@ -734,6 +735,7 @@ function renderDesign(doc, state, photo) {
   paragraph(main, state.profile.title, { bold: true, size: fm.title * PX, color: C.accent });
   main.y += 8 * PX;
   paragraph(main, state.profile.summary, { size: fm.summary * PX, color: C.ink });
+  main.y += 10 * PX; // air supplémentaire avant le premier titre de section (cf. styles.css)
 
   if (state.experiences.length) {
     sectionTitle(main, 'Expériences professionnelles', stMain);

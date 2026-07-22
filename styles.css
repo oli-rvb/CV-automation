@@ -818,6 +818,12 @@ li.bullet:hover .bullet-controls,
   margin-top: 12px;
 }
 
+/* Un peu plus d'air entre le résumé et le premier titre de section (celui-ci
+   est dans le premier .cv-block qui suit le résumé). Le padding ne se combine
+   pas par collapse, il s'ajoute donc proprement sans toucher les autres
+   inter-sections. Le PDF applique le même supplément (renderPro/renderDesign). */
+.cv-summary + .cv-block { padding-top: 10px; }
+
 .cv-section-title {
   font-size: var(--fs-section, 15px);
   font-weight: 700;
