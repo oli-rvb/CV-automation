@@ -29,12 +29,25 @@ const SIDE_HEX_RE = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
    couleur, JSON trafiqué…) retombe sur la couleur par défaut. La valeur
    n'est donc jamais injectée telle quelle dans une propriété CSS. */
 function normalizeSideColor(v) {
-  if (typeof v !== 'string') return SIDE_BG_DEFAULT;
+  return normalizeHexColor(v, SIDE_BG_DEFAULT);
+}
+
+// Idem, mais avec repli paramétrable (couleur des titres, etc.).
+function normalizeHexColor(v, fallback) {
+  if (typeof v !== 'string') return fallback;
   const s = v.trim().toLowerCase();
-  if (!SIDE_HEX_RE.test(s)) return SIDE_BG_DEFAULT;
+  if (!SIDE_HEX_RE.test(s)) return fallback;
   // Forme canonique sur 6 chiffres
   return s.length === 4 ? `#${s[1]}${s[1]}${s[2]}${s[2]}${s[3]}${s[3]}` : s;
 }
+
+/* ---------- Couleur des titres du CV ----------
+   Trois modes : « bandeau » (même couleur que le bandeau), « complement »
+   (teinte opposée du bandeau, défaut) ou « custom » (couleur libre). Le calcul
+   effectif est dans pdf.js (window.cvTitleColorHex), partagé avec le PDF. */
+const TITLE_COLOR_DEFAULT = '#2563eb'; // bleu d'accent, couleur de départ en mode « custom »
+const TITLE_MODES = ['bandeau', 'complement', 'custom'];
+const normalizeTitleMode = (v) => (TITLE_MODES.includes(v) ? v : 'complement');
 
 /* ---------- Tailles de police ---------- */
 
@@ -137,6 +150,8 @@ function defaultCV() {
     },
     template: 'pro',
     sideColor: SIDE_BG_DEFAULT,
+    titleColorMode: 'complement',
+    titleColor: TITLE_COLOR_DEFAULT,
     fontSizes: normalizeFontSizes(null),
     experiences: [
       {
@@ -282,6 +297,8 @@ function normalizeCV(data) {
     },
     template: data.template === 'design' ? 'design' : 'pro',
     sideColor: normalizeSideColor(data.sideColor),
+    titleColorMode: normalizeTitleMode(data.titleColorMode),
+    titleColor: normalizeHexColor(data.titleColor, TITLE_COLOR_DEFAULT),
     // Tailles de police : propres au CV, donc voyagent avec les CV sauvegardés.
     fontSizes: normalizeFontSizes(data.fontSizes),
     experiences: (Array.isArray(data.experiences) ? data.experiences : []).map((e) => ({
@@ -868,6 +885,13 @@ function applySideColor() {
   cvEl.style.setProperty('--side-fg', pal.fgHex);
 }
 
+// Couleur des titres : posée EN LIGNE sur .sheet (comme --side-bg) pour voyager
+// avec cvEl.outerHTML (backend PDF, impression). Le PDF vectoriel la recalcule
+// de son côté via cvTitleColorRgb — même source, même résultat.
+function applyTitleColor() {
+  cvEl.style.setProperty('--title-color', window.cvTitleColorHex(state));
+}
+
 /* Applique les tailles de police choisies à la feuille.
 
    Même principe que la couleur du bandeau : les variables sont posées EN LIGNE
@@ -900,6 +924,7 @@ function renderCV() {
   cvEl.textContent = '';
   cvEl.classList.toggle('design', state.template === 'design');
   applySideColor();
+  applyTitleColor();
   applyFontSizes();
   if (state.template === 'design') renderDesign();
   else renderPro();
@@ -1125,6 +1150,8 @@ document.addEventListener('keydown', (e) => {
 function setSideColor(hex) {
   state.sideColor = normalizeSideColor(hex);
   applySideColor();
+  // Les titres suivent le bandeau dans les modes « bandeau » et « complément ».
+  applyTitleColor();
   updateSideColorControl();
   save();
 }
@@ -1168,6 +1195,33 @@ function updateSideColorControl() {
   pipetteBtnEl.style.setProperty('--swatch', state.sideColor);
   pipetteBtnEl.classList.toggle('active', !matched);
 }
+
+/* ---------- Contrôle de la couleur des titres ----------
+   Menu de mode + sélecteur de couleur libre (visible seulement en mode
+   « custom »). Vaut pour les deux modèles ; en « pro », les modes bandeau /
+   complémentaire s'appuient sur state.sideColor (même s'il n'y a pas de
+   bandeau visible). */
+const titleColorModeEl = $('#titleColorMode');
+const titleColorInputEl = $('#titleColorInput');
+
+function updateTitleColorControl() {
+  titleColorModeEl.value = state.titleColorMode;
+  titleColorInputEl.hidden = state.titleColorMode !== 'custom';
+  titleColorInputEl.value = normalizeHexColor(state.titleColor, TITLE_COLOR_DEFAULT);
+}
+
+titleColorModeEl.addEventListener('change', () => {
+  state.titleColorMode = normalizeTitleMode(titleColorModeEl.value);
+  applyTitleColor();
+  updateTitleColorControl();
+  save();
+});
+
+titleColorInputEl.addEventListener('input', () => {
+  state.titleColor = normalizeHexColor(titleColorInputEl.value, TITLE_COLOR_DEFAULT);
+  applyTitleColor();
+  save();
+});
 
 /* ---------- Contrôle des tailles de police ----------
    Un réglage par rôle de texte, groupé par zone : le bandeau (gauche) et la
@@ -1327,6 +1381,7 @@ function rerender() {
   renderVersions();
   updateTemplateToggle();
   updateSideColorControl();
+  updateTitleColorControl();
   renderFontControls();
   updateTabs();
   updateCvScale();
@@ -1900,6 +1955,8 @@ function snapshotCV() {
       profile: state.profile,
       template: state.template,
       sideColor: state.sideColor,
+      titleColorMode: state.titleColorMode,
+      titleColor: state.titleColor,
       fontSizes: state.fontSizes,
       experiences: state.experiences,
       education: state.education,
@@ -1918,6 +1975,8 @@ function applyCV(data) {
   state.profile = cv.profile;
   state.template = cv.template;
   state.sideColor = cv.sideColor;
+  state.titleColorMode = cv.titleColorMode;
+  state.titleColor = cv.titleColor;
   state.fontSizes = cv.fontSizes;
   state.experiences = cv.experiences;
   state.education = cv.education;

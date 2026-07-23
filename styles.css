@@ -161,6 +161,36 @@ button:disabled {
   color: var(--muted);
 }
 
+/* Couleur des titres du CV : mode (menu) + couleur libre (mode « custom »). */
+.title-color {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.title-color select {
+  font: inherit;
+  font-size: 13px;
+  padding: 5px 8px;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.title-color input[type='color'] {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+}
+
+.title-color input[type='color'][hidden] { display: none; }
+
 .swatches {
   display: flex;
   gap: 5px;
@@ -787,7 +817,10 @@ li.bullet:hover .bullet-controls,
 
 .cv-title {
   font-size: var(--fs-title, 17px);
-  color: var(--accent);
+  /* Couleur des titres, posée en ligne par app.js selon le mode choisi
+     (identique/complémentaire du bandeau, ou personnalisée) ; repli sur le
+     bleu d'accent si le script ne s'exécute pas. */
+  color: var(--title-color, var(--accent));
   font-weight: 600;
   margin-top: 2px;
 }
@@ -831,8 +864,8 @@ li.bullet:hover .bullet-controls,
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: var(--accent);
-  border-bottom: 2px solid var(--accent);
+  color: var(--title-color, var(--accent));
+  border-bottom: 2px solid var(--title-color, var(--accent));
   padding-bottom: 3px;
   margin: 26px 0 10px;
 }

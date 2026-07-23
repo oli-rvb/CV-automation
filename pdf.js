@@ -111,6 +111,56 @@ function cvSidePalette(hex) {
   };
 }
 
+/* ---------- Couleur des titres du CV ----------
+   Trois modes, réglés par l'utilisateur : « bandeau » (même couleur que le
+   bandeau), « complement » (teinte opposée du bandeau, défaut) ou « custom »
+   (couleur libre). Calcul centralisé ici, exposé à app.js (window.cvTitleColorHex)
+   pour un rendu écran/PDF strictement identique. */
+
+// Conversions HSL (tableaux rgb 0-1 ; teinte h dans 0-1).
+function rgbToHsl([r, g, b]) {
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  const d = max - min;
+  if (!d) return [0, 0, l];
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  let h;
+  if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
+  else if (max === g) h = (b - r) / d + 2;
+  else h = (r - g) / d + 4;
+  return [h / 6, s, l];
+}
+
+function hslToRgb([h, s, l]) {
+  if (s === 0) return [l, l, l];
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  const chan = (t) => {
+    t = (t % 1 + 1) % 1;
+    if (t < 1 / 6) return p + (q - p) * 6 * t;
+    if (t < 1 / 2) return q;
+    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+    return p;
+  };
+  return [chan(h + 1 / 3), chan(h), chan(h - 1 / 3)];
+}
+
+// Complémentaire : teinte opposée (+180°), saturation et clarté conservées —
+// reste donc aussi lisible que la couleur d'origine sur fond blanc.
+function complement(rgb) {
+  const [h, s, l] = rgbToHsl(rgb);
+  return hslToRgb([(h + 0.5) % 1, s, l]);
+}
+
+function cvTitleColorRgb(state) {
+  const mode = state && state.titleColorMode;
+  if (mode === 'custom') return parseHex(state.titleColor) || C.accent;
+  const sideBg = parseHex(state && state.sideColor) || parseHex(SIDE_BG_DEFAULT);
+  if (mode === 'bandeau') return sideBg;
+  return complement(sideBg); // « complement » par défaut
+}
+
 /* ============================================================
    Tailles de police — source de vérité unique
 
@@ -655,6 +705,7 @@ function renderPro(doc, state, photo) {
   const contentW = PAGE_W - 2 * ML;
   const col = makeCol(doc, ML, contentW, MT, MT);
   const palette = { ink: C.ink, muted: C.muted };
+  const titleC = cvTitleColorRgb(state); // couleur des titres selon le mode choisi
   const f = cvFontSizes(state.fontSizes && state.fontSizes.pro, 'pro').main;
 
   const photoSize = 110 * PX;
@@ -662,7 +713,7 @@ function renderPro(doc, state, photo) {
 
   paragraph(col, state.profile.name, { bold: true, size: f.name * PX, color: C.ink }, { lineH: f.name * PX * 1.2 });
   col.y += 2 * PX;
-  paragraph(col, state.profile.title, { bold: true, size: f.title * PX, color: C.accent });
+  paragraph(col, state.profile.title, { bold: true, size: f.title * PX, color: titleC });
   col.y += 6 * PX;
   contactLines(col, state, {
     labelColor: C.ink, valueColor: C.muted, size: f.contact * PX, valueSize: f.contactValue * PX,
@@ -684,7 +735,7 @@ function renderPro(doc, state, photo) {
   paragraph(col, state.profile.summary, { size: f.summary * PX, color: C.ink });
   col.y += 10 * PX; // air supplémentaire avant le premier titre de section (cf. styles.css)
 
-  const st = { size: f.section * PX, color: C.accent, ruleColor: C.accent, mt: 26 * PX, mb: 10 * PX };
+  const st = { size: f.section * PX, color: titleC, ruleColor: titleC, mt: 26 * PX, mb: 10 * PX };
   const expSizes = { role: f.item, company: f.detail, period: f.period, bullet: f.bullet, gap: 14 };
   const subSizes = { title: f.item, detail: f.detail, bullet: f.bullet, gap: 14 };
   if (state.experiences.length) {
@@ -728,11 +779,12 @@ function renderDesign(doc, state, photo) {
   const palette = { ink: C.ink, muted: C.muted };
   const F = cvFontSizes(state.fontSizes && state.fontSizes.design, 'design');
   const fm = F.main;
-  const stMain = { size: fm.section * PX, color: C.accent, ruleColor: C.accent, mt: 14 * PX, mb: 6 * PX };
+  const titleC = cvTitleColorRgb(state); // couleur des titres selon le mode choisi
+  const stMain = { size: fm.section * PX, color: titleC, ruleColor: titleC, mt: 14 * PX, mb: 6 * PX };
   const expSizes = { role: fm.item, company: fm.detail, period: fm.period, bullet: fm.bullet, gap: 8 };
   const subSizes = { title: fm.item, detail: fm.detail, bullet: fm.bullet, gap: 8 };
 
-  paragraph(main, state.profile.title, { bold: true, size: fm.title * PX, color: C.accent });
+  paragraph(main, state.profile.title, { bold: true, size: fm.title * PX, color: titleC });
   main.y += 8 * PX;
   paragraph(main, state.profile.summary, { size: fm.summary * PX, color: C.ink });
   main.y += 10 * PX; // air supplémentaire avant le premier titre de section (cf. styles.css)
@@ -946,6 +998,7 @@ async function generateCvPdf(state) {
 window.generateCvPdf = generateCvPdf;
 // Partagé avec app.js : même dérivation de couleurs à l'écran et dans le PDF
 window.cvSidePalette = cvSidePalette;
+window.cvTitleColorHex = (state) => toHex(cvTitleColorRgb(state));
 window.CV_SIDE_BG_DEFAULT = SIDE_BG_DEFAULT;
 window.CV_FONT_ROLES = FONT_ROLES;
 window.CV_FONT_BOUNDS = { min: FS_MIN, max: FS_MAX };

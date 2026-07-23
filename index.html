@@ -180,6 +180,20 @@
                     title="Valider et mémoriser cette couleur">OK</button>
           </div>
         </div>
+
+        <!-- Couleur des titres du CV : complémentaire du bandeau (défaut),
+             identique au bandeau, ou couleur personnalisée. Vaut pour les deux
+             modèles. -->
+        <div class="title-color" id="titleColorCtl" role="group" aria-label="Couleur des titres">
+          <span class="side-color-label">Titres</span>
+          <select id="titleColorMode" aria-label="Mode de couleur des titres">
+            <option value="complement">Complémentaire</option>
+            <option value="bandeau">Bandeau</option>
+            <option value="custom">Personnalisée</option>
+          </select>
+          <input type="color" id="titleColorInput"
+                 aria-label="Couleur personnalisée des titres" hidden>
+        </div>
       </div>
 
       <div id="cvScale">
