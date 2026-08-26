@@ -229,7 +229,6 @@ function defaultCV() {
       { id: uid(), text: 'Musique (pratique instrumentale)' },
     ],
     jobText: '',
-    jobFetchedText: '',
   };
 }
 
@@ -325,9 +324,6 @@ function normalizeCV(data) {
       typeof it === 'string' ? { id: uid(), text: it } : { id: (it && it.id) || uid(), text: String((it && it.text) ?? '') }
     ),
     jobText: typeof data.jobText === 'string' ? data.jobText : '',
-    // Texte de l'offre récupéré depuis une URL lors de la dernière analyse
-    // (vide si l'offre a été collée directement en texte).
-    jobFetchedText: typeof data.jobFetchedText === 'string' ? data.jobFetchedText : '',
   };
   return cv;
 }
@@ -423,6 +419,7 @@ const resultsEl = $('#results');
 const jobTextEl = $('#jobText');
 const versionListEl = $('#versionList');
 const versionNameEl = $('#versionName');
+const overflowNoticeEl = $('#overflowNotice');
 const photoFileEl = $('#photoFile');
 
 let pendingFocusBulletId = null;
@@ -448,6 +445,36 @@ function updateCvScale() {
   const w = cvScaleEl.getBoundingClientRect().width;
   if (w <= 0) return; // cadre pas encore mis en page (ex. onglet masqué)
   cvScaleEl.style.setProperty('--cv-scale', String(Math.min(1, w / CV_MM_PX)));
+}
+
+/* ---------- Dépassement d'une page (modèle « design ») ----------
+
+   La feuille du modèle design fait exactement 297 mm et coupe ce qui dépasse
+   (styles.css) : sans cet avis, quelques lignes de trop disparaîtraient du CV
+   et du PDF sans que rien ne l'indique. `scrollHeight` mesure le contenu réel
+   de la colonne principale, `clientHeight` la place disponible. */
+function updateOverflowNotice() {
+  if (!overflowNoticeEl) return;
+  // Les deux colonnes sont des éléments de grille : elles s'étirent avec leur
+  // contenu et débordent de la feuille, qui, elle, reste à 297 mm. On compare
+  // donc leur hauteur à la place offerte par la feuille, pas à la leur.
+  let excess = 0;
+  if (state.template === 'design') {
+    const room = cvEl.clientHeight;
+    for (const col of cvEl.querySelectorAll('.main, .side')) {
+      excess = Math.max(excess, col.scrollHeight - room);
+    }
+  }
+  // Deux pixels de marge : les arrondis sous-pixels ne doivent pas alarmer.
+  if (excess <= 2) {
+    overflowNoticeEl.hidden = true;
+    return;
+  }
+  const mm = Math.max(1, Math.round((excess * 25.4) / 96));
+  overflowNoticeEl.textContent =
+    `Le contenu dépasse la page d'environ ${mm} mm : le bas est coupé sur le CV comme dans le PDF. ` +
+    'Raccourcissez un tiret, supprimez une entrée ou réduisez une taille de texte.';
+  overflowNoticeEl.hidden = false;
 }
 
 // Deux déclencheurs redondants (l'un des deux suffit à chaque navigateur) :
@@ -1385,6 +1412,7 @@ function rerender() {
   renderFontControls();
   updateTabs();
   updateCvScale();
+  updateOverflowNotice();
   save();
 }
 
@@ -1965,7 +1993,6 @@ function snapshotCV() {
       skillGroups: state.skillGroups,
       interests: state.interests,
       jobText: state.jobText,
-      jobFetchedText: state.jobFetchedText,
     })
   );
 }
@@ -1985,7 +2012,6 @@ function applyCV(data) {
   state.skillGroups = cv.skillGroups;
   state.interests = cv.interests;
   state.jobText = cv.jobText;
-  state.jobFetchedText = cv.jobFetchedText;
   jobTextEl.value = state.jobText;
 }
 
@@ -2185,104 +2211,11 @@ function scheduleSuggestions() {
   suggestionTimer = setTimeout(renderSuggestions, 400);
 }
 
-/* ---------- Récupération d'une offre depuis une URL ----------
-
-   L'utilisateur peut coller l'URL de l'offre au lieu de son texte. La page est
-   rapatriée de préférence par le backend (route /fetch-job de server.js, non
-   soumis au CORS), sinon par un fetch direct — rarement autorisé par les
-   sites. Le HTML est analysé ICI, côté client : données structurées JSON-LD
-   « JobPosting » si le site en publie (la plupart des sites d'emploi, pour
-   leur référencement), sinon texte visible de la page. */
-
-const JOB_FETCH_ENDPOINT = location.protocol === 'file:' ? 'http://localhost:3333/fetch-job' : '/fetch-job';
-
-function looksLikeUrl(s) {
-  if (!s || /\s/.test(s)) return false;
-  return /^https?:\/\/\S+$/i.test(s) || /^www\.[^\s.]+\.\S+$/i.test(s);
-}
-
-async function fetchJobHtml(url) {
-  try {
-    const res = await fetch(JOB_FETCH_ENDPOINT, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url }),
-    });
-    if (res.ok) {
-      const { html } = await res.json();
-      if (typeof html === 'string' && html) return html;
-    }
-  } catch {
-    /* backend indisponible : tentative directe ci-dessous */
-  }
-  const res = await fetch(url); // ne passe que si le site autorise le CORS
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.text();
-}
-
-// Cherche un objet JSON-LD de @type JobPosting, éventuellement enfoui dans un
-// tableau ou un @graph.
-function findJobPosting(doc) {
-  for (const s of doc.querySelectorAll('script[type="application/ld+json"]')) {
-    let data;
-    try {
-      data = JSON.parse(s.textContent);
-    } catch {
-      continue;
-    }
-    const stack = [data];
-    while (stack.length) {
-      const node = stack.pop();
-      if (Array.isArray(node)) {
-        stack.push(...node);
-        continue;
-      }
-      if (!node || typeof node !== 'object') continue;
-      const types = Array.isArray(node['@type']) ? node['@type'] : [node['@type']];
-      if (types.includes('JobPosting')) return node;
-      if (node['@graph']) stack.push(node['@graph']);
-    }
-  }
-  return null;
-}
-
-// La description d'un JobPosting est elle-même du HTML : on n'en garde que le
-// texte. DOMParser n'exécute rien, le contenu distant reste une simple donnée.
-function stripHtml(html) {
-  return new DOMParser().parseFromString(String(html), 'text/html').body.textContent || '';
-}
-
-function extractJobText(html) {
-  const doc = new DOMParser().parseFromString(html, 'text/html');
-  const jp = findJobPosting(doc);
-  if (jp) {
-    const parts = [];
-    if (typeof jp.title === 'string') parts.push(jp.title);
-    const org = jp.hiringOrganization;
-    const orgName = org && typeof org === 'object' ? org.name : org;
-    if (typeof orgName === 'string') parts.push(orgName);
-    for (const key of ['description', 'responsibilities', 'qualifications', 'skills', 'experienceRequirements']) {
-      if (typeof jp[key] === 'string') parts.push(stripHtml(jp[key]));
-    }
-    const text = parts.join('\n').trim();
-    if (text.length > 80) return text;
-  }
-  // Repli : texte visible de la page. L'espace inséré avant chaque balise
-  // évite que deux blocs adjacents ne se collent en un seul « mot ».
-  const page = new DOMParser().parseFromString(html.replace(/</g, ' <'), 'text/html');
-  page.querySelectorAll('script, style, noscript, template, svg, iframe, nav, header, footer, form').forEach((n) => n.remove());
-  return (page.body ? page.body.textContent : '')
-    .replace(/[ \t]+/g, ' ')
-    .replace(/\s*\n\s*/g, '\n')
-    .trim()
-    .slice(0, 20000);
-}
-
 /* ---------- Proposition de nouveau CV ---------- */
 
-// Texte effectivement analysé : celui récupéré depuis l'URL, sinon la saisie.
+// Texte effectivement analysé : la saisie collée dans le panneau « Offre ».
 function effectiveJobText() {
-  return (state.jobFetchedText || state.jobText || '').trim();
+  return (state.jobText || '').trim();
 }
 
 // Détails d'affichage de la proposition, remis à zéro à chaque nouvelle
@@ -2311,16 +2244,8 @@ function buildProposal() {
   state.proposal = changed ? { orders } : null;
 }
 
-// Nom proposé pour le CV enregistré : le site de l'offre, sinon la date.
+// Nom proposé pour le CV enregistré : la date de l'analyse.
 function defaultVersionName() {
-  const raw = state.jobText.trim();
-  if (state.jobFetchedText && looksLikeUrl(raw)) {
-    try {
-      return 'Offre ' + new URL(/^https?:/i.test(raw) ? raw : 'https://' + raw).hostname.replace(/^www\./, '');
-    } catch {
-      /* la saisie a pu changer depuis la récupération */
-    }
-  }
   return `Offre du ${new Date().toLocaleDateString('fr-FR')}`;
 }
 
@@ -2361,18 +2286,6 @@ function renderSuggestions() {
   if (!jobText) {
     resultsEl.append(el('p', { class: 'empty-note', text: 'Aucune offre analysée pour le moment.' }));
     return;
-  }
-
-  if (state.jobFetchedText) {
-    let from = 'l’URL';
-    try {
-      from = new URL(/^https?:/i.test(state.jobText.trim()) ? state.jobText.trim() : 'https://' + state.jobText.trim()).hostname;
-    } catch {
-      /* la saisie a pu changer depuis la récupération */
-    }
-    resultsEl.append(
-      el('p', { class: 'fetch-note', text: `Offre récupérée depuis ${from} (${state.jobFetchedText.length} caractères).` })
-    );
   }
 
   const model = buildJobModel(jobText);
@@ -2467,38 +2380,8 @@ resultsEl.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && e.target.id === 'newCvName') saveProposalVersion();
 });
 
-$('#analyzeBtn').addEventListener('click', async () => {
-  const btn = $('#analyzeBtn');
-  const raw = jobTextEl.value.trim();
+$('#analyzeBtn').addEventListener('click', () => {
   state.jobText = jobTextEl.value;
-
-  if (looksLikeUrl(raw)) {
-    const url = /^https?:/i.test(raw) ? raw : 'https://' + raw;
-    btn.disabled = true;
-    const label = btn.textContent;
-    btn.textContent = 'Récupération de l’offre…';
-    try {
-      const text = extractJobText(await fetchJobHtml(url));
-      if (!text) throw new Error('page sans texte exploitable');
-      state.jobFetchedText = text;
-    } catch (err) {
-      console.error('[offre]', err);
-      state.jobFetchedText = '';
-      save();
-      renderSuggestions();
-      alert(
-        'Impossible de récupérer l’offre depuis cette URL.\n' +
-          'Lancez le backend (node server.js) si ce n’est pas déjà fait, ou collez directement le texte de l’offre.'
-      );
-      return;
-    } finally {
-      btn.disabled = false;
-      btn.textContent = label;
-    }
-  } else {
-    state.jobFetchedText = '';
-  }
-
   buildProposal();
   rerender();
 });
@@ -2510,7 +2393,6 @@ $('#clearAnalysisBtn').addEventListener('click', () => {
   newCvNameDraft = '';
   jobTextEl.value = '';
   state.jobText = '';
-  state.jobFetchedText = '';
   rerender();
 });
 
@@ -2546,10 +2428,11 @@ $('#tplDesign').addEventListener('click', () => {
 
 $('#printBtn').addEventListener('click', () => window.print());
 
-// Téléchargement PDF, deux voies :
+// Téléchargement PDF, deux voies — les deux produisent du texte vectoriel
+// sélectionnable, donc lisible par les ATS :
 // 1. Backend (server.js + Chrome headless) : le PDF est mis en page par le
 //    même moteur que l'écran — correspondance exacte (polices, retours à la
-//    ligne), texte vectoriel sélectionnable, lisible par les ATS.
+//    ligne).
 // 2. Secours sans backend : générateur client pdf.js (métriques Helvetica),
 //    fidèle mais avec de possibles écarts de coupure de ligne.
 const PDF_ENDPOINT = location.protocol === 'file:' ? 'http://localhost:3333/pdf' : '/pdf';
@@ -2565,7 +2448,6 @@ async function backendPdf() {
   if (blob.type !== 'application/pdf') throw new Error('backend PDF : réponse inattendue');
   return blob;
 }
-
 $('#pdfBtn').addEventListener('click', async () => {
   const btn = $('#pdfBtn');
   btn.disabled = true;

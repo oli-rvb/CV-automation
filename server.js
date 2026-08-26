@@ -71,12 +71,18 @@ const CHROME = findChrome();
 /* ---------- Composition de la page à imprimer ---------- */
 
 function buildPrintPage(cvHtml) {
+  // fonts.css EN PREMIER, comme dans index.html : il porte le @font-face
+  // d'Open Sans en data-URI. Sans lui, Chrome imprimerait la feuille avec la
+  // police de repli — retours à la ligne différents de l'écran. Le data-URI
+  // est indispensable ici : la page imprimée vit dans un dossier temporaire,
+  // où aucun chemin relatif du projet ne résout.
+  const fonts = fs.readFileSync(path.join(ROOT, 'fonts.css'), 'utf8');
   const css = fs.readFileSync(path.join(ROOT, 'styles.css'), 'utf8');
   // Même structure que l'app (main > .sheet) pour que les règles
   // écran ET @media print s'appliquent à l'identique.
   return (
     '<!doctype html>\n<html lang="fr">\n<head>\n<meta charset="utf-8">\n' +
-    `<style>\n${css}\n</style>\n</head>\n<body>\n<main>${cvHtml}</main>\n</body>\n</html>\n`
+    `<style>\n${fonts}\n${css}\n</style>\n</head>\n<body>\n<main>${cvHtml}</main>\n</body>\n</html>\n`
   );
 }
 

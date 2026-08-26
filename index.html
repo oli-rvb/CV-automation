@@ -4,6 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Éditeur de CV</title>
+  <!-- Open Sans embarqué : chargé avant styles.css pour que la feuille ne soit
+       jamais mesurée avec une police de repli (voir fonts.css). -->
+  <link rel="stylesheet" href="fonts.css">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -90,11 +93,10 @@
     <section class="panel-box" id="offerPanel">
       <h2>Offre d'emploi</h2>
       <p class="hint">
-        Collez l'<strong>URL</strong> ou le <strong>texte</strong> de l'offre,
-        puis analysez-la&nbsp;: le CV ci-contre se réordonne pour elle, sans
-        toucher au CV de base.
+        Collez le <strong>texte</strong> de l'offre, puis analysez-la&nbsp;:
+        le CV ci-contre se réordonne pour elle, sans toucher au CV de base.
       </p>
-      <textarea id="jobText" rows="5" placeholder="https://exemple.fr/offre… ou texte de l'offre"></textarea>
+      <textarea id="jobText" rows="5" placeholder="Texte de l'offre d'emploi"></textarea>
       <div class="panel-actions">
         <button id="analyzeBtn" type="button">Analyser l'offre</button>
         <button id="clearAnalysisBtn" class="ghost" type="button">Effacer</button>
@@ -195,6 +197,11 @@
                  aria-label="Couleur personnalisée des titres" hidden>
         </div>
       </div>
+
+      <!-- Dépassement de page : le modèle « design » tient sur une seule page
+           A4 et coupe ce qui dépasse. app.js remplit et affiche cet avis dès
+           que le contenu déborde (voir updateOverflowNotice). -->
+      <p id="overflowNotice" role="status" hidden></p>
 
       <div id="cvScale">
         <div id="cv" class="sheet" aria-label="CV éditable"></div>

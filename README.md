@@ -1,12 +1,12 @@
 # Éditeur de CV
 
-Application web centrée sur les offres d'emploi : collez l'URL ou le texte d'une offre, l'analyse propose un nouveau CV dont les tirets sont réordonnés du plus pertinent au moins pertinent, le survol du CV montre les modifications par rapport au CV de base, et le résultat s'enregistre comme CV sauvegardé — sans jamais toucher au CV de base.
+Application web centrée sur les offres d'emploi : collez le texte d'une offre, l'analyse propose un nouveau CV dont les tirets sont réordonnés du plus pertinent au moins pertinent, le survol du CV montre les modifications par rapport au CV de base, et le résultat s'enregistre comme CV sauvegardé — sans jamais toucher au CV de base.
 
 ## Deux onglets
 
 ### « Nouveau CV » — créer un CV pour une offre
 
-1. **Collez l'offre** en haut de page : soit l'**URL** de la page (elle est récupérée automatiquement), soit directement le **texte** de l'offre.
+1. **Collez le texte de l'offre** en haut de page.
 2. **Analysez** : chaque tiret de vos expériences est comparé aux mots-clés de l'offre. Le CV affiché en dessous devient le **nouveau CV proposé**, avec les tirets du plus pertinent au moins pertinent. Le CV de base n'est **jamais modifié** : la proposition n'est qu'un ordre alternatif, posé par-dessus.
 3. **Survolez le CV** pour voir les modifications : chaque tiret déplacé est surligné et porte un badge « ↑ était n°X » indiquant sa position dans le CV de base. Le panneau résume les déplacements par expérience. Vous pouvez encore affiner à la main (glisser-déposer, flèches) : cela modifie la proposition, pas le CV de base.
 4. **Enregistrez ce nouveau CV** (nom proposé d'après le site de l'offre ou la date) : il rejoint les CV sauvegardés de l'onglet « CV de base ». « Ignorer la proposition » ou « Effacer » l'abandonne — le CV de base n'a jamais bougé.
@@ -27,7 +27,7 @@ Deux façons de lancer l'application :
 
   puis ouvrez <http://localhost:3333>. Le bouton « Télécharger PDF » produit alors un PDF **strictement identique au rendu écran** (voir plus bas). Aucune dépendance npm à installer.
 
-- **Sans installation** : ouvrez simplement `index.html` dans un navigateur (double-clic suffit). Tout fonctionne, y compris le téléchargement PDF, qui bascule alors sur le générateur intégré (léger écart de coupures de ligne possible).
+- **Sans installation** : ouvrez simplement `index.html` dans un navigateur (double-clic suffit). Tout fonctionne hors ligne — police comprise, elle est embarquée dans le projet —, le téléchargement PDF basculant alors sur le générateur intégré (léger écart de coupures de ligne possible).
 
 > Les données sont sauvegardées par le navigateur **par origine** : si vous passez de `index.html` (file://) à `http://localhost:3333`, utilisez « Exporter JSON » puis « Importer JSON » pour transférer votre CV.
 
@@ -49,21 +49,23 @@ Deux façons de lancer l'application :
   - ajout via « + Ajouter un tiret » ou en appuyant sur Entrée dans un tiret ;
   - suppression via le bouton ✕.
 - **Expériences, formation et projets** : ajout, suppression et réorganisation des expériences ; ajout/suppression des lignes de formation et de projets (« + Ajouter une ligne », « + Ajouter un projet », bouton ✕).
-- **Analyse de l'offre** : URL ou texte, au choix.
-  - **URL** : la page est récupérée de préférence par le backend (`node server.js`, route `/fetch-job`, non soumise au CORS), sinon par un fetch direct (rarement autorisé par les sites). Le texte de l'offre est extrait des données structurées JSON-LD « JobPosting » que publient la plupart des sites d'emploi, sinon du texte visible de la page.
+- **Analyse de l'offre** : collez le texte de l'offre dans le panneau « Offre d'emploi ».
   - **Scores** : chaque tiret reçoit un score de pertinence (mots-clés et expressions communs avec l'offre, accents ignorés, mots vides filtrés) ; à score égal, l'ordre du CV de base est conservé.
   - **Proposition** : l'ordre suggéré n'est qu'une surcouche affichée dans l'onglet « Nouveau CV », conservée d'une visite à l'autre ; le CV de base garde son ordre. Les badges de diff n'existent que sur le CV survolé : ils n'apparaissent ni à l'impression ni dans le PDF (backend comme secours, qui reprennent l'ordre affiché).
 - **Sauvegarde automatique** dans le navigateur (localStorage) : vos modifications sont conservées d'une visite à l'autre.
 - **Export / import JSON** pour sauvegarder ou transférer votre CV.
 - **Téléchargement PDF vectoriel (« à la Canva »)** : le bouton « Télécharger PDF » produit un PDF dont chaque texte est un vrai texte vectoriel — net à tous les niveaux de zoom, sélectionnable et copiable —, jamais une capture d'écran. Le document reste **lisible par les ATS** : titres de section explicites (Expériences professionnelles, Formation, Projets, Compétences) et contenu principal placé avant la barre latérale dans l'ordre de lecture du fichier. Deux moteurs :
-  - **Backend (recommandé)** : `server.js` fait imprimer la feuille par Chrome headless — le PDF est mis en page par le **même moteur que l'écran**, donc mêmes polices, mêmes retours à la ligne, mêmes pages : correspondance exacte. Le front l'utilise automatiquement dès que le serveur répond.
+  - **Backend (recommandé)** : `server.js` fait imprimer la feuille par Chrome headless — le PDF est mis en page par le **même moteur que l'écran**, donc mêmes polices, mêmes retours à la ligne, mêmes pages : correspondance exacte. Open Sans y est embarquée avec ses tables `ToUnicode`, ce qui rend l'extraction de texte fiable pour les ATS. Le front l'utilise automatiquement dès que le serveur répond.
   - **Secours intégré** : sans backend, `pdf.js` construit le PDF en pur JavaScript (polices Helvetica, encodage WinAnsi, photo ronde, liens cliquables, pagination A4). Fidèle, mais les coupures de ligne peuvent différer légèrement de l'écran, les métriques de police n'étant pas identiques.
+- **Une seule page pour le modèle Design** : sa feuille est fixée à 297 mm (et non simplement « au moins 297 mm »), sinon quelques millimètres de contenu en trop suffisent à ouvrir une deuxième page à l'impression comme dans le PDF. Ce qui dépasse est coupé, et un avis au-dessus du CV indique de combien — la coupure n'est jamais silencieuse. Le modèle Pro, lui, peut s'étendre sur plusieurs pages.
+- **Police identique partout** : Open Sans est embarquée dans le projet (`fonts.css`, data-URI), donc le CV s'affiche et s'imprime de la même façon sur toutes les machines, hors ligne et sans CDN.
 - **Format A4 et impression fidèle** : la feuille affichée dans l'app fait exactement 210 × 297 mm pour les deux modèles ; le bouton « Imprimer » (`@page` A4 sans marges navigateur) reste disponible et reproduit à l'identique le rendu écran.
 
 ## Structure
 
 - `index.html` — structure de la page (feuille CV + panneau offre/versions) ;
+- `fonts.css` — Open Sans (fichier variable, sous-ensemble latin, licence Apache 2.0) embarqué en data-URI : la même police à l'écran, à l'impression et dans le PDF, sans CDN et sans installation ;
 - `styles.css` — styles écran et impression, dont les badges de diff de la proposition ;
-- `app.js` — état, rendu, édition, drag & drop, récupération et extraction de l'offre (URL ou texte), proposition de nouveau CV et diff avec le CV de base (JavaScript pur, sans dépendance) ;
+- `app.js` — état, rendu, édition, drag & drop, analyse de l'offre, proposition de nouveau CV et diff avec le CV de base (JavaScript pur, sans dépendance) ;
 - `pdf.js` — générateur de PDF vectoriel de secours : métriques Helvetica, encodage WinAnsi, mise en page avec pagination et assemblage du fichier PDF octet par octet ;
-- `server.js` — backend optionnel (Node pur, sans dépendance npm) : sert l'application, imprime la feuille CV en PDF via Chrome headless pour un rendu identique à l'écran, et rapatrie le HTML d'une offre d'emploi (`POST /fetch-job`, Node ≥ 18).
+- `server.js` — backend PDF (Node pur, sans dépendance npm) : sert l'application et imprime la feuille CV via Chrome headless, pour un PDF identique au rendu écran, Open Sans embarquée et texte extractible par les ATS.

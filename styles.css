@@ -22,7 +22,11 @@
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  /* Open Sans, embarquée dans fonts.css : la même police partout, sur toutes
+     les machines, sans dépendre de ce qui est installé ni d'un CDN. Aucune
+     police propre à Apple (-apple-system, SF Pro) n'intervient plus.
+     Les replis restent métriquement proches si le @font-face échoue. */
+  font-family: 'Open Sans', Helvetica, Arial, "Liberation Sans", sans-serif;
   background: var(--bg);
   color: var(--ink);
   line-height: 1.45;
@@ -399,7 +403,7 @@ button:disabled {
   padding: 4px 8px;
   font: inherit;
   font-size: 13px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: Consolas, "Liberation Mono", "Courier New", monospace;
   border: 1px solid var(--line);
   border-radius: 6px;
 }
@@ -620,6 +624,18 @@ main.tab-create #cvScale #cv {
   min-height: 297mm;
   transform: scale(var(--cv-scale, 1));
   transform-origin: top left;
+}
+
+/* Avis de dépassement de page (modèle « design ») : rempli par app.js. */
+#overflowNotice {
+  margin: 0 0 8px;
+  padding: 7px 12px;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 13px;
+  line-height: 1.4;
 }
 
 /* ---------- Feuille CV : format A4 (210 × 297 mm) ---------- */
@@ -1208,7 +1224,19 @@ li.bullet:hover .bullet-controls { display: flex; }
   grid-template-columns: 55mm minmax(0, 1fr);
   padding: 0;
   overflow: hidden;
+  /* Hauteur FIXE, et non `min-height` comme le modèle Pro : ce modèle tient
+     sur une seule page A4 par construction. Avec `min-height`, la feuille
+     s'étire dès que le contenu dépasse d'un cheveu — 1,3 mm suffisaient — et
+     Chrome ouvre alors une deuxième page à l'impression comme dans le PDF.
+     Le débordement est signalé à l'écran par #overflowNotice (app.js) : sans
+     cet avis, la coupure serait silencieuse. */
+  height: 297mm;
+  min-height: 0;
 }
+
+/* Dernier bloc de la colonne principale : sa marge basse (8 px sur .exp)
+   s'échappe sous le dernier contenu et mange 2 mm de page utile pour rien. */
+.sheet.design .main > .cv-block:last-child .exp:last-of-type { margin-bottom: 0; }
 
 /* Dans le DOM, .main précède .side (ordre de lecture ATS dans le PDF) ;
    la grille replace la barre latérale à gauche. */
@@ -1607,12 +1635,6 @@ main.tab-create #createLeft {
 
 .chip.small { font-size: 11px; padding: 1px 7px; }
 
-.fetch-note {
-  font-size: 12px;
-  color: var(--muted);
-  margin: 0 0 10px;
-}
-
 /* Encadré « Nouveau CV proposé » */
 
 .proposal-box {
@@ -1682,7 +1704,7 @@ main.tab-create #createLeft {
 
 @media print {
   html, body { width: 210mm; background: #fff; }
-  #toolbar, #cvTools, #createLeft, #versionsPanel { display: none; }
+  #toolbar, #cvTools, #createLeft, #versionsPanel, #overflowNotice { display: none; }
   main { display: block; padding: 0; margin: 0; max-width: none; }
   .sheet { box-shadow: none; border-radius: 0; margin: 0; }
   /* Largeur, hauteur et marges internes : mêmes règles qu'à l'écran (210 × 297 mm). */
