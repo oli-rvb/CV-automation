@@ -2050,6 +2050,14 @@ function snapshotCV() {
   );
 }
 
+// Le CV actuel est-il déjà identique à l'une des sauvegardes ? Sert à ne pas
+// demander de confirmation avant de charger une autre version quand il n'y a
+// justement rien à perdre.
+function isCurrentCvSaved() {
+  const current = JSON.stringify(snapshotCV());
+  return state.versions.some((v) => JSON.stringify(v.data) === current);
+}
+
 function applyCV(data) {
   const cv = normalizeCV(JSON.parse(JSON.stringify(data)));
   state.profile = cv.profile;
@@ -2146,7 +2154,9 @@ versionListEl.addEventListener('click', async (e) => {
 
   switch (btn.dataset.vaction) {
     case 'load': {
-      if (!(await customConfirm(
+      // Rien à perdre si le CV affiché est déjà sauvegardé quelque part :
+      // pas besoin de confirmation dans ce cas.
+      if (!isCurrentCvSaved() && !(await customConfirm(
         `Charger « ${v.name} » comme CV de base ? Le CV de base actuel sera remplacé (sauvegardez-le d'abord si besoin).`,
         { confirmLabel: 'Charger' }
       ))) return;

@@ -6,6 +6,7 @@
   --line: #e5e7eb;
   --bg: #f3f4f6;
   --danger: #dc2626;
+  --danger-soft: #c1666e;
   --ok: #16a34a;
   /* Fond des affordances d'édition, posées par-dessus le CV : translucide,
      pour laisser deviner le texte qu'elles recouvrent sans cesser d'être
@@ -115,6 +116,15 @@ button.ghost.danger {
 button.danger {
   background: var(--danger);
   border-color: var(--danger);
+}
+
+/* Bouton « Annuler » des pop-ups : simple texte rouge doux, fond
+   transparent, contour de la même couleur — distinct des boutons ghost
+   bleus (actions neutres) et du rouge vif des actions destructrices. */
+button.cancel {
+  background: transparent;
+  color: var(--danger-soft);
+  border-color: var(--danger-soft);
 }
 
 button:disabled {
