@@ -1511,7 +1511,7 @@ cvEl.addEventListener('keydown', (e) => {
 });
 
 // Boutons (ajout / suppression / déplacement / photo / liens)
-cvEl.addEventListener('click', (e) => {
+cvEl.addEventListener('click', async (e) => {
   const btn = e.target.closest('button[data-action]');
   if (!btn) return;
   const action = btn.dataset.action;
@@ -1570,7 +1570,7 @@ cvEl.addEventListener('click', (e) => {
     }
     case 'exp-del': {
       if (!exp) return;
-      if (!confirm('Supprimer cette expérience et tous ses tirets ?')) return;
+      if (!(await customConfirm('Supprimer cette expérience et tous ses tirets ?', { confirmLabel: 'Supprimer', danger: true }))) return;
       state.experiences = state.experiences.filter((x) => x.id !== exp.id);
       if (state.proposal) delete state.proposal.orders[exp.id];
       break;
@@ -1588,7 +1588,7 @@ cvEl.addEventListener('click', (e) => {
     }
     case 'edu-del': {
       if (!expSection) return;
-      if (!confirm('Supprimer cette formation et tous ses points ?')) return;
+      if (!(await customConfirm('Supprimer cette formation et tous ses points ?', { confirmLabel: 'Supprimer', danger: true }))) return;
       state.education = state.education.filter((x) => x.id !== expSection.dataset.eduId);
       break;
     }
@@ -1598,7 +1598,7 @@ cvEl.addEventListener('click', (e) => {
     }
     case 'project-del': {
       if (!expSection) return;
-      if (!confirm('Supprimer ce projet et tous ses points ?')) return;
+      if (!(await customConfirm('Supprimer ce projet et tous ses points ?', { confirmLabel: 'Supprimer', danger: true }))) return;
       state.projects = state.projects.filter((x) => x.id !== expSection.dataset.projectId);
       break;
     }
@@ -1922,11 +1922,50 @@ linkModalEl.addEventListener('mousedown', (e) => {
   if (e.target === linkModalEl) closeLinkModal();
 });
 
-// Échap ferme la pop-up ouverte (photo ou lien).
+/* ---------- Confirmation générique (remplace window.confirm) ----------
+   Même pop-up réutilisée à chaque appel : message et libellé du bouton de
+   validation sont posés à l'ouverture. Une seule confirmation à la fois. */
+
+const confirmModalEl = $('#confirmModal');
+const confirmModalMessageEl = $('#confirmModalMessage');
+const confirmCancelBtnEl = $('#confirmCancelBtn');
+const confirmOkBtnEl = $('#confirmOkBtn');
+
+// Résolveur de la confirmation actuellement affichée, le cas échéant.
+let resolveConfirm = null;
+
+function closeConfirmModal(result) {
+  confirmModalEl.hidden = true;
+  const resolve = resolveConfirm;
+  resolveConfirm = null;
+  if (resolve) resolve(result);
+}
+
+// `danger` : bouton de validation en rouge plein, pour les actions destructrices
+// (suppression) plutôt que les simples remplacements (sauvegarder, charger).
+function customConfirm(message, { confirmLabel = 'Confirmer', danger = false } = {}) {
+  return new Promise((resolve) => {
+    resolveConfirm = resolve;
+    confirmModalMessageEl.textContent = message;
+    confirmOkBtnEl.textContent = confirmLabel;
+    confirmOkBtnEl.classList.toggle('danger', danger);
+    confirmModalEl.hidden = false;
+    confirmOkBtnEl.focus();
+  });
+}
+
+confirmOkBtnEl.addEventListener('click', () => closeConfirmModal(true));
+confirmCancelBtnEl.addEventListener('click', () => closeConfirmModal(false));
+confirmModalEl.addEventListener('mousedown', (e) => {
+  if (e.target === confirmModalEl) closeConfirmModal(false);
+});
+
+// Échap ferme la pop-up ouverte (photo, lien ou confirmation).
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
   if (!photoModalEl.hidden) closePhotoModal();
   else if (!linkModalEl.hidden) closeLinkModal();
+  else if (!confirmModalEl.hidden) closeConfirmModal(false);
 });
 
 /* ---------- Drag & drop des tirets ---------- */
@@ -2040,7 +2079,15 @@ function renderVersions() {
     const item = el(
       'li',
       { class: 'version-item' + (v.id === state.activeVersionId ? ' active' : ''), 'data-version-id': v.id },
-      el('div', { class: 'version-name', contenteditable: 'true', title: 'Cliquez pour renommer' }, v.name),
+      el(
+        'div',
+        { class: 'version-head' },
+        el('div', { class: 'version-name', contenteditable: 'true', title: 'Cliquez pour renommer' }, v.name),
+        el('button', {
+          type: 'button', class: 'ghost version-save', 'data-vaction': 'overwrite',
+          title: 'Enregistrer le CV actuel dans cette sauvegarde', text: 'Sauvegarder',
+        })
+      ),
       el('div', {
         class: 'version-meta',
         text: `${date} · modèle ${v.data.template === 'design' ? 'design' : 'pro'}` +
@@ -2050,7 +2097,6 @@ function renderVersions() {
         'div',
         { class: 'version-actions' },
         el('button', { type: 'button', 'data-vaction': 'load', text: 'Charger' }),
-        el('button', { type: 'button', class: 'ghost', 'data-vaction': 'overwrite', title: 'Remplacer cette version par le CV actuel', text: 'Écraser' }),
         el('button', { type: 'button', class: 'ghost danger', 'data-vaction': 'delete', text: 'Supprimer' })
       )
     );
@@ -2091,7 +2137,7 @@ versionListEl.addEventListener('keydown', (e) => {
   }
 });
 
-versionListEl.addEventListener('click', (e) => {
+versionListEl.addEventListener('click', async (e) => {
   const btn = e.target.closest('button[data-vaction]');
   if (!btn) return;
   const id = btn.closest('.version-item').dataset.versionId;
@@ -2100,7 +2146,10 @@ versionListEl.addEventListener('click', (e) => {
 
   switch (btn.dataset.vaction) {
     case 'load': {
-      if (!confirm(`Charger « ${v.name} » comme CV de base ? Le CV de base actuel sera remplacé (sauvegardez-le d'abord si besoin).`)) return;
+      if (!(await customConfirm(
+        `Charger « ${v.name} » comme CV de base ? Le CV de base actuel sera remplacé (sauvegardez-le d'abord si besoin).`,
+        { confirmLabel: 'Charger' }
+      ))) return;
       applyCV(v.data);
       // La proposition en cours référençait l'ancien CV : elle n'a plus de sens.
       state.proposal = null;
@@ -2109,7 +2158,10 @@ versionListEl.addEventListener('click', (e) => {
       break;
     }
     case 'overwrite': {
-      if (!confirm(`Remplacer le contenu de la version « ${v.name} » par le CV actuel ?`)) return;
+      if (!(await customConfirm(
+        `Remplacer le contenu de la version « ${v.name} » par le CV actuel ?`,
+        { confirmLabel: 'Sauvegarder' }
+      ))) return;
       v.data = snapshotCV();
       v.createdAt = Date.now();
       state.activeVersionId = v.id;
@@ -2118,7 +2170,7 @@ versionListEl.addEventListener('click', (e) => {
       break;
     }
     case 'delete': {
-      if (!confirm(`Supprimer la version « ${v.name} » ?`)) return;
+      if (!(await customConfirm(`Supprimer la version « ${v.name} » ?`, { confirmLabel: 'Supprimer', danger: true }))) return;
       state.versions = state.versions.filter((x) => x.id !== id);
       if (state.activeVersionId === id) state.activeVersionId = null;
       save();
@@ -2400,8 +2452,8 @@ $('#analyzeBtn').addEventListener('click', () => {
   rerender();
 });
 
-$('#clearAnalysisBtn').addEventListener('click', () => {
-  if (state.proposal && !confirm('Effacer l’offre et la proposition en cours ? Le CV de base n’est pas affecté.')) return;
+$('#clearAnalysisBtn').addEventListener('click', async () => {
+  if (state.proposal && !(await customConfirm('Effacer l’offre et la proposition en cours ? Le CV de base n’est pas affecté.', { confirmLabel: 'Effacer' }))) return;
   state.proposal = null;
   proposalSaved = false;
   newCvNameDraft = '';
@@ -2495,8 +2547,8 @@ $('#pdfBtn').addEventListener('click', async () => {
   }
 });
 
-$('#resetBtn').addEventListener('click', () => {
-  if (!confirm('Réinitialiser le CV avec le contenu d’exemple ? Les versions sauvegardées sont conservées.')) return;
+$('#resetBtn').addEventListener('click', async () => {
+  if (!(await customConfirm('Réinitialiser le CV avec le contenu d’exemple ? Les versions sauvegardées sont conservées.', { confirmLabel: 'Réinitialiser', danger: true }))) return;
   const { versions, activeTab } = state;
   state = { ...defaultCV(), versions, activeVersionId: null, proposal: null, activeTab };
   jobTextEl.value = '';
