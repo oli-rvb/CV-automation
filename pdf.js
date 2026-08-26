@@ -199,6 +199,7 @@ const FONT_ROLES = {
         key: 'detail', label: 'Entreprise et détail', def: 14, cssVar: '--fs-detail',
         derived: [{ key: 'period', cssVar: '--fs-period', ratio: 13 / 14 }],
       },
+      { key: 'companyDescription', label: 'Description entreprise', def: 7, cssVar: '--fs-company-desc' },
       { key: 'bullet', label: 'Points', def: 14, cssVar: '--fs-bullet' },
       { key: 'skills', label: 'Compétences', def: 14, cssVar: '--fs-skills' },
     ],
@@ -226,6 +227,7 @@ const FONT_ROLES = {
         key: 'detail', label: 'Entreprise et détail', def: 12.5, cssVar: '--fs-detail',
         derived: [{ key: 'period', cssVar: '--fs-period', ratio: 12 / 12.5 }],
       },
+      { key: 'companyDescription', label: 'Description entreprise', def: 7, cssVar: '--fs-company-desc' },
       { key: 'bullet', label: 'Points', def: 12.5, cssVar: '--fs-bullet' },
     ],
   },
@@ -640,7 +642,10 @@ function linkItem(col, link, { urlColor, labelSize, urlSize }) {
 
 // sizes (en px CSS) : par défaut celles du modèle « pro ».
 function experienceBlock(col, exp, palette, sizes = {}) {
-  const { role = 15, company: companySize = 14, period: periodPx = 13, bullet = 14, gap = 14 } = sizes;
+  const {
+    role = 15, company: companySize = 14, period: periodPx = 13,
+    companyDescription: descPx = 7, bullet = 14, gap = 14,
+  } = sizes;
   const roleSize = role * PX;
   const headSegs = [{ text: (exp.role || '').trim(), bold: true, size: roleSize, color: palette.ink }];
   const company = (exp.company || '').trim();
@@ -668,7 +673,19 @@ function experienceBlock(col, exp, palette, sizes = {}) {
     });
   }
 
-  col.y += 4.5; // marge avant les tirets
+  col.y += 4.5; // marge avant la description / les tirets
+
+  // Description de l'entreprise : petite et grise, sous l'en-tête. Sa taille
+  // est réglable comme les autres (section « Taille des textes »).
+  const desc = (exp.companyDescription || '').trim();
+  if (desc) {
+    const descSize = descPx * PX;
+    const descLines = wrapSegments([{ text: desc, bold: false, size: descSize, color: palette.muted }], col.width, col.width);
+    col.ensure(descLines.length * descSize * LINE);
+    drawLines(col, descLines, { lineH: descSize * LINE });
+    col.y += 4.5;
+  }
+
   for (const b of exp.bullets) {
     bulletItem(col, b.text, { size: bullet * PX, color: palette.ink, dotColor: palette.ink });
   }
@@ -736,7 +753,10 @@ function renderPro(doc, state, photo) {
   col.y += 10 * PX; // air supplémentaire avant le premier titre de section (cf. styles.css)
 
   const st = { size: f.section * PX, color: titleC, ruleColor: titleC, mt: 26 * PX, mb: 10 * PX };
-  const expSizes = { role: f.item, company: f.detail, period: f.period, bullet: f.bullet, gap: 14 };
+  const expSizes = {
+    role: f.item, company: f.detail, period: f.period,
+    companyDescription: f.companyDescription, bullet: f.bullet, gap: 14,
+  };
   const subSizes = { title: f.item, detail: f.detail, bullet: f.bullet, gap: 14 };
   if (state.experiences.length) {
     sectionTitle(col, 'Expériences professionnelles', st);
@@ -781,7 +801,10 @@ function renderDesign(doc, state, photo) {
   const fm = F.main;
   const titleC = cvTitleColorRgb(state); // couleur des titres selon le mode choisi
   const stMain = { size: fm.section * PX, color: titleC, ruleColor: titleC, mt: 14 * PX, mb: 6 * PX };
-  const expSizes = { role: fm.item, company: fm.detail, period: fm.period, bullet: fm.bullet, gap: 8 };
+  const expSizes = {
+    role: fm.item, company: fm.detail, period: fm.period,
+    companyDescription: fm.companyDescription, bullet: fm.bullet, gap: 8,
+  };
   const subSizes = { title: fm.item, detail: fm.detail, bullet: fm.bullet, gap: 8 };
 
   paragraph(main, state.profile.title, { bold: true, size: fm.title * PX, color: titleC });

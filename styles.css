@@ -1019,6 +1019,10 @@ li.bullet:hover .bullet-controls,
 .exp-company { color: var(--muted); font-size: var(--fs-detail, 14px); }
 .exp-period { color: var(--muted); font-size: var(--fs-period, 13px); white-space: nowrap; }
 
+/* Description de l'entreprise : petite et grise, sous l'en-tête. Taille
+   réglable comme les autres (section « Taille des textes »). */
+.exp-company-desc { color: var(--muted); font-size: var(--fs-company-desc, 7px); margin-top: 2px; }
+
 /* z-index indispensable : .exp-head est positionné (voir « Ordre de lecture du
    PDF ») et vient après dans le DOM — à z-index égal il se peindrait par-dessus
    ces boutons et capterait leurs clics. */

@@ -159,6 +159,8 @@ function defaultCV() {
         role: 'Chef de projet digital',
         company: 'Agence Lumen, Paris',
         period: '2022 – aujourd’hui',
+        companyDescription:
+          'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt.',
         bullets: [
           { id: uid(), text: 'Pilotage de 8 projets web simultanés (budget cumulé 600 k€), de la conception à la mise en production' },
           { id: uid(), text: 'Management d’une équipe de 5 développeurs et 2 designers en méthode agile (Scrum)' },
@@ -171,6 +173,8 @@ function defaultCV() {
         role: 'Développeur web',
         company: 'StartupXYZ, Lyon',
         period: '2019 – 2022',
+        companyDescription:
+          'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt.',
         bullets: [
           { id: uid(), text: 'Développement d’applications web en JavaScript (React, Node.js) et Python' },
           { id: uid(), text: 'Conception d’API REST et intégration de services tiers (paiement, CRM)' },
@@ -305,6 +309,7 @@ function normalizeCV(data) {
       role: String(e.role ?? ''),
       company: String(e.company ?? ''),
       period: String(e.period ?? ''),
+      companyDescription: String(e.companyDescription ?? ''),
       bullets: normalizeBullets(e.bullets),
     })),
     education: normalizeSubsections(data.education),
@@ -780,12 +785,19 @@ function experiencesBlock() {
       el('span', { class: 'exp-period', contenteditable: 'true', 'data-field': 'period' }, exp.period)
     );
 
+    const companyDesc = el(
+      'div',
+      { class: 'exp-company-desc', contenteditable: 'true', 'data-field': 'companyDescription' },
+      exp.companyDescription
+    );
+
     frag.append(
       el(
         'section',
         { class: 'exp', 'data-exp-id': exp.id },
         controls,
         head,
+        companyDesc,
         bulletsUl(displayBullets(exp), exp.id),
         el('button', { class: 'add-bullet', type: 'button', 'data-action': 'bullet-add', text: '+ Ajouter un tiret' })
       )
@@ -1550,6 +1562,8 @@ cvEl.addEventListener('click', (e) => {
         role: 'Poste',
         company: 'Entreprise, Ville',
         period: 'Année – Année',
+        companyDescription:
+          'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt.',
         bullets: [{ id: uid(), text: 'Décrivez une réalisation…' }],
       });
       break;
