@@ -112,8 +112,11 @@ button.ghost.danger {
 }
 
 /* Version pleine (non « ghost ») : bouton de confirmation d'une action
-   destructrice dans la boîte de dialogue générique (ex. suppression). */
-button.danger {
+   destructrice dans la boîte de dialogue générique (ex. suppression).
+   Scopé par id : un simple « .danger » entrerait en conflit de spécificité
+   avec les boutons existants « ghost danger » (Réinitialiser, Supprimer…),
+   qui doivent rester en contour et non se remplir. */
+#confirmOkBtn.danger {
   background: var(--danger);
   border-color: var(--danger);
 }
