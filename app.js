@@ -387,6 +387,7 @@ function save() {
   } catch {
     /* stockage indisponible : l'édition reste possible dans la page */
   }
+  updateSaveIndicator();
 }
 
 let state = loadState();
@@ -2056,6 +2057,29 @@ function snapshotCV() {
 function isCurrentCvSaved() {
   const current = JSON.stringify(snapshotCV());
   return state.versions.some((v) => JSON.stringify(v.data) === current);
+}
+
+// Le CV affiché diffère-t-il de la version actuellement chargée ? Sert à
+// signaler à l'utilisateur qu'il a des modifications non enregistrées sur
+// cette version.
+function isActiveVersionDirty() {
+  if (!state.activeVersionId) return false;
+  const active = state.versions.find((v) => v.id === state.activeVersionId);
+  if (!active) return false;
+  return JSON.stringify(active.data) !== JSON.stringify(snapshotCV());
+}
+
+// Rafraîchit l'indicateur « non enregistré » sur la ligne de la version
+// active, sans re-rendre toute la liste (préserve le curseur pendant la
+// saisie). Le rendu visuel/texte détaillé est posé ailleurs ; ici on ne fait
+// que basculer une classe d'état.
+function updateSaveIndicator() {
+  const item = versionListEl && versionListEl.querySelector('.version-item.active');
+  if (!item) return;
+  const dirty = isActiveVersionDirty();
+  item.classList.toggle('dirty', dirty);
+  const btn = item.querySelector('.version-save');
+  if (btn) btn.classList.toggle('dirty', dirty);
 }
 
 function applyCV(data) {
