@@ -2079,7 +2079,14 @@ function updateSaveIndicator() {
   const dirty = isActiveVersionDirty();
   item.classList.toggle('dirty', dirty);
   const btn = item.querySelector('.version-save');
-  if (btn) btn.classList.toggle('dirty', dirty);
+  if (btn) {
+    btn.classList.toggle('dirty', dirty);
+    const icon = btn.querySelector('.version-save-icon');
+    if (icon) icon.textContent = dirty ? '●' : '✓';
+    btn.title = dirty
+      ? 'Modifications non enregistrées — cliquez pour les enregistrer dans cette version'
+      : 'Cette version est à jour';
+  }
 }
 
 function applyCV(data) {
@@ -2108,6 +2115,21 @@ function renderVersions() {
   }
   for (const v of state.versions) {
     const date = new Date(v.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+    const isActive = v.id === state.activeVersionId;
+    const dirty = isActive && isActiveVersionDirty();
+    const saveBtn = el('button', {
+      type: 'button',
+      class: 'ghost version-save' + (isActive ? ' has-state' : '') + (dirty ? ' dirty' : ''),
+      'data-vaction': 'overwrite',
+      title: isActive
+        ? (dirty
+            ? 'Modifications non enregistrées — cliquez pour les enregistrer dans cette version'
+            : 'Cette version est à jour')
+        : 'Enregistrer le CV actuel dans cette sauvegarde',
+    },
+      isActive ? el('span', { class: 'version-save-icon', 'aria-hidden': 'true', text: dirty ? '●' : '✓' }) : null,
+      el('span', { class: 'version-save-label', text: 'Sauvegarder' })
+    );
     const item = el(
       'li',
       { class: 'version-item' + (v.id === state.activeVersionId ? ' active' : ''), 'data-version-id': v.id },
@@ -2115,10 +2137,7 @@ function renderVersions() {
         'div',
         { class: 'version-head' },
         el('div', { class: 'version-name', contenteditable: 'true', title: 'Cliquez pour renommer' }, v.name),
-        el('button', {
-          type: 'button', class: 'ghost version-save', 'data-vaction': 'overwrite',
-          title: 'Enregistrer le CV actuel dans cette sauvegarde', text: 'Sauvegarder',
-        })
+        saveBtn
       ),
       el('div', {
         class: 'version-meta',
