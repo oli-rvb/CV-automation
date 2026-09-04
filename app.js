@@ -425,6 +425,7 @@ const jobTextEl = $('#jobText');
 const versionListEl = $('#versionList');
 const versionNameEl = $('#versionName');
 const overflowNoticeEl = $('#overflowNotice');
+const pageCountEl = $('#pageCount');
 const photoFileEl = $('#photoFile');
 
 let pendingFocusBulletId = null;
@@ -480,6 +481,25 @@ function updateOverflowNotice() {
     `Le contenu dépasse la page d'environ ${mm} mm : le bas est coupé sur le CV comme dans le PDF. ` +
     'Raccourcissez un tiret, supprimez une entrée ou réduisez une taille de texte.';
   overflowNoticeEl.hidden = false;
+}
+
+// Nombre de pages A4 qu'occupera le modèle « pro » à l'export : hauteur réelle
+// de la feuille / hauteur d'une page (297 mm). Le modèle « design » tient
+// toujours sur une seule page : l'indicateur y est masqué. Sert à annoncer à
+// l'utilisateur la pagination qu'il retrouvera dans le PDF.
+const A4_PAGE_PX = (297 * 96) / 25.4;
+function updatePageCount() {
+  if (!pageCountEl) return;
+  if (state.template === 'design') {
+    pageCountEl.hidden = true;
+    return;
+  }
+  const pages = Math.max(1, Math.ceil((cvEl.scrollHeight - 1) / A4_PAGE_PX));
+  pageCountEl.textContent =
+    pages === 1
+      ? 'Ce CV tient sur 1 page A4.'
+      : `Ce CV occupera ${pages} pages A4 (voir les repères de coupure sur la feuille).`;
+  pageCountEl.hidden = false;
 }
 
 // Deux déclencheurs redondants (l'un des deux suffit à chaque navigateur) :
@@ -1425,6 +1445,7 @@ function rerender() {
   updateTabs();
   updateCvScale();
   updateOverflowNotice();
+  updatePageCount();
   save();
 }
 
