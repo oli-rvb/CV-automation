@@ -387,6 +387,7 @@ function save() {
   } catch {
     /* stockage indisponible : l'édition reste possible dans la page */
   }
+  updateSaveIndicator();
 }
 
 let state = loadState();
@@ -2058,6 +2059,36 @@ function isCurrentCvSaved() {
   return state.versions.some((v) => JSON.stringify(v.data) === current);
 }
 
+// Le CV affiché diffère-t-il de la version actuellement chargée ? Sert à
+// signaler à l'utilisateur qu'il a des modifications non enregistrées sur
+// cette version.
+function isActiveVersionDirty() {
+  if (!state.activeVersionId) return false;
+  const active = state.versions.find((v) => v.id === state.activeVersionId);
+  if (!active) return false;
+  return JSON.stringify(active.data) !== JSON.stringify(snapshotCV());
+}
+
+// Rafraîchit l'indicateur « non enregistré » sur la ligne de la version
+// active, sans re-rendre toute la liste (préserve le curseur pendant la
+// saisie). Le rendu visuel/texte détaillé est posé ailleurs ; ici on ne fait
+// que basculer une classe d'état.
+function updateSaveIndicator() {
+  const item = versionListEl && versionListEl.querySelector('.version-item.active');
+  if (!item) return;
+  const dirty = isActiveVersionDirty();
+  item.classList.toggle('dirty', dirty);
+  const btn = item.querySelector('.version-save');
+  if (btn) {
+    btn.classList.toggle('dirty', dirty);
+    const icon = btn.querySelector('.version-save-icon');
+    if (icon) icon.textContent = dirty ? '●' : '✓';
+    btn.title = dirty
+      ? 'Modifications non enregistrées — cliquez pour les enregistrer dans cette version'
+      : 'Cette version est à jour';
+  }
+}
+
 function applyCV(data) {
   const cv = normalizeCV(JSON.parse(JSON.stringify(data)));
   state.profile = cv.profile;
@@ -2084,6 +2115,21 @@ function renderVersions() {
   }
   for (const v of state.versions) {
     const date = new Date(v.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+    const isActive = v.id === state.activeVersionId;
+    const dirty = isActive && isActiveVersionDirty();
+    const saveBtn = el('button', {
+      type: 'button',
+      class: 'ghost version-save' + (isActive ? ' has-state' : '') + (dirty ? ' dirty' : ''),
+      'data-vaction': 'overwrite',
+      title: isActive
+        ? (dirty
+            ? 'Modifications non enregistrées — cliquez pour les enregistrer dans cette version'
+            : 'Cette version est à jour')
+        : 'Enregistrer le CV actuel dans cette sauvegarde',
+    },
+      isActive ? el('span', { class: 'version-save-icon', 'aria-hidden': 'true', text: dirty ? '●' : '✓' }) : null,
+      el('span', { class: 'version-save-label', text: 'Sauvegarder' })
+    );
     const item = el(
       'li',
       { class: 'version-item' + (v.id === state.activeVersionId ? ' active' : ''), 'data-version-id': v.id },
@@ -2091,10 +2137,7 @@ function renderVersions() {
         'div',
         { class: 'version-head' },
         el('div', { class: 'version-name', contenteditable: 'true', title: 'Cliquez pour renommer' }, v.name),
-        el('button', {
-          type: 'button', class: 'ghost version-save', 'data-vaction': 'overwrite',
-          title: 'Enregistrer le CV actuel dans cette sauvegarde', text: 'Sauvegarder',
-        })
+        saveBtn
       ),
       el('div', {
         class: 'version-meta',

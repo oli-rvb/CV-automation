@@ -1552,6 +1552,39 @@ main.tab-create #createLeft {
   padding: 3px 10px;
 }
 
+/* ---------- Indicateur « modifications non enregistrées ----------
+   Sur la version chargée, le bouton de sauvegarde reflète l'état du CV
+   affiché : coche verte quand la version est à jour, pastille + fond
+   d'accent quand des modifications n'ont pas encore été enregistrées. */
+.version-save-icon {
+  margin-right: 5px;
+  font-size: 10px;
+  line-height: 1;
+  vertical-align: middle;
+}
+
+/* Version à jour : coche verte discrète, le bouton reste sobre. */
+.version-save.has-state:not(.dirty) .version-save-icon {
+  color: var(--ok);
+}
+
+/* Modifications non enregistrées : le bouton passe en pleine couleur
+   d'accent pour attirer l'œil. */
+.version-save.dirty {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.version-save.dirty .version-save-icon {
+  color: #fff;
+}
+
+/* Rappel discret sur la ligne elle-même. */
+.version-item.active.dirty {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
 .version-meta {
   font-size: 11.5px;
   color: var(--muted);
