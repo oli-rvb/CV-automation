@@ -1602,6 +1602,44 @@ main.tab-create #createLeft {
   padding: 3px 10px;
 }
 
+/* Menu déroulant des CV au-delà des VERSIONS_ALWAYS_VISIBLE premiers :
+   repliés par défaut pour ne pas allonger le panneau. */
+.version-more-item {
+  border: none;
+  padding: 0;
+}
+
+.version-more summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  padding: 6px 2px;
+  list-style: none;
+}
+
+.version-more summary::-webkit-details-marker { display: none; }
+
+.version-more summary::before {
+  content: '▸';
+  display: inline-block;
+  margin-right: 6px;
+  transition: transform 0.15s ease;
+}
+
+.version-more[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.version-more-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 /* ---------- Tailles de police ----------
    Une ligne par type de texte : intitulé à gauche, champ compact à droite.
    Les groupes (bandeau / colonne principale) ne s'affichent que quand le
