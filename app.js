@@ -2107,51 +2107,71 @@ function applyCV(data) {
   jobTextEl.value = state.jobText;
 }
 
+// Nombre de CV sauvegardés affichés en permanence en haut de la liste ; les
+// suivants sont repliés dans un menu déroulant pour ne pas surcharger le
+// panneau quand il y en a beaucoup.
+const VERSIONS_ALWAYS_VISIBLE = 2;
+
+function buildVersionItem(v) {
+  const date = new Date(v.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+  const isActive = v.id === state.activeVersionId;
+  const dirty = isActive && isActiveVersionDirty();
+  const saveBtn = el('button', {
+    type: 'button',
+    class: 'ghost version-save' + (isActive ? ' has-state' : '') + (dirty ? ' dirty' : ''),
+    'data-vaction': 'overwrite',
+    title: isActive
+      ? (dirty
+          ? 'Modifications non enregistrées — cliquez pour les enregistrer dans cette version'
+          : 'Cette version est à jour')
+      : 'Enregistrer le CV actuel dans cette sauvegarde',
+  },
+    isActive ? el('span', { class: 'version-save-icon', 'aria-hidden': 'true', text: dirty ? '●' : '✓' }) : null,
+    el('span', { class: 'version-save-label', text: 'Sauvegarder' })
+  );
+  return el(
+    'li',
+    { class: 'version-item' + (isActive ? ' active' : ''), 'data-version-id': v.id },
+    el(
+      'div',
+      { class: 'version-head' },
+      el('div', { class: 'version-name', contenteditable: 'true', title: 'Cliquez pour renommer' }, v.name),
+      saveBtn
+    ),
+    el('div', {
+      class: 'version-meta',
+      text: `${date} · modèle ${v.data.template === 'design' ? 'design' : 'pro'}` +
+        (isActive ? ' · chargée' : ''),
+    }),
+    el(
+      'div',
+      { class: 'version-actions' },
+      el('button', { type: 'button', 'data-vaction': 'load', text: 'Charger' }),
+      el('button', { type: 'button', class: 'ghost danger', 'data-vaction': 'delete', text: 'Supprimer' })
+    )
+  );
+}
+
 function renderVersions() {
   versionListEl.textContent = '';
   if (state.versions.length === 0) {
     versionListEl.append(el('li', { class: 'empty-note', text: 'Aucune version sauvegardée pour le moment.' }));
     return;
   }
-  for (const v of state.versions) {
-    const date = new Date(v.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
-    const isActive = v.id === state.activeVersionId;
-    const dirty = isActive && isActiveVersionDirty();
-    const saveBtn = el('button', {
-      type: 'button',
-      class: 'ghost version-save' + (isActive ? ' has-state' : '') + (dirty ? ' dirty' : ''),
-      'data-vaction': 'overwrite',
-      title: isActive
-        ? (dirty
-            ? 'Modifications non enregistrées — cliquez pour les enregistrer dans cette version'
-            : 'Cette version est à jour')
-        : 'Enregistrer le CV actuel dans cette sauvegarde',
-    },
-      isActive ? el('span', { class: 'version-save-icon', 'aria-hidden': 'true', text: dirty ? '●' : '✓' }) : null,
-      el('span', { class: 'version-save-label', text: 'Sauvegarder' })
+  const visible = state.versions.slice(0, VERSIONS_ALWAYS_VISIBLE);
+  const rest = state.versions.slice(VERSIONS_ALWAYS_VISIBLE);
+  for (const v of visible) versionListEl.append(buildVersionItem(v));
+  if (rest.length > 0) {
+    // Repliés par défaut, sauf si la version active s'y trouve : on ne veut
+    // pas cacher le CV en cours d'édition dans un menu fermé.
+    const hasActiveInRest = rest.some((v) => v.id === state.activeVersionId);
+    const details = el(
+      'details',
+      { class: 'version-more', open: hasActiveInRest ? '' : undefined },
+      el('summary', { text: `Autres CV sauvegardés (${rest.length})` }),
+      el('ul', { class: 'version-more-list' }, ...rest.map(buildVersionItem))
     );
-    const item = el(
-      'li',
-      { class: 'version-item' + (v.id === state.activeVersionId ? ' active' : ''), 'data-version-id': v.id },
-      el(
-        'div',
-        { class: 'version-head' },
-        el('div', { class: 'version-name', contenteditable: 'true', title: 'Cliquez pour renommer' }, v.name),
-        saveBtn
-      ),
-      el('div', {
-        class: 'version-meta',
-        text: `${date} · modèle ${v.data.template === 'design' ? 'design' : 'pro'}` +
-          (v.id === state.activeVersionId ? ' · chargée' : ''),
-      }),
-      el(
-        'div',
-        { class: 'version-actions' },
-        el('button', { type: 'button', 'data-vaction': 'load', text: 'Charger' }),
-        el('button', { type: 'button', class: 'ghost danger', 'data-vaction': 'delete', text: 'Supprimer' })
-      )
-    );
-    versionListEl.append(item);
+    versionListEl.append(el('li', { class: 'version-more-item' }, details));
   }
 }
 
