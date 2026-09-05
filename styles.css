@@ -691,14 +691,16 @@ main.tab-create #cvScale #cv {
   padding: 14mm 16mm;
 }
 
-/* ---------- Repères de coupure de page A4 (aperçu du modèle « pro ») ----------
+/* ---------- Aperçu en pages A4 successives (modèle « pro ») ----------
    Le modèle « pro » peut dépasser une page : à l'export, Chrome le découpe en
-   pages A4 tous les 297 mm (voir @page plus bas). À l'écran, la feuille est
-   continue ; ce pseudo-élément trace un filet à chaque multiple de 297 mm pour
-   montrer où le PDF changera de page. Décoratif (pointer-events désactivés),
-   absent du modèle « design » (une seule page) et de l'impression. Étant un
-   pseudo-élément, il ne part jamais dans `cvEl.outerHTML` → il ne pollue pas le
-   PDF. */
+   pages A4 tous les 297 mm (voir @page plus bas). À l'écran, la feuille est un
+   flux continu ; ce pseudo-élément peint une gouttière (couleur du fond) sur les
+   derniers pixels de chaque tranche de 297 mm, précédée d'un fin liseré d'ombre
+   pour le bord bas de la page. La feuille se lit alors comme des pages A4
+   successives séparées par un petit espace, à l'endroit exact où le PDF change
+   de page. Décoratif (pointer-events désactivés), absent du modèle « design »
+   (une seule page) et de l'impression. Étant un pseudo-élément, il ne part
+   jamais dans `cvEl.outerHTML` → il ne pollue pas le PDF. */
 .sheet:not(.design)::after {
   content: "";
   position: absolute;
@@ -708,11 +710,13 @@ main.tab-create #cvScale #cv {
   background-image: repeating-linear-gradient(
     to bottom,
     transparent 0,
-    transparent calc(297mm - 2px),
-    rgba(220, 38, 38, 0.4) calc(297mm - 2px),
-    rgba(220, 38, 38, 0.4) calc(297mm - 1px),
-    transparent calc(297mm - 1px),
-    transparent 297mm
+    transparent calc(297mm - 11px),
+    rgba(0, 0, 0, 0.16) calc(297mm - 11px),
+    rgba(0, 0, 0, 0.16) calc(297mm - 10px),
+    #e2e5ea calc(297mm - 10px),
+    #e2e5ea calc(297mm - 1px),
+    rgba(0, 0, 0, 0.06) calc(297mm - 1px),
+    rgba(0, 0, 0, 0.06) 297mm
   );
 }
 

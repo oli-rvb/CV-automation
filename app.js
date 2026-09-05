@@ -498,7 +498,7 @@ function updatePageCount() {
   pageCountEl.textContent =
     pages === 1
       ? 'Ce CV tient sur 1 page A4.'
-      : `Ce CV occupera ${pages} pages A4 (voir les repères de coupure sur la feuille).`;
+      : `Ce CV occupera ${pages} pages A4, affichées séparément sur la feuille.`;
   pageCountEl.hidden = false;
 }
 
