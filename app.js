@@ -537,6 +537,12 @@ function paginatePro() {
     edge.className = 'cv-page-edge';
     edge.style.height = `${g0}px`; // du haut de la cale jusqu'à la lèvre de la gouttière : bord bas de la page du dessus
     sp.appendChild(edge);
+    // Coins haut de la page du dessous (voir .cv-page-edge-top) : positionnés à
+    // la fin de la gouttière, c'est-à-dire au tout début du blanc de la page suivante.
+    const edgeTop = document.createElement('div');
+    edgeTop.className = 'cv-page-edge-top';
+    edgeTop.style.top = `${g1}px`; // haut de la page du dessous (fin de gouttière)
+    sp.appendChild(edgeTop);
     cvEl.insertBefore(sp, b.node);
   }
   return breaks.length + 1;

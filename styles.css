@@ -726,6 +726,23 @@ main.tab-create #cvScale #cv {
   top: 0; /* couvre le bas de la page (remplissage + marge basse), hauteur posée par paginatePro */
   background: #fff; /* même blanc que la feuille : bloc opaque qui projette une vraie ombre de bas de page et masque sa propre ombre haute */
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12); /* identique à .sheet */
+  border-bottom-left-radius: 6px;
+  border-bottom-right-radius: 6px;
+}
+
+/* Coins haut de la page du dessous, posés par paginatePro à la fin de la
+   gouttière : deux quarts de disque peints en couleur du fond qui rongent les
+   coins carrés du blanc de la feuille pour les arrondir (coin concave), comme
+   les autres angles de .sheet. */
+.cv-page-edge-top {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  height: 6px;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at bottom right, transparent 6px, var(--bg) 6px) left / 6px 6px no-repeat,
+    radial-gradient(circle at bottom left, transparent 6px, var(--bg) 6px) right / 6px 6px no-repeat;
 }
 
 [contenteditable] {
