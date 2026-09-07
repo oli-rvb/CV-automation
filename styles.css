@@ -667,6 +667,18 @@ main.tab-create #cvScale #cv {
   line-height: 1.4;
 }
 
+/* Indicateur du nombre de pages A4 (modèle « pro »), rempli par app.js. */
+#pageCount {
+  margin: 0 0 8px;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #f9fafb;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
 /* ---------- Feuille CV : format A4 (210 × 297 mm) ---------- */
 
 .sheet {
@@ -677,6 +689,60 @@ main.tab-create #cvScale #cv {
   width: 210mm;
   min-height: 297mm;
   padding: 14mm 16mm;
+}
+
+/* Marges haut/bas du modèle « pro » (10 mm, un peu plus serrées que le design) :
+   marge haute de la 1re page et basse de la dernière à l'écran ; les marges
+   intérieures sont posées par paginatePro et, à l'export, par @page. */
+.sheet:not(.design) {
+  padding-block: 10mm;
+}
+
+/* ---------- Sauts de page de l'aperçu paginé (modèle « pro ») ----------
+   Cales insérées par app.js (paginatePro) qui repoussent chaque bloc débordant
+   en haut de la page A4 suivante. La marge négative les fait courir sur toute la
+   largeur de la feuille (jusqu'aux bords, sous le padding horizontal) pour que la
+   gouttière sépare vraiment les pages. Le dégradé (marges blanches + gouttière
+   couleur du fond) est posé EN LIGNE, hauteur comprise, car il varie d'une cale à
+   l'autre. Masquées à l'impression : le PDF est paginé par Chrome, pas par ces
+   cales. */
+.cv-page-break {
+  /* Déborde de 6 px au-delà des bords de la feuille (padding 16 mm) : la bande
+     gouttière (peinte en couleur du fond, pleine largeur) recouvre ainsi l'ombre
+     latérale du box-shadow de .sheet, qui reliait sinon les deux pages. */
+  position: relative; /* ancre .cv-page-edge */
+  margin: 0 calc(-16mm - 6px);
+  pointer-events: none;
+}
+
+/* Bord bas de la page du dessus, posé par paginatePro à la lèvre de la
+   gouttière : porte le MÊME box-shadow que .sheet pour que l'ombre du bas soit
+   identique à celles des côtés. left/right: 6px annulent le débord de la cale
+   pour revenir à la largeur exacte de la page. */
+.cv-page-edge {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  top: 0; /* couvre le bas de la page (remplissage + marge basse), hauteur posée par paginatePro */
+  background: #fff; /* même blanc que la feuille : bloc opaque qui projette une vraie ombre de bas de page et masque sa propre ombre haute */
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12); /* identique à .sheet */
+  border-bottom-left-radius: 6px;
+  border-bottom-right-radius: 6px;
+}
+
+/* Coins haut de la page du dessous, posés par paginatePro à la fin de la
+   gouttière : deux quarts de disque peints en couleur du fond qui rongent les
+   coins carrés du blanc de la feuille pour les arrondir (coin concave), comme
+   les autres angles de .sheet. */
+.cv-page-edge-top {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  height: 6px;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at bottom right, transparent 6px, var(--bg) 6px) left / 6px 6px no-repeat,
+    radial-gradient(circle at bottom left, transparent 6px, var(--bg) 6px) right / 6px 6px no-repeat;
 }
 
 [contenteditable] {
@@ -1817,17 +1883,32 @@ main.tab-create #createLeft {
 
 /* ---------- Impression : page A4 identique au rendu écran ---------- */
 
+/* Marges de page A4 (haut/bas/gauche/droite) : chaque page exportée les porte,
+   comme l'aperçu écran. Le modèle « pro » s'appuie dessus (son padding est
+   neutralisé plus bas). Le modèle « design », page unique construite à 297 mm,
+   garde des marges de page nulles et ses propres paddings, via une page nommée. */
 @page {
+  size: A4;
+  margin: 10mm 16mm;
+}
+@page design-page {
   size: A4;
   margin: 0;
 }
+.sheet.design { page: design-page; }
 
 @media print {
   html, body { width: 210mm; background: #fff; }
   #toolbar, #cvTools, #createLeft, #versionsPanel, #overflowNotice { display: none; }
   main { display: block; padding: 0; margin: 0; max-width: none; }
   .sheet { box-shadow: none; border-radius: 0; margin: 0; }
-  /* Largeur, hauteur et marges internes : mêmes règles qu'à l'écran (210 × 297 mm). */
+  /* Modèle pro : les marges de chaque page viennent de @page. On neutralise donc
+     le padding de la feuille (sinon marges doublées sur la 1re/dernière page) et
+     son min-height d'une page (sinon un CV court déborderait sur une 2e page à
+     cause de la zone imprimable réduite), et on ramène sa largeur à la zone
+     imprimable (210 − 2×16 mm) pour conserver exactement les mêmes retours à la
+     ligne qu'à l'écran. Le modèle « design » garde ses règles (page nommée). */
+  .sheet:not(.design) { width: 178mm; padding: 0; min-height: 0; }
 
   /* Filet de sécurité : neutralise la mise à l'échelle de l'onglet « Nouveau
      CV » (voir #cvScale ci-dessus) si l'impression est lancée depuis cet
@@ -1849,4 +1930,5 @@ main.tab-create #createLeft {
   li.bullet, .link-item, .contact-item, .exp-head,
   .skill-group, .interest-item { break-inside: avoid; }
   .cv-section-title, .side-title { break-after: avoid; }
+  .cv-page-break { display: none; }
 }

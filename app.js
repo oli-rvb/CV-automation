@@ -426,6 +426,7 @@ const jobTextEl = $('#jobText');
 const versionListEl = $('#versionList');
 const versionNameEl = $('#versionName');
 const overflowNoticeEl = $('#overflowNotice');
+const pageCountEl = $('#pageCount');
 const photoFileEl = $('#photoFile');
 
 let pendingFocusBulletId = null;
@@ -481,6 +482,85 @@ function updateOverflowNotice() {
     `Le contenu dépasse la page d'environ ${mm} mm : le bas est coupé sur le CV comme dans le PDF. ` +
     'Raccourcissez un tiret, supprimez une entrée ou réduisez une taille de texte.';
   overflowNoticeEl.hidden = false;
+}
+
+// ---------- Aperçu paginé du modèle « pro » ----------
+// Le modèle « pro » peut dépasser une page A4. À l'écran la feuille est un flux
+// continu ; pour la faire lire comme des pages A4 successives, on insère avant
+// chaque bloc qui déborderait un « saut de page » : il comble le bas de la page
+// courante, puis matérialise la marge basse, une gouttière (couleur du fond du
+// site) et la marge haute de la page suivante — si bien que le bloc repart en
+// haut de la page d'après, marges comprises. Ces cales sont purement visuelles
+// (masquées à l'impression, voir @media print) : le PDF, lui, reste paginé par
+// Chrome. Tout est en pixels CSS (96 px = 25,4 mm), comme .sheet { width:210mm }.
+const MM_PX = 96 / 25.4;
+const A4_PAGE_PX = 297 * MM_PX;
+const PAGE_MARGIN_PX = 10 * MM_PX; // marges haut/bas d'une page (= padding vertical de .sheet)
+const PAGE_GUTTER_PX = 14; // gouttière visible entre deux pages
+const PAGE_PRINTABLE_PX = A4_PAGE_PX - 2 * PAGE_MARGIN_PX;
+
+function paginatePro() {
+  // Repartir propre : on retire les cales de la passe précédente.
+  cvEl.querySelectorAll('.cv-page-break').forEach((n) => n.remove());
+  if (state.template === 'design') return 1;
+
+  const kids = [...cvEl.children];
+  if (kids.length === 0) return 1;
+  // Positions NATURELLES (offsetTop/offsetHeight : hauteurs de mise en page, non
+  // affectées par le scale visuel du cadre) mesurées AVANT toute insertion.
+  const tops = kids.map((k) => k.offsetTop);
+  const heights = kids.map((k) => k.offsetHeight);
+  const start = tops[0];
+  let pageBottom = start + PAGE_PRINTABLE_PX; // bas de la zone de contenu de la page courante
+  const breaks = [];
+  for (let i = 1; i < kids.length; i++) {
+    if (tops[i] + heights[i] > pageBottom + 0.5) {
+      breaks.push({ node: kids[i], fill: Math.max(0, pageBottom - tops[i]) });
+      pageBottom = tops[i] + PAGE_PRINTABLE_PX;
+    }
+  }
+  for (const b of breaks) {
+    const sp = document.createElement('div');
+    sp.className = 'cv-page-break';
+    const g0 = b.fill + PAGE_MARGIN_PX; // début de la gouttière (après marge basse)
+    const g1 = g0 + PAGE_GUTTER_PX; // fin de la gouttière (avant marge haute)
+    sp.style.height = `${g1 + PAGE_MARGIN_PX}px`;
+    // Gouttière seule (couleur du fond), sur TOUTE la largeur de la cale — qui
+    // déborde des bords de la feuille — pour masquer, à hauteur de gouttière,
+    // l'ombre latérale de .sheet qui relierait sinon les deux pages.
+    sp.style.background =
+      `linear-gradient(to bottom, transparent 0, transparent ${g0}px,` +
+      ` var(--bg) ${g0}px, var(--bg) ${g1}px, transparent ${g1}px)`;
+    // Bord bas de la page du dessus : une barre à la lèvre de la gouttière portant
+    // le MÊME box-shadow que .sheet, pour que l'ombre du bas soit identique à
+    // celles de gauche/droite (voir .cv-page-edge, ramenée à la largeur de page).
+    const edge = document.createElement('div');
+    edge.className = 'cv-page-edge';
+    edge.style.height = `${g0}px`; // du haut de la cale jusqu'à la lèvre de la gouttière : bord bas de la page du dessus
+    sp.appendChild(edge);
+    // Coins haut de la page du dessous (voir .cv-page-edge-top) : positionnés à
+    // la fin de la gouttière, c'est-à-dire au tout début du blanc de la page suivante.
+    const edgeTop = document.createElement('div');
+    edgeTop.className = 'cv-page-edge-top';
+    edgeTop.style.top = `${g1}px`; // haut de la page du dessous (fin de gouttière)
+    sp.appendChild(edgeTop);
+    cvEl.insertBefore(sp, b.node);
+  }
+  return breaks.length + 1;
+}
+
+function updatePageCount() {
+  if (!pageCountEl) return;
+  if (state.template === 'design') {
+    pageCountEl.hidden = true;
+    return;
+  }
+  const pages = cvEl.querySelectorAll('.cv-page-break').length + 1;
+  pageCountEl.textContent =
+    pages === 1
+      ? 'Ce CV tient sur 1 page A4.'
+      : `Ce CV occupera ${pages} pages A4, affichées séparément sur la feuille.`;
+  pageCountEl.hidden = false;
 }
 
 // Deux déclencheurs redondants (l'un des deux suffit à chaque navigateur) :
@@ -1426,6 +1506,8 @@ function rerender() {
   updateTabs();
   updateCvScale();
   updateOverflowNotice();
+  paginatePro();
+  updatePageCount();
   save();
 }
 
