@@ -723,8 +723,9 @@ main.tab-create #cvScale #cv {
   position: absolute;
   left: 6px;
   right: 6px;
-  height: 0;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+  top: 0; /* couvre le bas de la page (remplissage + marge basse), hauteur posée par paginatePro */
+  background: #fff; /* même blanc que la feuille : bloc opaque qui projette une vraie ombre de bas de page et masque sa propre ombre haute */
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12); /* identique à .sheet */
 }
 
 [contenteditable] {

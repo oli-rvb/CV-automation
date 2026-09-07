@@ -535,7 +535,7 @@ function paginatePro() {
     // celles de gauche/droite (voir .cv-page-edge, ramenée à la largeur de page).
     const edge = document.createElement('div');
     edge.className = 'cv-page-edge';
-    edge.style.top = `${g0}px`;
+    edge.style.height = `${g0}px`; // du haut de la cale jusqu'à la lèvre de la gouttière : bord bas de la page du dessus
     sp.appendChild(edge);
     cvEl.insertBefore(sp, b.node);
   }
