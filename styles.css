@@ -1771,17 +1771,32 @@ main.tab-create #createLeft {
 
 /* ---------- Impression : page A4 identique au rendu écran ---------- */
 
+/* Marges de page A4 (haut/bas/gauche/droite) : chaque page exportée les porte,
+   comme l'aperçu écran. Le modèle « pro » s'appuie dessus (son padding est
+   neutralisé plus bas). Le modèle « design », page unique construite à 297 mm,
+   garde des marges de page nulles et ses propres paddings, via une page nommée. */
 @page {
+  size: A4;
+  margin: 14mm 16mm;
+}
+@page design-page {
   size: A4;
   margin: 0;
 }
+.sheet.design { page: design-page; }
 
 @media print {
   html, body { width: 210mm; background: #fff; }
   #toolbar, #cvTools, #createLeft, #versionsPanel, #overflowNotice { display: none; }
   main { display: block; padding: 0; margin: 0; max-width: none; }
   .sheet { box-shadow: none; border-radius: 0; margin: 0; }
-  /* Largeur, hauteur et marges internes : mêmes règles qu'à l'écran (210 × 297 mm). */
+  /* Modèle pro : les marges de chaque page viennent de @page. On neutralise donc
+     le padding de la feuille (sinon marges doublées sur la 1re/dernière page) et
+     son min-height d'une page (sinon un CV court déborderait sur une 2e page à
+     cause de la zone imprimable réduite), et on ramène sa largeur à la zone
+     imprimable (210 − 2×16 mm) pour conserver exactement les mêmes retours à la
+     ligne qu'à l'écran. Le modèle « design » garde ses règles (page nommée). */
+  .sheet:not(.design) { width: 178mm; padding: 0; min-height: 0; }
 
   /* Filet de sécurité : neutralise la mise à l'échelle de l'onglet « Nouveau
      CV » (voir #cvScale ci-dessus) si l'impression est lancée depuis cet
