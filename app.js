@@ -494,8 +494,9 @@ function updateOverflowNotice() {
 // Chrome. Tout est en pixels CSS (96 px = 25,4 mm), comme .sheet { width:210mm }.
 const MM_PX = 96 / 25.4;
 const A4_PAGE_PX = 297 * MM_PX;
-const PAGE_MARGIN_PX = 14 * MM_PX; // marges haut/bas d'une page (= padding vertical de .sheet)
-const PAGE_GUTTER_PX = 10; // gouttière visible entre deux pages
+const PAGE_MARGIN_PX = 10 * MM_PX; // marges haut/bas d'une page (= padding vertical de .sheet)
+const PAGE_GUTTER_PX = 14; // gouttière visible entre deux pages
+const PAGE_SHADOW_PX = 6; // ombre que la page du dessus projette dans la gouttière
 const PAGE_PRINTABLE_PX = A4_PAGE_PX - 2 * PAGE_MARGIN_PX;
 
 function paginatePro() {
@@ -524,11 +525,14 @@ function paginatePro() {
     const g0 = b.fill + PAGE_MARGIN_PX; // début de la gouttière (après marge basse)
     const g1 = g0 + PAGE_GUTTER_PX; // fin de la gouttière (avant marge haute)
     sp.style.height = `${g1 + PAGE_MARGIN_PX}px`;
-    // Transparent = blanc de la feuille (marges) ; var(--bg) = gouttière ; un fin
-    // liseré d'ombre marque le bord bas de la page.
+    // Deux calques : dessous, la gouttière (couleur du fond) encadrée de blanc
+    // (marges des deux pages) ; dessus, l'ombre que la page supérieure projette
+    // DANS la gouttière — sombre à sa lèvre puis dissoute — pour que l'espace se
+    // lise bien en retrait, derrière les pages, et non dans leur continuité.
     sp.style.background =
-      `linear-gradient(to bottom, transparent 0, transparent ${g0 - 1}px,` +
-      ` rgba(0, 0, 0, 0.08) ${g0 - 1}px, rgba(0, 0, 0, 0.08) ${g0}px,` +
+      `linear-gradient(to bottom, transparent 0, transparent ${g0}px,` +
+      ` rgba(0, 0, 0, 0.22) ${g0}px, rgba(0, 0, 0, 0) ${g0 + PAGE_SHADOW_PX}px, transparent 100%),` +
+      ` linear-gradient(to bottom, transparent 0, transparent ${g0}px,` +
       ` var(--bg) ${g0}px, var(--bg) ${g1}px, transparent ${g1}px)`;
     cvEl.insertBefore(sp, b.node);
   }

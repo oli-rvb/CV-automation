@@ -691,6 +691,13 @@ main.tab-create #cvScale #cv {
   padding: 14mm 16mm;
 }
 
+/* Marges haut/bas du modèle « pro » (10 mm, un peu plus serrées que le design) :
+   marge haute de la 1re page et basse de la dernière à l'écran ; les marges
+   intérieures sont posées par paginatePro et, à l'export, par @page. */
+.sheet:not(.design) {
+  padding-block: 10mm;
+}
+
 /* ---------- Sauts de page de l'aperçu paginé (modèle « pro ») ----------
    Cales insérées par app.js (paginatePro) qui repoussent chaque bloc débordant
    en haut de la page A4 suivante. La marge négative les fait courir sur toute la
@@ -1777,7 +1784,7 @@ main.tab-create #createLeft {
    garde des marges de page nulles et ses propres paddings, via une page nommée. */
 @page {
   size: A4;
-  margin: 14mm 16mm;
+  margin: 10mm 16mm;
 }
 @page design-page {
   size: A4;
