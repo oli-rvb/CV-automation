@@ -483,18 +483,65 @@ function updateOverflowNotice() {
   overflowNoticeEl.hidden = false;
 }
 
-// Nombre de pages A4 qu'occupera le modèle « pro » à l'export : hauteur réelle
-// de la feuille / hauteur d'une page (297 mm). Le modèle « design » tient
-// toujours sur une seule page : l'indicateur y est masqué. Sert à annoncer à
-// l'utilisateur la pagination qu'il retrouvera dans le PDF.
-const A4_PAGE_PX = (297 * 96) / 25.4;
+// ---------- Aperçu paginé du modèle « pro » ----------
+// Le modèle « pro » peut dépasser une page A4. À l'écran la feuille est un flux
+// continu ; pour la faire lire comme des pages A4 successives, on insère avant
+// chaque bloc qui déborderait un « saut de page » : il comble le bas de la page
+// courante, puis matérialise la marge basse, une gouttière (couleur du fond du
+// site) et la marge haute de la page suivante — si bien que le bloc repart en
+// haut de la page d'après, marges comprises. Ces cales sont purement visuelles
+// (masquées à l'impression, voir @media print) : le PDF, lui, reste paginé par
+// Chrome. Tout est en pixels CSS (96 px = 25,4 mm), comme .sheet { width:210mm }.
+const MM_PX = 96 / 25.4;
+const A4_PAGE_PX = 297 * MM_PX;
+const PAGE_MARGIN_PX = 14 * MM_PX; // marges haut/bas d'une page (= padding vertical de .sheet)
+const PAGE_GUTTER_PX = 10; // gouttière visible entre deux pages
+const PAGE_PRINTABLE_PX = A4_PAGE_PX - 2 * PAGE_MARGIN_PX;
+
+function paginatePro() {
+  // Repartir propre : on retire les cales de la passe précédente.
+  cvEl.querySelectorAll('.cv-page-break').forEach((n) => n.remove());
+  if (state.template === 'design') return 1;
+
+  const kids = [...cvEl.children];
+  if (kids.length === 0) return 1;
+  // Positions NATURELLES (offsetTop/offsetHeight : hauteurs de mise en page, non
+  // affectées par le scale visuel du cadre) mesurées AVANT toute insertion.
+  const tops = kids.map((k) => k.offsetTop);
+  const heights = kids.map((k) => k.offsetHeight);
+  const start = tops[0];
+  let pageBottom = start + PAGE_PRINTABLE_PX; // bas de la zone de contenu de la page courante
+  const breaks = [];
+  for (let i = 1; i < kids.length; i++) {
+    if (tops[i] + heights[i] > pageBottom + 0.5) {
+      breaks.push({ node: kids[i], fill: Math.max(0, pageBottom - tops[i]) });
+      pageBottom = tops[i] + PAGE_PRINTABLE_PX;
+    }
+  }
+  for (const b of breaks) {
+    const sp = document.createElement('div');
+    sp.className = 'cv-page-break';
+    const g0 = b.fill + PAGE_MARGIN_PX; // début de la gouttière (après marge basse)
+    const g1 = g0 + PAGE_GUTTER_PX; // fin de la gouttière (avant marge haute)
+    sp.style.height = `${g1 + PAGE_MARGIN_PX}px`;
+    // Transparent = blanc de la feuille (marges) ; var(--bg) = gouttière ; un fin
+    // liseré d'ombre marque le bord bas de la page.
+    sp.style.background =
+      `linear-gradient(to bottom, transparent 0, transparent ${g0 - 1}px,` +
+      ` rgba(0, 0, 0, 0.08) ${g0 - 1}px, rgba(0, 0, 0, 0.08) ${g0}px,` +
+      ` var(--bg) ${g0}px, var(--bg) ${g1}px, transparent ${g1}px)`;
+    cvEl.insertBefore(sp, b.node);
+  }
+  return breaks.length + 1;
+}
+
 function updatePageCount() {
   if (!pageCountEl) return;
   if (state.template === 'design') {
     pageCountEl.hidden = true;
     return;
   }
-  const pages = Math.max(1, Math.ceil((cvEl.scrollHeight - 1) / A4_PAGE_PX));
+  const pages = cvEl.querySelectorAll('.cv-page-break').length + 1;
   pageCountEl.textContent =
     pages === 1
       ? 'Ce CV tient sur 1 page A4.'
@@ -1445,6 +1492,7 @@ function rerender() {
   updateTabs();
   updateCvScale();
   updateOverflowNotice();
+  paginatePro();
   updatePageCount();
   save();
 }

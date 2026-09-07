@@ -691,33 +691,17 @@ main.tab-create #cvScale #cv {
   padding: 14mm 16mm;
 }
 
-/* ---------- Aperçu en pages A4 successives (modèle « pro ») ----------
-   Le modèle « pro » peut dépasser une page : à l'export, Chrome le découpe en
-   pages A4 tous les 297 mm (voir @page plus bas). À l'écran, la feuille est un
-   flux continu ; ce pseudo-élément peint une gouttière (couleur du fond) sur les
-   derniers pixels de chaque tranche de 297 mm, précédée d'un fin liseré d'ombre
-   pour le bord bas de la page. La feuille se lit alors comme des pages A4
-   successives séparées par un petit espace, à l'endroit exact où le PDF change
-   de page. Décoratif (pointer-events désactivés), absent du modèle « design »
-   (une seule page) et de l'impression. Étant un pseudo-élément, il ne part
-   jamais dans `cvEl.outerHTML` → il ne pollue pas le PDF. */
-.sheet:not(.design)::after {
-  content: "";
-  position: absolute;
-  inset: 0;
+/* ---------- Sauts de page de l'aperçu paginé (modèle « pro ») ----------
+   Cales insérées par app.js (paginatePro) qui repoussent chaque bloc débordant
+   en haut de la page A4 suivante. La marge négative les fait courir sur toute la
+   largeur de la feuille (jusqu'aux bords, sous le padding horizontal) pour que la
+   gouttière sépare vraiment les pages. Le dégradé (marges blanches + gouttière
+   couleur du fond) est posé EN LIGNE, hauteur comprise, car il varie d'une cale à
+   l'autre. Masquées à l'impression : le PDF est paginé par Chrome, pas par ces
+   cales. */
+.cv-page-break {
+  margin: 0 -16mm;
   pointer-events: none;
-  z-index: 5;
-  background-image: repeating-linear-gradient(
-    to bottom,
-    transparent 0,
-    transparent calc(297mm - 11px),
-    rgba(0, 0, 0, 0.16) calc(297mm - 11px),
-    rgba(0, 0, 0, 0.16) calc(297mm - 10px),
-    #e2e5ea calc(297mm - 10px),
-    #e2e5ea calc(297mm - 1px),
-    rgba(0, 0, 0, 0.06) calc(297mm - 1px),
-    rgba(0, 0, 0, 0.06) 297mm
-  );
 }
 
 [contenteditable] {
@@ -1819,5 +1803,5 @@ main.tab-create #createLeft {
   li.bullet, .link-item, .contact-item, .exp-head,
   .skill-group, .interest-item { break-inside: avoid; }
   .cv-section-title, .side-title { break-after: avoid; }
-  .sheet:not(.design)::after { display: none; }
+  .cv-page-break { display: none; }
 }
