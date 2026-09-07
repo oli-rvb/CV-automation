@@ -496,7 +496,6 @@ const MM_PX = 96 / 25.4;
 const A4_PAGE_PX = 297 * MM_PX;
 const PAGE_MARGIN_PX = 10 * MM_PX; // marges haut/bas d'une page (= padding vertical de .sheet)
 const PAGE_GUTTER_PX = 14; // gouttière visible entre deux pages
-const PAGE_SHADOW_PX = 6; // ombre que la page du dessus projette dans la gouttière
 const PAGE_PRINTABLE_PX = A4_PAGE_PX - 2 * PAGE_MARGIN_PX;
 
 function paginatePro() {
@@ -525,20 +524,19 @@ function paginatePro() {
     const g0 = b.fill + PAGE_MARGIN_PX; // début de la gouttière (après marge basse)
     const g1 = g0 + PAGE_GUTTER_PX; // fin de la gouttière (avant marge haute)
     sp.style.height = `${g1 + PAGE_MARGIN_PX}px`;
-    // Deux calques posés séparément (pour dimensionner chacun) :
-    //  - dessous, la gouttière (couleur du fond) sur TOUTE la largeur de la cale,
-    //    qui déborde des bords de la feuille : elle masque, à hauteur de
-    //    gouttière, l'ombre latérale de .sheet qui relierait les deux pages ;
-    //  - dessus, l'ombre projetée par la page du dessus, LIMITÉE à la largeur de
-    //    page (210 mm, centrée) pour ne pas déborder sur le fond.
-    sp.style.backgroundImage =
+    // Gouttière seule (couleur du fond), sur TOUTE la largeur de la cale — qui
+    // déborde des bords de la feuille — pour masquer, à hauteur de gouttière,
+    // l'ombre latérale de .sheet qui relierait sinon les deux pages.
+    sp.style.background =
       `linear-gradient(to bottom, transparent 0, transparent ${g0}px,` +
-      ` rgba(0, 0, 0, 0.22) ${g0}px, rgba(0, 0, 0, 0) ${g0 + PAGE_SHADOW_PX}px, transparent 100%),` +
-      ` linear-gradient(to bottom, transparent 0, transparent ${g0}px,` +
       ` var(--bg) ${g0}px, var(--bg) ${g1}px, transparent ${g1}px)`;
-    sp.style.backgroundRepeat = 'no-repeat, no-repeat';
-    sp.style.backgroundPosition = 'center top, left top';
-    sp.style.backgroundSize = '210mm 100%, 100% 100%';
+    // Bord bas de la page du dessus : une barre à la lèvre de la gouttière portant
+    // le MÊME box-shadow que .sheet, pour que l'ombre du bas soit identique à
+    // celles de gauche/droite (voir .cv-page-edge, ramenée à la largeur de page).
+    const edge = document.createElement('div');
+    edge.className = 'cv-page-edge';
+    edge.style.top = `${g0}px`;
+    sp.appendChild(edge);
     cvEl.insertBefore(sp, b.node);
   }
   return breaks.length + 1;

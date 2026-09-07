@@ -710,8 +710,21 @@ main.tab-create #cvScale #cv {
   /* Déborde de 6 px au-delà des bords de la feuille (padding 16 mm) : la bande
      gouttière (peinte en couleur du fond, pleine largeur) recouvre ainsi l'ombre
      latérale du box-shadow de .sheet, qui reliait sinon les deux pages. */
+  position: relative; /* ancre .cv-page-edge */
   margin: 0 calc(-16mm - 6px);
   pointer-events: none;
+}
+
+/* Bord bas de la page du dessus, posé par paginatePro à la lèvre de la
+   gouttière : porte le MÊME box-shadow que .sheet pour que l'ombre du bas soit
+   identique à celles des côtés. left/right: 6px annulent le débord de la cale
+   pour revenir à la largeur exacte de la page. */
+.cv-page-edge {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  height: 0;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
 }
 
 [contenteditable] {
