@@ -707,7 +707,10 @@ main.tab-create #cvScale #cv {
    l'autre. Masquées à l'impression : le PDF est paginé par Chrome, pas par ces
    cales. */
 .cv-page-break {
-  margin: 0 -16mm;
+  /* Déborde de 6 px au-delà des bords de la feuille (padding 16 mm) : la bande
+     gouttière (peinte en couleur du fond, pleine largeur) recouvre ainsi l'ombre
+     latérale du box-shadow de .sheet, qui reliait sinon les deux pages. */
+  margin: 0 calc(-16mm - 6px);
   pointer-events: none;
 }
 

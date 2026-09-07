@@ -525,15 +525,20 @@ function paginatePro() {
     const g0 = b.fill + PAGE_MARGIN_PX; // début de la gouttière (après marge basse)
     const g1 = g0 + PAGE_GUTTER_PX; // fin de la gouttière (avant marge haute)
     sp.style.height = `${g1 + PAGE_MARGIN_PX}px`;
-    // Deux calques : dessous, la gouttière (couleur du fond) encadrée de blanc
-    // (marges des deux pages) ; dessus, l'ombre que la page supérieure projette
-    // DANS la gouttière — sombre à sa lèvre puis dissoute — pour que l'espace se
-    // lise bien en retrait, derrière les pages, et non dans leur continuité.
-    sp.style.background =
+    // Deux calques posés séparément (pour dimensionner chacun) :
+    //  - dessous, la gouttière (couleur du fond) sur TOUTE la largeur de la cale,
+    //    qui déborde des bords de la feuille : elle masque, à hauteur de
+    //    gouttière, l'ombre latérale de .sheet qui relierait les deux pages ;
+    //  - dessus, l'ombre projetée par la page du dessus, LIMITÉE à la largeur de
+    //    page (210 mm, centrée) pour ne pas déborder sur le fond.
+    sp.style.backgroundImage =
       `linear-gradient(to bottom, transparent 0, transparent ${g0}px,` +
       ` rgba(0, 0, 0, 0.22) ${g0}px, rgba(0, 0, 0, 0) ${g0 + PAGE_SHADOW_PX}px, transparent 100%),` +
       ` linear-gradient(to bottom, transparent 0, transparent ${g0}px,` +
       ` var(--bg) ${g0}px, var(--bg) ${g1}px, transparent ${g1}px)`;
+    sp.style.backgroundRepeat = 'no-repeat, no-repeat';
+    sp.style.backgroundPosition = 'center top, left top';
+    sp.style.backgroundSize = '210mm 100%, 100% 100%';
     cvEl.insertBefore(sp, b.node);
   }
   return breaks.length + 1;
