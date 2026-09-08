@@ -1401,6 +1401,49 @@ function renderFontControls() {
   }
 }
 
+/* ---------- Retour arrière (Cmd/Ctrl+Z) sur les tailles de texte ---------- */
+
+// Une entrée par interaction complète (glissement du curseur du début à la
+// fin, ou frappe jusqu'à la validation) — pas par évènement `input`, sinon
+// Cmd+Z ne reviendrait que d'un demi-pixel à la fois. `fontSizePending`
+// mémorise l'état AVANT la première frappe/le premier déplacement de
+// l'interaction en cours : il faut le capturer à ce moment précis, car
+// l'écouteur `input` met déjà `state.fontSizes` à jour en direct pendant
+// l'interaction (comparer à l'état au moment de `change` serait trop tard,
+// il aurait déjà été écrasé).
+const fontSizeHistory = [];
+const FONT_SIZE_HISTORY_MAX = 50;
+let fontSizePending = null; // { tpl, prev } | null
+
+function snapshotFontSize(tpl) {
+  return { tpl, prev: JSON.parse(JSON.stringify(state.fontSizes[tpl])) };
+}
+
+function pushFontSizeHistory(entry) {
+  fontSizeHistory.push(entry);
+  if (fontSizeHistory.length > FONT_SIZE_HISTORY_MAX) fontSizeHistory.shift();
+}
+
+function undoFontSize() {
+  const entry = fontSizeHistory.pop();
+  if (!entry) return false;
+  state.fontSizes[entry.tpl] = entry.prev;
+  if (entry.tpl === fontTemplate()) {
+    applyFontSizes();
+    renderFontControls();
+  }
+  save();
+  return true;
+}
+
+// N'intercepte Cmd/Ctrl+Z que s'il reste une taille de texte à annuler :
+// pile vide → l'évènement suit son cours normalement (undo natif du
+// navigateur pour un champ texte en cours d'édition, par exemple).
+document.addEventListener('keydown', (e) => {
+  if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.key.toLowerCase() !== 'z') return;
+  if (undoFontSize()) e.preventDefault();
+});
+
 // Curseur et champ chiffré règlent la même taille : celui qu'on ne touche pas
 // suit l'autre. Le curseur ne prend que des valeurs valides ; le champ, lui,
 // peut être vide ou hors bornes en cours de frappe (voir plus bas).
@@ -1419,8 +1462,11 @@ fontControlsEl.addEventListener('input', (e) => {
   if (!inp || inp.value.trim() === '') return;
   const role = fontRole(inp.dataset.zone, inp.dataset.role);
   if (!role) return;
+  const tpl = fontTemplate();
+  // Capturé une seule fois, avant la première mutation de cette interaction.
+  if (!fontSizePending) fontSizePending = snapshotFontSize(tpl);
   const val = window.cvClampFontSize(inp.value, role.def);
-  state.fontSizes[fontTemplate()][inp.dataset.zone][role.key] = val;
+  state.fontSizes[tpl][inp.dataset.zone][role.key] = val;
   syncFontRow(inp, val);
   applyFontSizes();
   save();
@@ -1433,17 +1479,29 @@ fontControlsEl.addEventListener('change', (e) => {
   if (!inp) return;
   const role = fontRole(inp.dataset.zone, inp.dataset.role);
   if (!role) return;
+  const tpl = fontTemplate();
   const val = window.cvClampFontSize(inp.value, role.def);
-  state.fontSizes[fontTemplate()][inp.dataset.zone][role.key] = val;
+  state.fontSizes[tpl][inp.dataset.zone][role.key] = val;
   inp.value = String(val);
   syncFontRow(inp, val);
   applyFontSizes();
   save();
+
+  // Interaction terminée : si la valeur a bougé par rapport à l'état capturé
+  // au début, c'est ce point de départ (pas l'état courant, déjà à jour)
+  // qu'il faut empiler pour Cmd/Ctrl+Z.
+  if (fontSizePending) {
+    if (JSON.stringify(fontSizePending.prev) !== JSON.stringify(state.fontSizes[tpl])) {
+      pushFontSizeHistory(fontSizePending);
+    }
+    fontSizePending = null;
+  }
 });
 
 $('#fontResetBtn').addEventListener('click', () => {
   // Seul le modèle affiché est remis à zéro : l'autre garde ses réglages.
   const tpl = fontTemplate();
+  pushFontSizeHistory(snapshotFontSize(tpl));
   state.fontSizes[tpl] = normalizeFontSizes(null)[tpl];
   applyFontSizes();
   renderFontControls();
