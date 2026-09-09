@@ -147,6 +147,23 @@
                   aria-label="Prompt généré" spellcheck="false"></textarea>
         <p class="assist-note" id="copyPromptNote" role="status" hidden></p>
       </div>
+
+      <!-- Étape 2 : la réponse de l'assistant, relue par l'app -->
+      <div class="assist-step" id="assistStep2">
+        <h3><span class="assist-step-num">2</span> Coller la réponse</h3>
+        <p class="hint">
+          Collez la réponse telle quelle&nbsp;: markdown, tirets, numérotation
+          et titres sont tolérés.
+        </p>
+        <textarea id="llmReply" rows="6" spellcheck="false"
+                  placeholder="Réponse de votre assistant IA"
+                  aria-label="Réponse de l'assistant IA"></textarea>
+        <div class="panel-actions">
+          <button id="parseReplyBtn" type="button">Relire la réponse</button>
+          <button id="clearReplyBtn" class="ghost" type="button">Effacer</button>
+        </div>
+        <p class="assist-note" id="parseNote" role="status" hidden></p>
+      </div>
     </section>
 
     <!-- Import/export JSON : sauvegarde/transfert de l'état complet, placé

@@ -3073,6 +3073,120 @@ function renderAssist() {
 }
 
 /* ============================================================
+   Assistant — étape 2 : relire la réponse du LLM
+   ============================================================
+
+   Une réponse de LLM arrive rarement propre : blocs de code, titres, puces,
+   numérotation, emphase markdown, phrase d'introduction. On nettoie ligne à
+   ligne plutôt que d'espérer un format exact, et l'étiquette « [E1B2] »
+   demandée dans le prompt n'est qu'un bonus : sans elle, la ligne devient
+   une proposition à réaffecter à la main. */
+
+// [E1B2] / E1-B2 / [E1] … : l'étiquette de rattachement, sous ses formes
+// vraisemblables (crochets facultatifs, séparateurs variés).
+const CANDIDATE_TAG_RE = /^\[?\s*e\s*(\d{1,2})\s*(?:[-–—.,:\s]*b\s*(\d{1,3}))?\s*\]?\s*[:\-–—.)]*\s*/i;
+
+// Phrases d'introduction fréquentes, sans étiquette : à ne pas prendre pour
+// des lignes de CV.
+const REPLY_PREAMBLE_RE = /^(voici|vous trouverez|ci-dessous|j'ai|je vous|note\b|remarque\b|here (are|is)|below|i have|these are)/i;
+
+function parseLlmReply(raw) {
+  // Les délimiteurs de bloc de code disparaissent, leur contenu reste.
+  const text = String(raw || '').replace(/\r\n?/g, '\n').replace(/^\s*```.*$/gm, '');
+  const out = [];
+  const seen = new Set();
+
+  for (const rawLine of text.split('\n')) {
+    let line = rawLine.trim();
+    if (!line) continue;
+    if (/^#{1,6}\s/.test(line) || /^[-*_]{3,}$/.test(line)) continue; // titre, filet
+
+    // Puces, citations, numérotation, emphase
+    line = line
+      .replace(/^(?:[-*•‣▪>]\s*)+/, '')
+      .replace(/^\d{1,2}\s*[.)]\s*/, '')
+      .replace(/\*\*/g, '')
+      .replace(/`/g, '')
+      .trim();
+    if (!line) continue;
+
+    const tag = line.match(CANDIDATE_TAG_RE);
+    let expIdx = -1;
+    let bulletIdx = -1;
+    if (tag) {
+      expIdx = Number(tag[1]) - 1;
+      bulletIdx = tag[2] === undefined ? -1 : Number(tag[2]) - 1;
+      line = line.slice(tag[0].length).trim();
+    }
+    line = line.replace(/^[«"'‘“]\s*/, '').replace(/\s*[»"'’”]$/, '').trim();
+    if (!line) continue;
+
+    // Sans étiquette, on ne garde que ce qui ressemble vraiment à une ligne de
+    // CV : ni intitulé de section, ni phrase d'introduction.
+    if (!tag) {
+      if (line.length < 25 || !line.includes(' ')) continue;
+      if (/[:：]$/.test(line)) continue;
+      if (REPLY_PREAMBLE_RE.test(line)) continue;
+    }
+
+    const key = normalizeText(line);
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    const exp = state.experiences[expIdx];
+    const bullet = exp && bulletIdx >= 0 ? exp.bullets[bulletIdx] : null;
+    out.push({
+      id: uid(),
+      text: line,
+      expId: exp ? exp.id : '',
+      replaces: bullet ? bullet.id : '',
+      status: 'pending',
+      draftId: '',
+    });
+  }
+  return out;
+}
+
+$('#parseReplyBtn').addEventListener('click', () => {
+  const found = parseLlmReply($('#llmReply').value);
+  if (!found.length) {
+    assistNote(
+      '#parseNote',
+      'Aucune ligne exploitable dans ce texte. Vérifiez que vous avez collé la réponse complète de votre assistant.',
+      'warn'
+    );
+    return;
+  }
+  ensureProposal();
+  // Relire une nouvelle réponse ne défait rien : les lignes déjà acceptées
+  // restent en place, seules les propositions en attente sont remplacées.
+  const kept = state.proposal.candidates.filter((c) => c.status === 'accepted');
+  const seen = new Set(kept.map((c) => normalizeText(c.text)));
+  const fresh = found.filter((c) => {
+    const key = normalizeText(c.text);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  state.proposal.candidates = [...kept, ...fresh];
+  pruneProposal();
+  const n = fresh.length;
+  const orphans = fresh.filter((c) => !c.expId).length;
+  assistNote(
+    '#parseNote',
+    `${n} ligne${n > 1 ? 's' : ''} proposée${n > 1 ? 's' : ''}` +
+      (orphans ? ` — dont ${orphans} à rattacher à une expérience.` : ' — à valider une par une ci-dessous.'),
+    'ok'
+  );
+  rerender();
+});
+
+$('#clearReplyBtn').addEventListener('click', () => {
+  $('#llmReply').value = '';
+  assistNote('#parseNote', '');
+});
+
+/* ============================================================
    Barre d'outils
    ============================================================ */
 
