@@ -237,7 +237,7 @@ function defaultCV() {
 }
 
 function defaultState() {
-  return { ...defaultCV(), versions: [], activeVersionId: null, proposal: null, activeTab: 'create', recentColors: [] };
+  return { ...defaultCV(), versions: [], activeVersionId: null, proposal: null, rewrite: null, activeTab: 'create', recentColors: [] };
 }
 
 /* ---------- Chargement / sauvegarde ---------- */
@@ -333,6 +333,58 @@ function normalizeCV(data) {
   return cv;
 }
 
+// Couche de relecture (variante « semi-auto ») : les lignes d'expérience
+// recalibrées sur une offre, appliquées d'un bloc. Comme la proposition
+// d'ordre, c'est une SURCOUCHE D'AFFICHAGE — le CV de base garde son texte,
+// qui reste toujours accessible en désactivant une ligne.
+//
+//   { createdAt, versionId, name, lang, jobText, entries: { [expId]: [entry] } }
+//   entry = { id, kind: 'edit', bulletId, before, after, active }
+//         | { id, kind: 'add',                before: '', after, active }
+//
+// `before` est le texte du CV de base au moment de l'application : il ne sert
+// qu'à afficher le diff. Annuler une ligne ne réécrit rien, cela repasse
+// simplement l'affichage sur le tiret du CV de base (toujours à jour).
+function normalizeRewrite(data, experiences) {
+  if (!data || typeof data !== 'object') return null;
+  const known = new Set(experiences.map((e) => e.id));
+  const entries = {};
+  const src = data.entries && typeof data.entries === 'object' ? data.entries : {};
+  for (const [expId, list] of Object.entries(src)) {
+    if (!known.has(expId) || !Array.isArray(list)) continue;
+    const exp = experiences.find((e) => e.id === expId);
+    const bulletIds = new Set(exp.bullets.map((b) => b.id));
+    const kept = [];
+    for (const e of list) {
+      if (!e || typeof e !== 'object') continue;
+      const after = String(e.after ?? '');
+      if (!after.trim()) continue;
+      if (e.kind === 'add') {
+        kept.push({ id: String(e.id || uid()), kind: 'add', bulletId: null, before: '', after, active: e.active !== false });
+      } else if (typeof e.bulletId === 'string' && bulletIds.has(e.bulletId)) {
+        kept.push({
+          id: String(e.id || uid()),
+          kind: 'edit',
+          bulletId: e.bulletId,
+          before: String(e.before ?? ''),
+          after,
+          active: e.active !== false,
+        });
+      }
+    }
+    if (kept.length) entries[expId] = kept;
+  }
+  if (Object.keys(entries).length === 0) return null;
+  return {
+    createdAt: Number(data.createdAt) || Date.now(),
+    versionId: typeof data.versionId === 'string' ? data.versionId : null,
+    name: String(data.name || ''),
+    lang: data.lang === 'en' ? 'en' : 'fr',
+    jobText: typeof data.jobText === 'string' ? data.jobText : '',
+    entries,
+  };
+}
+
 function normalizeState(data) {
   const s = normalizeCV(data);
   s.versions = (Array.isArray(data.versions) ? data.versions : []).map((v) => ({
@@ -355,6 +407,7 @@ function normalizeState(data) {
     }
     if (Object.keys(orders).length > 0) s.proposal = { orders };
   }
+  s.rewrite = normalizeRewrite(data.rewrite, s.experiences);
   s.activeTab = data.activeTab === 'base' ? 'base' : 'create';
   // Dernières couleurs libres utilisées (pipette), de la plus récente à la
   // plus ancienne. On ne garde que des hex valides, dédoublonnés, 5 au plus.
@@ -2763,7 +2816,7 @@ $('#pdfBtn').addEventListener('click', async () => {
 $('#resetBtn').addEventListener('click', async () => {
   if (!(await customConfirm('Réinitialiser le CV avec le contenu d’exemple ? Les versions sauvegardées sont conservées.', { confirmLabel: 'Réinitialiser', danger: true }))) return;
   const { versions, activeTab } = state;
-  state = { ...defaultCV(), versions, activeVersionId: null, proposal: null, activeTab };
+  state = { ...defaultCV(), versions, activeVersionId: null, proposal: null, rewrite: null, activeTab };
   jobTextEl.value = '';
   rerender();
 });
