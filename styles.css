@@ -2043,6 +2043,11 @@ main.tab-create #createLeft {
 
 .candidate-actions button { font-size: 12.5px; padding: 4px 10px; }
 
+.candidate-actions button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Ligne encore orpheline : son rattachement est le premier geste à faire. */
+.candidate.is-orphan { border-left-color: var(--danger-soft); }
+
 .candidate-state {
   flex: 1;
   font-size: 12px;

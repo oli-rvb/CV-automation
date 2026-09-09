@@ -9,7 +9,46 @@ Application web centrée sur les offres d'emploi : collez le texte d'une offre, 
 1. **Collez le texte de l'offre** en haut de page.
 2. **Analysez** : chaque tiret de vos expériences est comparé aux mots-clés de l'offre. Le CV affiché en dessous devient le **nouveau CV proposé**, avec les tirets du plus pertinent au moins pertinent. Le CV de base n'est **jamais modifié** : la proposition n'est qu'un ordre alternatif, posé par-dessus.
 3. **Survolez le CV** pour voir les modifications : chaque tiret déplacé est surligné et porte un badge « ↑ était n°X » indiquant sa position dans le CV de base. Le panneau résume les déplacements par expérience. Vous pouvez encore affiner à la main (glisser-déposer, flèches) : cela modifie la proposition, pas le CV de base.
-4. **Enregistrez ce nouveau CV** (nom proposé d'après le site de l'offre ou la date) : il rejoint les CV sauvegardés de l'onglet « CV de base ». « Ignorer la proposition » ou « Effacer » l'abandonne — le CV de base n'a jamais bougé.
+4. **Recalibrez vos lignes d'expérience** (facultatif) avec le panneau « Lignes calibrées sur l'offre », décrit ci-dessous.
+5. **Enregistrez ce nouveau CV** (nom proposé d'après le site de l'offre ou la date) : il rejoint les CV sauvegardés de l'onglet « CV de base ». « Ignorer la proposition » ou « Effacer » l'abandonne — le CV de base n'a jamais bougé.
+
+### « Lignes calibrées sur l'offre » — réécrire ses puces pour l'offre
+
+Réordonner ses tirets ne suffit pas toujours : encore faut-il qu'ils soient
+*écrits* pour l'offre. Ce panneau, sous l'offre d'emploi, s'en charge en trois
+étapes — et **vous validez chaque ligne une par une** : rien n'entre dans le CV
+sans un clic de votre part.
+
+1. **Copier le prompt.** L'application compose un prompt à partir de votre
+   parcours (expériences et leurs puces, formation, projets, compétences) et de
+   l'offre collée. Il impose le format d'une bonne ligne de CV — verbe d'action
+   au passé, objet chiffré, méthode, résultat chiffré, destinataire — interdit
+   d'inventer un chiffre ou une mission, et demande des lignes **dans la langue
+   de l'offre** (détectée automatiquement). « Voir le prompt » l'affiche en
+   entier ; si le navigateur refuse la copie automatique (c'est le cas en
+   `file://`), le prompt est simplement sélectionné à copier à la main.
+2. **Coller la réponse.** Faites tourner le prompt dans l'assistant IA de votre
+   choix, puis recollez sa réponse telle quelle : titres markdown, puces,
+   numérotation, emphase et phrases d'introduction sont écartés à la lecture.
+   L'étiquette `[E1B2]` demandée dans le prompt rattache chaque ligne proposée à
+   son expérience et à la puce qu'elle réécrit ; une ligne sans étiquette reste
+   utilisable, elle est simplement à rattacher à la main.
+3. **Valider ligne par ligne.** Chaque proposition est une carte : elle indique
+   l'expérience visée et la puce remplacée (tous deux modifiables), affiche
+   **en vis-à-vis la puce actuelle de votre CV** pour que le choix soit informé,
+   et laisse **modifier le texte avant de l'accepter**. « Accepter » insère la
+   ligne dans le CV proposé — jamais dans le CV de base ; « Rejeter » l'écarte.
+
+Tout est réversible : « Annuler » retire une ligne acceptée du CV proposé et
+rétablit la puce d'origine ; « Rétablir » ressort une ligne rejetée ; supprimer
+une ligne acceptée depuis le CV lui-même produit le même effet. Les lignes
+acceptées portent, au survol du CV, un badge « ✦ ligne proposée » ou
+« ✦ remplace n°X » — jamais imprimé. **Elles ne deviennent de vrais tirets qu'au
+moment où vous enregistrez le nouveau CV.**
+
+Aucune clé d'API n'est nécessaire et aucune donnée ne quitte votre navigateur :
+l'application fabrique le prompt et relit la réponse, c'est votre assistant IA
+qui fait le reste.
 
 ### « CV de base » — le CV de référence et les CV sauvegardés
 
@@ -52,6 +91,7 @@ Deux façons de lancer l'application :
 - **Analyse de l'offre** : collez le texte de l'offre dans le panneau « Offre d'emploi ».
   - **Scores** : chaque tiret reçoit un score de pertinence (mots-clés et expressions communs avec l'offre, accents ignorés, mots vides filtrés) ; à score égal, l'ordre du CV de base est conservé.
   - **Proposition** : l'ordre suggéré n'est qu'une surcouche affichée dans l'onglet « Nouveau CV », conservée d'une visite à l'autre ; le CV de base garde son ordre. Les badges de diff n'existent que sur le CV survolé : ils n'apparaissent ni à l'impression ni dans le PDF (backend comme secours, qui reprennent l'ordre affiché).
+- **Lignes calibrées sur l'offre** : prompt prêt à copier, relecture tolérante de la réponse de votre assistant IA, et validation **ligne par ligne** avec la puce d'origine en vis-à-vis (voir plus haut). Les lignes acceptées vivent dans la proposition, pas dans le CV de base, et se retirent d'un clic.
 - **Sauvegarde automatique** dans le navigateur (localStorage) : vos modifications sont conservées d'une visite à l'autre.
 - **Export / import JSON** pour sauvegarder ou transférer votre CV.
 - **Téléchargement PDF vectoriel (« à la Canva »)** : le bouton « Télécharger PDF » produit un PDF dont chaque texte est un vrai texte vectoriel — net à tous les niveaux de zoom, sélectionnable et copiable —, jamais une capture d'écran. Le document reste **lisible par les ATS** : titres de section explicites (Expériences professionnelles, Formation, Projets, Compétences) et contenu principal placé avant la barre latérale dans l'ordre de lecture du fichier. Deux moteurs :

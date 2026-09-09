@@ -3295,7 +3295,10 @@ function candidateOrigin(c) {
 
 function candidateCard(c) {
   const arbitrated = c.status !== 'pending';
-  const card = el('div', { class: `candidate ${'is-' + c.status}`, 'data-candidate-id': c.id });
+  const card = el('div', {
+    class: `candidate is-${c.status}${!arbitrated && !c.expId ? ' is-orphan' : ''}`,
+    'data-candidate-id': c.id,
+  });
 
   card.append(
     el(
@@ -3353,7 +3356,14 @@ function candidateCard(c) {
     el(
       'div',
       { class: 'candidate-actions' },
-      el('button', { type: 'button', 'data-cact': 'accept', text: '✓ Accepter' }),
+      // Sans expérience de rattachement, la ligne n'a nulle part où aller :
+      // le bouton le dit plutôt que d'échouer au clic.
+      el('button', {
+        type: 'button',
+        'data-cact': 'accept',
+        text: '✓ Accepter',
+        ...(c.expId ? {} : { disabled: 'disabled', title: 'Choisissez d’abord l’expérience à laquelle rattacher cette ligne.' }),
+      }),
       el('button', { type: 'button', class: 'ghost', 'data-cact': 'reject', text: '✕ Rejeter' })
     )
   );
@@ -3395,11 +3405,7 @@ candidateListEl.addEventListener('click', (e) => {
 
   switch (btn.dataset.cact) {
     case 'accept':
-      if (!c.expId) {
-        assistNote('#parseNote', 'Choisissez d’abord l’expérience à laquelle rattacher cette ligne.', 'warn');
-        return;
-      }
-      acceptCandidate(c);
+      if (!acceptCandidate(c)) return;
       break;
     case 'revoke':
       revokeDraft(c.draftId);
@@ -3411,7 +3417,6 @@ candidateListEl.addEventListener('click', (e) => {
       c.status = 'pending';
       break;
   }
-  assistNote('#parseNote', '');
   rerender();
 });
 
