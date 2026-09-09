@@ -1794,6 +1794,40 @@ main.tab-create #createLeft {
   color: var(--muted);
 }
 
+/* ---------- Avancement de la génération ---------- */
+
+/* Une seule ligne sous les boutons de l'offre, remplacée à chaque étape de la
+   chaîne (récupération, sélection, recalibrage, enregistrement). */
+.gen-status {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.gen-status.work::before {
+  content: '';
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 7px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  border-top-color: transparent;
+  vertical-align: -1px;
+  animation: gen-spin 0.8s linear infinite;
+}
+
+@keyframes gen-spin { to { transform: rotate(360deg); } }
+
+/* Le curseur d'attente ne doit pas tourner pour ceux qui ont demandé à
+   limiter les animations. */
+@media (prefers-reduced-motion: reduce) {
+  .gen-status.work::before { animation: none; }
+}
+
+.gen-status.done { color: var(--ok); font-weight: 600; }
+.gen-status.warn { color: var(--danger); }
+
 /* ---------- Résultats d'analyse ---------- */
 
 #results { margin-top: 12px; }
@@ -1820,6 +1854,122 @@ main.tab-create #createLeft {
 }
 
 .chip.small { font-size: 11px; padding: 1px 7px; }
+
+/* Encadré de recalibrage : l'unique aller-retour vers le LLM de l'utilisateur.
+   Un champ de collage, et le prompt consultable si on veut le relire. */
+
+.rewrite-box {
+  border: 1px solid var(--accent);
+  background: #f6f9ff;
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+}
+
+.rewrite-box h3 { margin: 0 0 6px; font-size: 14px; }
+
+.rewrite-box .hint { margin-bottom: 10px; }
+
+.rewrite-box textarea {
+  width: 100%;
+  font: inherit;
+  font-size: 13px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 9px;
+  resize: vertical;
+  background: #fff;
+}
+
+.rewrite-box textarea:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+
+.rewrite-box #copyPromptBtn { margin: 6px 0 8px; font-size: 13px; padding: 5px 12px; }
+
+.rewrite-box .empty-note { margin: 8px 0 0; }
+
+/* État « recalibré » : ce qui a été fait, ce qui ne l'a pas été, et la sortie
+   de secours qui rend aux lignes leur formulation d'origine. */
+
+.rewrite-done {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  background: #fff;
+}
+
+.rewrite-done .apply-note { margin: 0; }
+
+.rewrite-done .empty-note { margin: 4px 0 0; }
+
+.rewrite-done #undoRewriteBtn { margin-top: 8px; font-size: 13px; padding: 5px 12px; }
+
+.rewrite-peek { margin-top: 8px; }
+
+.rewrite-peek summary {
+  font-size: 12.5px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.rewrite-peek pre {
+  max-height: 180px;
+  overflow: auto;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin: 6px 0 0;
+  font-size: 11.5px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Encadré « Ce que l'app a décidé seule » : la contrepartie du tout-automatique.
+   Chaque expérience y dit si elle a été retenue, avec quel score et sur quels
+   mots de l'offre. Une expérience écartée reste affichée, en grisé. */
+
+.decision-box {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  background: #fff;
+}
+
+.decision-box h3 { margin: 0 0 6px; font-size: 14px; }
+
+.decision-box .hint { margin-bottom: 10px; }
+
+.decision-exp { padding: 6px 0; border-top: 1px solid var(--line); }
+
+.decision-exp:first-of-type { border-top: 0; }
+
+.decision-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.decision-head strong { font-weight: 600; }
+
+.decision-mark { color: var(--ok); font-weight: 700; }
+
+.decision-exp.dropped { opacity: 0.6; }
+
+.decision-exp.dropped .decision-mark { color: var(--danger); }
+
+.decision-score {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.decision-detail { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+
+.decision-chips { margin-top: 5px; }
 
 /* Encadré « Nouveau CV proposé » */
 

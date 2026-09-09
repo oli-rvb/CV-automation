@@ -4,13 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Éditeur de CV — a single-page web app (French UI) that lets someone edit a base CV, paste a job posting, and get a reordered proposal (bullets ranked by relevance to the posting) that can be saved as a new named CV without ever touching the base CV. No build step, no npm dependencies. Vanilla JS throughout.
+Éditeur de CV — a single-page web app (French UI) that lets someone edit a base CV, give a job posting (pasted text *or* a URL), and click one button to get a CV generated for that posting: irrelevant experiences dropped, bullets reordered by relevance, bullet lines rewritten for the posting, CV auto-named and auto-saved — all without ever touching the base CV. No build step, no npm dependencies. Vanilla JS throughout.
 
 ## Commands
 
 There is no package manager, build step, linter, or test suite in this repo.
 
-- **Run with the PDF backend (recommended)**: `node server.js` → open http://localhost:3333. Requires a local Chromium-family browser (Chrome/Edge/Brave/Arc); auto-detected per OS, or override with `CHROME_PATH`. Port defaults to 3333, override with `PORT`.
+- **Run with the PDF backend (recommended)**: `node server.js` → open http://localhost:3333. Requires a local Chromium-family browser (Chrome/Edge/Brave/Arc); auto-detected per OS, or override with `CHROME_PATH`. Port defaults to 3333, override with `PORT`. Setting `ANTHROPIC_API_KEY` (and optionally `ANTHROPIC_MODEL`) additionally enables `POST /rewrite`; without it the app falls back to the clipboard round-trip with no user-visible error.
 - **Run with no backend**: open `index.html` directly in a browser (`file://`). Works fully offline; PDF export falls back to the in-browser generator (`pdf.js`) instead of the Chrome-backed one.
 - No test command exists — verify changes manually in the browser (see the `run` skill/agent for driving the app).
 
@@ -20,14 +20,15 @@ Five files, no framework, no modules/bundler — `index.html` loads `pdf.js` the
 
 - **`pdf.js`** loads first and sets shared config onto `window`: `CV_SIDE_BG_DEFAULT`, `CV_FONT_ROLES`, `CV_FONT_BOUNDS`. It's wrapped in an IIFE exposing only `generateCvPdf`, to avoid colliding with `app.js`'s own `renderPro`/`renderDesign`.
 - **`app.js`** loads second and reads those `window.CV_*` globals as fallback-safe config. This is the entire app: state, rendering, editing, drag & drop, job-offer analysis, and PDF-trigger wiring. It's organized in commented sections (search for `/* ====` blocks): state/versions/templates/drag&drop → CV rendering → editing (inputs, buttons, modals) → named versions → job-offer analysis (keyword scoring) → toolbar/PDF wiring.
-- **`server.js`** is a dependency-free Node HTTP server with three jobs: (1) statically serve the app, (2) `POST /pdf` — take the rendered CV's HTML, compose it with `styles.css`/`fonts.css`, and print it via headless Chrome (`--print-to-pdf`) so the PDF matches the on-screen render pixel-for-pixel, (3) `POST /fetch-job` — fetch a job posting URL server-side (the browser can't, due to CORS), with SSRF guards (rejects private/link-local IPs, follows redirects manually and re-validates each hop).
+- **`server.js`** is a dependency-free Node HTTP server with four jobs: (1) statically serve the app, (2) `POST /pdf` — take the rendered CV's HTML, compose it with `styles.css`/`fonts.css`, and print it via headless Chrome (`--print-to-pdf`) so the PDF matches the on-screen render pixel-for-pixel, (3) `POST /fetch-job` — fetch a job posting URL server-side (the browser can't, due to CORS), with SSRF guards (rejects private/link-local IPs, follows redirects manually and re-validates each hop), (4) `POST /rewrite` — optional: relay the bullet-rewrite prompt to the Anthropic Messages API. The key comes only from `process.env.ANTHROPIC_API_KEY`; with no key the route answers 501 and `GET /status` reports `llm:false`, so the client silently keeps the clipboard flow. Never commit a key.
 - **`pdf.js`**'s `generateCvPdf` is the no-backend PDF fallback: it writes a vector PDF by hand (Helvetica metrics, WinAnsi encoding, manual PDF byte assembly) — no library. Line-wrapping can differ slightly from the screen since font metrics aren't identical to the backend (Chrome-rendered) path.
 - **`fonts.css`** embeds Open Sans as a data-URI `@font-face` so rendering (screen, print, both PDF paths) is identical everywhere, offline, no CDN.
 - **`styles.css`** carries both screen and `@media print` rules, including the diff badges shown only on hover in the "Nouveau CV" tab (never printed/exported).
 
 ### Key invariants worth knowing before editing
 
-- The base CV (`CV de base`) is never mutated by the job-analysis flow. A "proposal" is a display-only bullet reorder layered on top; saving it creates a new named CV.
+- The base CV (`CV de base`) is never mutated by the generation flow. `state.proposal` is a display-only overlay on top of it: `orders` (bullet order per experience), `texts` (rewritten bullet text, keyed by bullet id), `expOrder`/`dropped` (which experiences are in the generated CV), plus `name`/`report`/`versionId`. `snapshotProposalCV()` flattens the overlay into the saved named CV. While a generation is active, editing a bullet in the "Nouveau CV" tab writes to `texts`, and the experience ↑/↓/✕ controls act on `expOrder`/`dropped` — never on `state.experiences`.
+- The generated CV auto-saves itself into `state.versions` (`syncGeneratedVersion`), and later edits re-sync it via a debounce hooked into `save()`. It deliberately does *not* become `state.activeVersionId`: that flag means "this version is loaded as the base CV", which a display overlay is not.
 - The "Design" template's sheet is pinned to exactly 297mm (not "at least") — overflow is truncated with a visible on-screen notice rather than silently spilling to a second page. The "Pro" template can span multiple pages.
 - Data persists in `localStorage`, scoped per-origin — switching between `file://` and `http://localhost:3333` requires JSON export/import to carry data across.
 - Any change to font-size roles, side-bar color defaults, or A4 page metrics touches three places that must stay in sync: `app.js` (screen rendering), `pdf.js` (fallback PDF), and `server.js`'s Chrome-print path (which reuses `styles.css`/`fonts.css` directly, so it stays in sync automatically).

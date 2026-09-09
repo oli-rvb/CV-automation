@@ -110,14 +110,20 @@
     <section class="panel-box" id="offerPanel">
       <h2>Offre d'emploi</h2>
       <p class="hint">
-        Collez le <strong>texte</strong> de l'offre, puis analysez-la&nbsp;:
-        le CV ci-contre se réordonne pour elle, sans toucher au CV de base.
+        Collez le <strong>texte</strong> de l'offre — ou seulement son
+        <strong>adresse</strong> — puis lancez la génération&nbsp;: l'app
+        choisit les expériences, recalibre les lignes, réordonne, nomme et
+        enregistre le CV d'un seul trait. Le CV de base n'est jamais modifié.
       </p>
-      <textarea id="jobText" rows="5" placeholder="Texte de l'offre d'emploi"></textarea>
+      <textarea id="jobText" rows="5"
+                placeholder="Texte de l'offre d'emploi, ou son adresse (https://…)"></textarea>
       <div class="panel-actions">
-        <button id="analyzeBtn" type="button">Analyser l'offre</button>
+        <button id="generateBtn" type="button">Générer le CV</button>
         <button id="clearAnalysisBtn" class="ghost" type="button">Effacer</button>
       </div>
+      <!-- Avancement de la chaîne de génération (récupération, sélection,
+           recalibrage…) : une seule ligne, remplacée à chaque étape. -->
+      <p id="genStatus" class="gen-status" role="status" hidden></p>
       <div id="results"></div>
     </section>
 
