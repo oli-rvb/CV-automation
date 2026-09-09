@@ -1980,6 +1980,119 @@ main.tab-create #createLeft {
 .rw-report .panel-actions { margin-bottom: 0; }
 .rw-report .panel-actions button { font-size: 13px; padding: 5px 12px; }
 
+/* Diff ligne à ligne : avant / après, et le bouton qui revient en arrière */
+
+.rw-hint { margin: 6px 0 0; }
+
+.rw-global { flex-wrap: wrap; margin-top: 12px; }
+.rw-global button:disabled { opacity: 0.45; cursor: default; }
+
+.rw-exp { margin-top: 14px; }
+
+.rw-exp h4 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.rw-lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rw-line {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.rw-line.add { border-left-color: var(--ok); }
+.rw-line.same { border-left-color: var(--line); }
+.rw-line.off { border-left-color: var(--muted); background: var(--bg); }
+
+.rw-line-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.rw-tag {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+}
+
+.rw-line.add .rw-tag { color: var(--ok); }
+.rw-line.same .rw-tag,
+.rw-line.off .rw-tag { color: var(--muted); }
+
+.rw-toggle {
+  flex: none;
+  font-size: 11.5px;
+  padding: 2px 9px;
+}
+
+/* Les deux versions du texte. Au repos, « après » est ce qu'affiche le CV ;
+   une ligne annulée inverse les rôles (c'est « avant » qui redevient vrai). */
+.rw-before,
+.rw-after { padding-left: 14px; position: relative; }
+
+.rw-before { color: var(--muted); }
+.rw-after { color: var(--ink); }
+
+.rw-before::before,
+.rw-after::before {
+  position: absolute;
+  left: 0;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.rw-before::before { content: '−'; }
+.rw-after::before { content: '+'; }
+
+.rw-before .w {
+  background: #fee2e2;
+  text-decoration: line-through;
+  border-radius: 3px;
+  padding: 0 1px;
+}
+
+.rw-after .w {
+  background: #dcfce7;
+  border-radius: 3px;
+  padding: 0 1px;
+}
+
+.rw-line.off .rw-before { color: var(--ink); }
+.rw-line.off .rw-before .w { background: none; text-decoration: none; }
+.rw-line.off .rw-after { color: var(--muted); text-decoration: line-through; }
+.rw-line.off .rw-after .w { background: none; }
+
+.rw-line.same .rw-after::before,
+.rw-line.add .rw-after::before { content: '+'; color: var(--ok); }
+
+.rw-kept {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 6px 0 0;
+}
+
 /* ---------- Impression : page A4 identique au rendu écran ---------- */
 
 /* Marges de page A4 (haut/bas/gauche/droite) : chaque page exportée les porte,

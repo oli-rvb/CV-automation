@@ -3176,27 +3176,143 @@ function rewriteVersion() {
   return (state.rewrite && state.versions.find((v) => v.id === state.rewrite.versionId)) || null;
 }
 
+/* ---------- Diff mot à mot ---------- */
+
+// Comparaison souple : casse, accents et ponctuation finale ne comptent pas,
+// pour ne surligner que les vraies différences de fond.
+function diffWordKey(w) {
+  return normalizeText(w).replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, '');
+}
+
+// Diff mot à mot par plus longue sous-séquence commune. Renvoie deux listes de
+// jetons { t, on } — `on` marquant les mots retirés (avant) ou ajoutés (après).
+function wordDiff(before, after) {
+  const A = before.match(/\S+/g) || [];
+  const B = after.match(/\S+/g) || [];
+  // Lignes anormalement longues : on affiche les deux textes en entier plutôt
+  // que de calculer une matrice qui n'apprendrait rien.
+  if (A.length * B.length > 40000) {
+    return { a: A.map((t) => ({ t, on: true })), b: B.map((t) => ({ t, on: true })) };
+  }
+  const ka = A.map(diffWordKey);
+  const kb = B.map(diffWordKey);
+  const m = A.length;
+  const n = B.length;
+  const L = Array.from({ length: m + 1 }, () => new Uint16Array(n + 1));
+  for (let i = m - 1; i >= 0; i--) {
+    for (let j = n - 1; j >= 0; j--) {
+      L[i][j] = ka[i] === kb[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+    }
+  }
+  const a = [];
+  const b = [];
+  let i = 0;
+  let j = 0;
+  while (i < m && j < n) {
+    if (ka[i] === kb[j]) {
+      a.push({ t: A[i++] });
+      b.push({ t: B[j++] });
+    } else if (L[i + 1][j] >= L[i][j + 1]) {
+      a.push({ t: A[i++], on: true });
+    } else {
+      b.push({ t: B[j++], on: true });
+    }
+  }
+  while (i < m) a.push({ t: A[i++], on: true });
+  while (j < n) b.push({ t: B[j++], on: true });
+  return { a, b };
+}
+
+function diffLineEl(tokens, cls) {
+  const node = el('div', { class: cls });
+  tokens.forEach((tk, i) => {
+    if (i) node.append(' ');
+    node.append(tk.on ? el('span', { class: 'w', text: tk.t }) : tk.t);
+  });
+  return node;
+}
+
+/* ---------- Rendu du rapport ---------- */
+
+// Texte du CV de base visé par une entrée, tel qu'il est AUJOURD'HUI : c'est
+// lui qui réapparaît quand on annule la ligne, pas le `before` figé.
+function baseTextFor(expId, entry) {
+  if (entry.kind === 'add') return '';
+  const exp = findExp(expId);
+  const b = exp && exp.bullets.find((x) => x.id === entry.bulletId);
+  return b ? b.text : entry.before;
+}
+
+function rewriteLineItem(expId, entry) {
+  const base = baseTextFor(expId, entry);
+  const isAdd = entry.kind === 'add';
+  const same = !isAdd && base === entry.after;
+  const li = el('li', {
+    class: 'rw-line' + (entry.active ? '' : ' off') + (isAdd ? ' add' : '') + (same ? ' same' : ''),
+    'data-entry': entry.id,
+  });
+
+  const tag = isAdd ? 'ligne ajoutée' : same ? 'inchangée' : entry.active ? 'réécrite' : 'annulée';
+  li.append(
+    el(
+      'div',
+      { class: 'rw-line-top' },
+      el('span', { class: 'rw-tag', text: tag }),
+      el('button', {
+        type: 'button',
+        class: 'ghost rw-toggle',
+        'data-rw': 'toggle',
+        title: entry.active
+          ? (isAdd ? 'Retirer cette ligne ajoutée' : 'Revenir au texte du CV de base')
+          : 'Réappliquer la ligne recalibrée',
+        text: entry.active ? 'Annuler' : 'Rétablir',
+      })
+    )
+  );
+
+  if (isAdd) {
+    li.append(diffLineEl([{ t: entry.after, on: true }], 'rw-after'));
+  } else if (same) {
+    li.append(diffLineEl([{ t: entry.after }], 'rw-after'));
+  } else {
+    const { a, b } = wordDiff(base, entry.after);
+    li.append(diffLineEl(a, 'rw-before'), diffLineEl(b, 'rw-after'));
+  }
+  return li;
+}
+
 function renderRewritePanel() {
   rewriteReportEl.textContent = '';
   const rw = state.rewrite;
   if (!rw) return;
 
   const s = rw.stats || { rewritten: 0, unchanged: 0, kept: 0, added: 0 };
-  const plural = (n, one, many = one + 's') => `${n} ${n > 1 ? many : one}`;
+  const plural = (n, one, many) => `${n} ${n > 1 ? many : one}`;
   const parts = [plural(s.rewritten, 'ligne réécrite', 'lignes réécrites')];
   if (s.unchanged) parts.push(plural(s.unchanged, 'inchangée', 'inchangées'));
   if (s.added) parts.push(plural(s.added, 'ajoutée', 'ajoutées'));
   if (s.kept) parts.push(plural(s.kept, 'tiret conservé', 'tirets conservés'));
 
+  const all = Object.values(rw.entries).flat();
+  const off = all.filter((e) => !e.active).length;
+
   const box = el('div', { class: 'rw-report' });
-  box.append(el('div', { class: 'rw-summary', text: parts.join(' · ') }));
+  box.append(
+    el('div', { class: 'rw-summary', text: parts.join(' · ') }),
+    el('p', {
+      class: 'hint rw-hint',
+      text: off
+        ? `${plural(off, 'ligne annulée', 'lignes annulées')} sur ${all.length} — les lignes annulées reprennent le texte du CV de base.`
+        : 'Tout est appliqué. Relisez ligne à ligne : le texte barré est celui du CV de base, qui n’a pas bougé.',
+    })
+  );
 
   const v = rewriteVersion();
   box.append(
     el(
       'div',
       { class: 'rw-version' },
-      el('label', { class: 'rw-version-label', for: 'rwName', text: v ? 'CV créé ✓' : 'CV créé (supprimé depuis)' }),
+      el('label', { class: 'rw-version-label', for: 'rwName', text: v ? 'CV créé ✓' : 'CV supprimé' }),
       el('input', {
         id: 'rwName',
         type: 'text',
@@ -3208,17 +3324,53 @@ function renderRewritePanel() {
   );
 
   if (rw.jobText !== effectiveJobText()) {
-    box.append(el('p', { class: 'rw-stale', text: "L’offre a changé depuis cette relecture — recopiez le prompt pour la remettre à jour." }));
+    box.append(el('p', { class: 'rw-stale', text: 'L’offre a changé depuis cette relecture — recopiez le prompt pour la remettre à jour.' }));
   }
 
   box.append(
     el(
       'div',
-      { class: 'panel-actions' },
-      el('button', { type: 'button', class: 'ghost', 'data-rw': 'discard', text: 'Abandonner la relecture' })
+      { class: 'panel-actions rw-global' },
+      el('button', { type: 'button', class: 'ghost', 'data-rw': 'all-off', disabled: off === all.length ? '' : undefined, text: 'Tout annuler' }),
+      el('button', { type: 'button', class: 'ghost', 'data-rw': 'all-on', disabled: off === 0 ? '' : undefined, text: 'Tout réappliquer' }),
+      el('button', { type: 'button', class: 'ghost danger', 'data-rw': 'discard', text: 'Abandonner' })
     )
   );
+
+  for (const exp of state.experiences) {
+    const list = rewriteEntriesFor(exp.id);
+    const kept = exp.bullets.length - (list ? list.filter((e) => e.kind === 'edit').length : 0);
+    if (!list && !kept) continue;
+    const block = el('div', { class: 'rw-exp' }, el('h4', { text: exp.role || 'Expérience' }));
+    if (list) block.append(el('ol', { class: 'rw-lines' }, ...list.map((e) => rewriteLineItem(exp.id, e))));
+    if (kept > 0) {
+      block.append(
+        el('p', {
+          class: 'rw-kept',
+          text: `${plural(kept, 'tiret du CV de base conservé tel quel', 'tirets du CV de base conservés tels quels')} (l’assistant n’a pas rendu de ligne pour ${kept > 1 ? 'eux' : 'lui'}).`,
+        })
+      );
+    }
+    box.append(block);
+  }
+
   rewriteReportEl.append(box);
+}
+
+// Bascule d'une ligne : la couche est la seule à changer, le CV nommé suit.
+function setRewriteEntryActive(entryId, active) {
+  for (const list of Object.values(state.rewrite.entries)) {
+    const e = list.find((x) => x.id === entryId);
+    if (e) {
+      e.active = active;
+      return true;
+    }
+  }
+  return false;
+}
+
+function setAllRewriteActive(active) {
+  for (const list of Object.values(state.rewrite.entries)) for (const e of list) e.active = active;
 }
 
 // Abandonner : la couche disparaît, le CV redevient celui de base. Le CV nommé
@@ -3235,7 +3387,26 @@ async function discardRewrite() {
 rewriteReportEl.addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-rw]');
   if (!btn || !state.rewrite) return;
-  if (btn.dataset.rw === 'discard') discardRewrite();
+  switch (btn.dataset.rw) {
+    case 'toggle': {
+      const li = btn.closest('.rw-line');
+      if (!li || !setRewriteEntryActive(li.dataset.entry, li.classList.contains('off'))) return;
+      break;
+    }
+    case 'all-off':
+      setAllRewriteActive(false);
+      break;
+    case 'all-on':
+      setAllRewriteActive(true);
+      break;
+    case 'discard':
+      discardRewrite();
+      return;
+    default:
+      return;
+  }
+  syncRewriteVersion();
+  rerender();
 });
 
 // Renommer le CV créé depuis le panneau, sans re-rendre (le champ garderait
