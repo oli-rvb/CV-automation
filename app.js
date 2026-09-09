@@ -2973,6 +2973,13 @@ function generatedView() {
   return out;
 }
 
+// Nombre de lignes effectivement soumises au LLM : permet de dire à
+// l'utilisateur ce qui a été recalibré ET ce qui ne l'a pas été, plutôt que
+// d'annoncer un succès sur une réponse partielle.
+function submittedLineCount() {
+  return generatedView().reduce((n, v) => n + v.bullets.length, 0);
+}
+
 // Prompt envoyé au LLM — le même quel que soit le chemin (presse-papiers ou
 // backend). Il interdit explicitement d'inventer : un CV est un document
 // factuel, un chiffre fabriqué est une faute, pas une amélioration.
@@ -3054,6 +3061,20 @@ function applyRewrite(lines, mode) {
   }
   if (applied && p.report) p.report.rewrite = mode;
   return applied;
+}
+
+// Sortie de secours : rend aux lignes leur formulation d'origine. La
+// sélection des expériences, l'ordre et le nom du CV, eux, restent — seule la
+// réécriture est annulée. Le CV enregistré est remis à jour dans la foulée.
+function undoRewrite() {
+  const p = state.proposal;
+  if (!p) return;
+  p.texts = {};
+  if (p.report) p.report.rewrite = 'none';
+  pasteZoneFocused = false;
+  syncGeneratedVersion();
+  setGenStatus('Recalibrage annulé — les lignes ont repris leur formulation d’origine.', 'done');
+  rerender();
 }
 
 // Voie historique de la copie : une zone de texte hors écran, sélectionnée
@@ -3241,11 +3262,32 @@ function rewriteBox() {
   const p = state.proposal;
   const mode = (p.report && p.report.rewrite) || 'none';
 
-  if (mode === 'server') {
-    return el('p', { class: 'apply-note', text: 'Lignes recalibrées automatiquement ✓' });
-  }
-  if (mode === 'clipboard') {
-    return el('p', { class: 'apply-note', text: 'Lignes recalibrées à partir de la réponse collée ✓' });
+  if (mode === 'server' || mode === 'clipboard') {
+    const rewritten = Object.keys(p.texts).length;
+    const total = submittedLineCount();
+    return el(
+      'div',
+      { class: 'rewrite-done' },
+      el('p', {
+        class: 'apply-note',
+        text: mode === 'server'
+          ? `${rewritten} ligne${rewritten > 1 ? 's' : ''} sur ${total} recalibrée${rewritten > 1 ? 's' : ''} automatiquement ✓`
+          : `${rewritten} ligne${rewritten > 1 ? 's' : ''} sur ${total} recalibrée${rewritten > 1 ? 's' : ''} à partir de la réponse collée ✓`,
+      }),
+      rewritten < total
+        ? el('p', {
+            class: 'empty-note',
+            text: 'Les autres gardent leur formulation d’origine : la réponse ne les couvrait pas.',
+          })
+        : null,
+      el('button', {
+        type: 'button',
+        id: 'undoRewriteBtn',
+        class: 'ghost',
+        text: 'Annuler le recalibrage',
+        title: 'Rend aux lignes leur formulation d’origine (la sélection et l’ordre sont conservés)',
+      })
+    );
   }
 
   const box = el(
@@ -3372,14 +3414,24 @@ function renderSuggestions() {
 // Le collage de la réponse applique tout : c'est le seul geste demandé sur ce
 // chemin, il ne doit pas en appeler un second (pas de bouton « Valider »).
 function ingestRewrite(raw) {
+  const total = submittedLineCount();
   const lines = parseRewriteResponse(raw);
   const applied = applyRewrite(lines, 'clipboard');
   if (!applied) {
-    setGenStatus('Réponse non exploitable : attendu le JSON demandé par le prompt.', 'warn');
+    // Aucun identifiant connu dans le texte collé : ce n'est pas la réponse
+    // attendue (l'offre recollée par erreur, par exemple). Rien n'est appliqué.
+    setGenStatus(
+      'Réponse non reconnue : aucune ligne du CV ne s’y retrouve. Collez la réponse de votre IA au prompt copié.',
+      'warn'
+    );
     return false;
   }
   syncGeneratedVersion();
-  setGenStatus(`${applied} ligne${applied > 1 ? 's' : ''} recalibrée${applied > 1 ? 's' : ''} — CV enregistré à jour.`, 'done');
+  setGenStatus(
+    `${applied} ligne${applied > 1 ? 's' : ''} sur ${total} recalibrée${applied > 1 ? 's' : ''} — CV enregistré à jour.` +
+      (applied < total ? ' Les autres gardent leur formulation d’origine.' : ''),
+    applied < total ? 'warn' : 'done'
+  );
   rerender();
   return true;
 }
@@ -3407,6 +3459,10 @@ resultsEl.addEventListener('click', async (e) => {
       if (field) field.select();
       btn.textContent = 'Copiez le texte sélectionné';
     }
+    return;
+  }
+  if (e.target.closest('#undoRewriteBtn')) {
+    undoRewrite();
     return;
   }
   if (e.target.closest('#discardProposalBtn')) {

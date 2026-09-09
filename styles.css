@@ -1887,6 +1887,23 @@ main.tab-create #createLeft {
 
 .rewrite-box .empty-note { margin: 8px 0 0; }
 
+/* État « recalibré » : ce qui a été fait, ce qui ne l'a pas été, et la sortie
+   de secours qui rend aux lignes leur formulation d'origine. */
+
+.rewrite-done {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  background: #fff;
+}
+
+.rewrite-done .apply-note { margin: 0; }
+
+.rewrite-done .empty-note { margin: 4px 0 0; }
+
+.rewrite-done #undoRewriteBtn { margin-top: 8px; font-size: 13px; padding: 5px 12px; }
+
 .rewrite-peek { margin-top: 8px; }
 
 .rewrite-peek summary {
