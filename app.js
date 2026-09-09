@@ -2429,6 +2429,133 @@ function tokenize(text) {
   });
 }
 
+/* ---------- Offre : texte collé ou adresse à récupérer ---------- */
+
+// Base du backend : c'est lui qui sert l'app, sauf quand elle est ouverte en
+// file:// où l'on tente le serveur local (server.js admet l'origine « null »).
+const BACKEND_BASE = location.protocol === 'file:' ? 'http://localhost:3333' : '';
+const backendUrl = (p) => BACKEND_BASE + p;
+
+// Longueur maximale de texte d'offre conservée : au-delà, on ne gagne plus
+// rien (ni pour le scoring, ni pour le prompt) et on alourdit tout.
+const MAX_OFFER_CHARS = 12000;
+
+// Une saisie d'une seule ligne qui ressemble à une adresse : elle sera
+// récupérée par le backend (le navigateur ne peut pas, CORS) au lieu d'être
+// analysée telle quelle comme du texte d'offre.
+function looksLikeUrl(s) {
+  const t = (s || '').trim();
+  if (!t || /\s/.test(t)) return false;
+  return /^https?:\/\/\S+$/i.test(t) || /^www\.[^\s/]+\.[a-z]{2,}(\/\S*)?$/i.test(t);
+}
+
+function toHttpUrl(s) {
+  const t = s.trim();
+  return /^https?:\/\//i.test(t) ? t : 'https://' + t;
+}
+
+// Texte lisible d'un fragment HTML : on retire ce qui n'est pas du contenu,
+// puis on force un retour à la ligne à la fin de chaque bloc — sans quoi
+// « Vos missions » et le premier tiret se retrouveraient collés.
+function htmlToText(root) {
+  for (const n of root.querySelectorAll('script,style,noscript,template,svg,iframe,nav,header,footer,form')) {
+    n.remove();
+  }
+  for (const n of root.querySelectorAll('br')) n.replaceWith('\n');
+  for (const n of root.querySelectorAll('p,li,div,section,article,tr,h1,h2,h3,h4,h5,h6')) n.append('\n');
+  return (root.textContent || '')
+    .replace(/\r/g, '')
+    .replace(/[ \t\u00a0]+/g, ' ')
+    .split('\n')
+    .map((l) => l.trim())
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+// Cherche un bloc JobPosting dans un JSON-LD, y compris imbriqué dans un
+// tableau ou un @graph (les sites d'emploi les emboîtent volontiers).
+function findJobPosting(node, depth = 0) {
+  if (!node || depth > 4) return null;
+  if (Array.isArray(node)) {
+    for (const it of node) {
+      const found = findJobPosting(it, depth + 1);
+      if (found) return found;
+    }
+    return null;
+  }
+  if (typeof node !== 'object') return null;
+  const raw = node['@type'];
+  const types = Array.isArray(raw) ? raw : [raw];
+  if (types.some((t) => typeof t === 'string' && t.toLowerCase() === 'jobposting')) return node;
+  return findJobPosting(node['@graph'], depth + 1);
+}
+
+// Extrait d'une page d'offre : son texte, et si possible l'intitulé du poste
+// et l'entreprise (ils servent à nommer le CV tout seul).
+function extractJobPosting(html) {
+  const empty = { text: '', title: '', company: '' };
+  let doc;
+  try {
+    doc = new DOMParser().parseFromString(html, 'text/html');
+  } catch {
+    return empty;
+  }
+
+  // 1) Données structurées : le texte de l'offre y est balisé proprement.
+  for (const sc of doc.querySelectorAll('script[type="application/ld+json"]')) {
+    let data;
+    try {
+      data = JSON.parse(sc.textContent || '');
+    } catch {
+      continue;
+    }
+    const job = findJobPosting(data);
+    if (!job) continue;
+    const holder = doc.createElement('div');
+    holder.innerHTML = String(job.description || '');
+    const text = htmlToText(holder);
+    if (!text) continue;
+    const org = job.hiringOrganization;
+    return {
+      text: text.slice(0, MAX_OFFER_CHARS),
+      title: String(job.title || '').trim(),
+      company: String((org && (org.name || org)) || '').trim(),
+    };
+  }
+
+  // 2) Repli : le corps de la page, débarrassé de son habillage.
+  const main = doc.querySelector('main, article') || doc.body;
+  if (!main) return empty;
+  const docTitle = (doc.querySelector('title') || {}).textContent || '';
+  return {
+    text: htmlToText(main).slice(0, MAX_OFFER_CHARS),
+    title: docTitle.trim(),
+    company: '',
+  };
+}
+
+// Récupère une offre depuis son adresse via le backend. Sans backend (mode
+// file:// sans serveur), l'appel échoue : l'appelant invite alors à coller le
+// texte, ce qui reste le mode nominal de l'app.
+async function fetchOfferFromUrl(url) {
+  let res;
+  try {
+    res = await fetch(backendUrl('/fetch-job'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: toHttpUrl(url) }),
+    });
+  } catch {
+    throw new Error('adresse non récupérable sans le serveur local — lancez « node server.js », ou collez le texte de l’offre.');
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `le site a répondu HTTP ${res.status}`);
+  const posting = extractJobPosting(String(data.html || ''));
+  if (!posting.text) throw new Error('aucun texte d’offre trouvé à cette adresse — collez plutôt le texte.');
+  return posting;
+}
+
 // Modèle de l'offre : fréquences des mots-clés et des paires de mots consécutifs
 function buildJobModel(text) {
   const tokens = tokenize(text);
@@ -2659,19 +2786,74 @@ resultsEl.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && e.target.id === 'newCvName') saveProposalVersion();
 });
 
-$('#analyzeBtn').addEventListener('click', () => {
-  state.jobText = jobTextEl.value;
-  buildProposal();
-  rerender();
-});
+/* ---------- Ligne d'avancement de la génération ---------- */
+
+const genStatusEl = $('#genStatus');
+
+// Une seule ligne, remplacée à chaque étape : l'utilisateur suit la chaîne
+// sans avoir à y intervenir. `tone` : 'work' | 'done' | 'warn'.
+function setGenStatus(text, tone = 'work') {
+  genStatusEl.className = 'gen-status ' + tone;
+  genStatusEl.textContent = text;
+  genStatusEl.hidden = !text;
+}
+
+/* ---------- Chaîne de génération ---------- */
+
+// Métadonnées de la dernière offre récupérée par adresse (intitulé du poste,
+// entreprise) : elles servent à nommer le CV tout seul.
+let offerMeta = null;
+
+// Ramène la saisie à du texte d'offre : telle quelle si c'est déjà du texte,
+// récupérée par le backend si c'est une adresse.
+async function resolveOfferText() {
+  const raw = jobTextEl.value.trim();
+  if (!raw) return '';
+  if (!looksLikeUrl(raw)) {
+    offerMeta = null;
+    return raw.slice(0, MAX_OFFER_CHARS);
+  }
+  setGenStatus('Récupération de l’offre…');
+  const posting = await fetchOfferFromUrl(raw);
+  offerMeta = { title: posting.title, company: posting.company };
+  // La saisie est remplacée par le texte récupéré : l'utilisateur voit ce qui
+  // a réellement été analysé, et peut le corriger.
+  jobTextEl.value = posting.text;
+  return posting.text;
+}
+
+async function generateCv() {
+  const btn = $('#generateBtn');
+  btn.disabled = true;
+  try {
+    const text = await resolveOfferText();
+    state.jobText = jobTextEl.value;
+    if (!text) {
+      setGenStatus('Collez le texte de l’offre (ou son adresse) pour lancer la génération.', 'warn');
+      rerender();
+      return;
+    }
+    setGenStatus('');
+    buildProposal();
+    rerender();
+  } catch (err) {
+    setGenStatus(`Offre non récupérée : ${err.message}`, 'warn');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+$('#generateBtn').addEventListener('click', generateCv);
 
 $('#clearAnalysisBtn').addEventListener('click', async () => {
   if (state.proposal && !(await customConfirm('Effacer l’offre et la proposition en cours ? Le CV de base n’est pas affecté.', { confirmLabel: 'Effacer' }))) return;
   state.proposal = null;
   proposalSaved = false;
   newCvNameDraft = '';
+  offerMeta = null;
   jobTextEl.value = '';
   state.jobText = '';
+  setGenStatus('');
   rerender();
 });
 
@@ -2714,7 +2896,7 @@ $('#printBtn').addEventListener('click', () => window.print());
 //    ligne).
 // 2. Secours sans backend : générateur client pdf.js (métriques Helvetica),
 //    fidèle mais avec de possibles écarts de coupure de ligne.
-const PDF_ENDPOINT = location.protocol === 'file:' ? 'http://localhost:3333/pdf' : '/pdf';
+const PDF_ENDPOINT = backendUrl('/pdf');
 
 async function backendPdf() {
   const res = await fetch(PDF_ENDPOINT, {
