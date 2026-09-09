@@ -1196,12 +1196,19 @@ li.bullet:hover .bullet-controls { display: flex; }
    d'édition : superposés (aucune place prise dans le flux), absents au repos
    — donc absents du PDF et de l'impression. */
 
-.diff-badge {
+.bullet-badges {
   position: absolute;
   right: 0;
   top: 0;
   z-index: 2;
   display: none;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 120ms ease, display 120ms allow-discrete;
+}
+
+.diff-badge,
+.rw-badge {
   font-size: 11px;
   font-weight: 700;
   white-space: nowrap;
@@ -1209,28 +1216,38 @@ li.bullet:hover .bullet-controls { display: flex; }
   padding: 1px 7px;
   background: var(--accent-soft);
   color: #1e40af;
-  opacity: 0;
-  transition: opacity 120ms ease, display 120ms allow-discrete;
 }
 
-#cv:is(:hover, :focus-within) .diff-badge {
-  display: inline-block;
+/* Relecture : un tiret recalibré, ou une ligne ajoutée par la relecture. */
+.rw-badge-edit { background: #fef3c7; color: #92400e; }
+.rw-badge-add { background: #dcfce7; color: #166534; }
+
+#cv:is(:hover, :focus-within) .bullet-badges {
+  display: inline-flex;
   opacity: 1;
 }
 
 @starting-style {
-  #cv:is(:hover, :focus-within) .diff-badge { opacity: 0; }
+  #cv:is(:hover, :focus-within) .bullet-badges { opacity: 0; }
 }
 
 /* Au survol d'un tiret précis, les contrôles ✕ / ↑ / ↓ reprennent la place
-   du badge (tous deux sont ancrés en fin de ligne). */
-#cv li.bullet:hover .diff-badge {
+   des badges (tous sont ancrés en fin de ligne). */
+#cv li.bullet:hover .bullet-badges {
   display: none;
   opacity: 0;
 }
 
 #cv:is(:hover, :focus-within) li.bullet.moved {
   background: color-mix(in srgb, var(--accent-soft) 45%, #fff);
+}
+
+#cv:is(:hover, :focus-within) li.bullet.rw-edit {
+  background: color-mix(in srgb, #fef3c7 55%, #fff);
+}
+
+#cv:is(:hover, :focus-within) li.bullet.rw-add {
+  background: color-mix(in srgb, #dcfce7 55%, #fff);
 }
 
 .icon-btn {
@@ -2132,9 +2149,10 @@ main.tab-create #createLeft {
      déjà hors du flux au repos et ne reviennent que sur :hover / :focus-within,
      qui ne s'appliquent pas sans souris : le PDF reprend la feuille au repos.
      Filet de sécurité pour les contrôles flottants ✕ / ↑ / ↓ : */
-  .bullet-controls, .exp-controls, .photo-controls, .diff-badge { display: none !important; }
+  .bullet-controls, .exp-controls, .photo-controls,
+  .bullet-badges, .diff-badge, .rw-badge { display: none !important; }
 
-  li.bullet.moved { background: none !important; }
+  li.bullet.moved, li.bullet.rw-edit, li.bullet.rw-add { background: none !important; }
   .exp:hover { background: none; }
   [contenteditable]:hover, [contenteditable]:focus { background: none; }
 

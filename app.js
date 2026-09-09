@@ -866,24 +866,40 @@ function diffBadge(bulletId, index, ownerId) {
 // et les projets (l'identité du propriétaire se retrouve via ownerFromSection,
 // pas via un attribut sur le <ul> lui-même). `ownerId` n'est fourni que pour
 // les expériences : il sert au diff avec le CV de base pendant une proposition.
+// Badge de relecture : dit d'un coup d'œil qu'un tiret a été recalibré (avec
+// le texte du CV de base en infobulle) ou qu'il a été ajouté. Même vie que le
+// badge d'ordre : visible au survol du CV seulement, donc jamais imprimé.
+function rewriteBadge(b) {
+  if (!b.rw) return null;
+  return el('span', {
+    class: 'rw-badge rw-badge-' + b.rw,
+    title: b.rw === 'add' ? 'Ligne ajoutée par la relecture' : `Texte du CV de base : ${b.rwBefore}`,
+    text: b.rw === 'add' ? '+ ajoutée' : '↻ réécrite',
+  });
+}
+
 function bulletsUl(bullets, ownerId) {
   const ul = el('ul', { class: 'bullets' });
   bullets.forEach((b, j) => {
     const badge = diffBadge(b.id, j, ownerId);
+    const rwBadge = rewriteBadge(b);
+    // Une ligne ajoutée par la relecture n'existe pas dans le CV de base :
+    // elle ne se réordonne pas (le ✕ la retire de la relecture).
+    const added = b.rw === 'add';
     ul.append(
       el(
         'li',
-        { class: 'bullet' + (badge ? ' moved' : ''), 'data-bullet-id': b.id },
-        el('span', { class: 'drag-handle', title: 'Glisser pour réordonner', text: '⠿' }),
+        { class: 'bullet' + (badge ? ' moved' : '') + (b.rw ? ' rw-' + b.rw : ''), 'data-bullet-id': b.id },
+        !added && el('span', { class: 'drag-handle', title: 'Glisser pour réordonner', text: '⠿' }),
         el('span', { class: 'bullet-dot', text: '•' }),
         el('div', { class: 'bullet-text', contenteditable: 'true', 'data-bullet-id': b.id }, b.text),
-        badge,
+        (badge || rwBadge) && el('span', { class: 'bullet-badges' }, rwBadge, badge),
         el(
           'div',
           { class: 'bullet-controls' },
-          j > 0 && iconBtn('↑', 'bullet-up', 'Monter le point'),
-          j < bullets.length - 1 && iconBtn('↓', 'bullet-down', 'Descendre le point'),
-          iconBtn('✕', 'bullet-del', 'Supprimer le point', 'del')
+          !added && j > 0 && iconBtn('↑', 'bullet-up', 'Monter le point'),
+          !added && j < bullets.length - 1 && iconBtn('↓', 'bullet-down', 'Descendre le point'),
+          iconBtn('✕', 'bullet-del', added ? 'Retirer cette ligne ajoutée' : 'Supprimer le point', 'del')
         )
       )
     );
