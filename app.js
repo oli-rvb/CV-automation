@@ -874,7 +874,11 @@ function syncDraftsIntoOrders() {
 function acceptCandidate(c) {
   if (!c || !c.expId || !findExp(c.expId)) return false;
   ensureProposal();
-  const d = { id: uid(), expId: c.expId, text: c.text, replaces: c.replaces || '' };
+  // Deux lignes acceptées ne peuvent pas remplacer la même puce : la seconde
+  // s'ajoute au lieu de se substituer à une puce déjà masquée.
+  let replaces = c.replaces || '';
+  if (replaces && state.proposal.drafts.some((d) => d.replaces === replaces)) replaces = '';
+  const d = { id: uid(), expId: c.expId, text: c.text, replaces };
   state.proposal.drafts.push(d);
   syncDraftsIntoOrders();
   c.status = 'accepted';
@@ -2769,23 +2773,30 @@ function renderSuggestions() {
       el('h3', { text: 'Nouveau CV proposé' }),
       el('p', {
         class: 'hint',
-        text: 'Le CV ci-dessous est réordonné pour cette offre — le CV de base n’est pas modifié. ' +
-          'Survolez le CV pour voir les tirets déplacés (badge « était n°X »), ' +
-          'puis enregistrez ce nouveau CV pour le retrouver dans l’onglet « CV de base ».',
+        text: 'Le CV ci-dessous est la proposition : tirets réordonnés pour cette offre et lignes que ' +
+          'vous avez acceptées — le CV de base n’est pas modifié. Survolez le CV pour voir les ' +
+          'badges (« était n°X », « ✦ ligne proposée »), puis enregistrez ce nouveau CV pour le ' +
+          'retrouver dans l’onglet « CV de base ».',
       })
     );
     for (const exp of state.experiences) {
       if (!proposalOrderFor(exp.id)) continue;
+      const drafts = proposalDrafts(exp.id);
+      const base = new Map(exp.bullets.map((b, i) => [b.id, i]));
       let moved = 0;
       displayBullets(exp).forEach((b, i) => {
-        if (exp.bullets[i] !== b) moved += 1;
+        const baseIdx = base.get(b.id);
+        if (baseIdx !== undefined && baseIdx !== i) moved += 1;
       });
+      const parts = [];
+      if (drafts.length) parts.push(`${drafts.length} ligne${drafts.length > 1 ? 's' : ''} acceptée${drafts.length > 1 ? 's' : ''}`);
+      if (moved) parts.push(`${moved} tiret${moved > 1 ? 's' : ''} déplacé${moved > 1 ? 's' : ''}`);
       box.append(
         el(
           'div',
           { class: 'proposal-exp-line' },
           el('strong', { text: exp.role || 'Expérience' }),
-          ` : ${moved ? `${moved} tiret${moved > 1 ? 's' : ''} déplacé${moved > 1 ? 's' : ''}` : 'ordre inchangé'}`
+          ` : ${parts.length ? parts.join(', ') : 'ordre inchangé'}`
         )
       );
     }
@@ -2821,15 +2832,31 @@ function renderSuggestions() {
   }
 }
 
+// Le CV de base n'a jamais été modifié : ignorer la proposition se limite à
+// l'oublier. Les lignes acceptées, elles, disparaissent aussi — on demande
+// confirmation avant de défaire ce travail d'arbitrage.
+async function discardProposal() {
+  const drafts = state.proposal ? state.proposal.drafts.length : 0;
+  if (
+    drafts &&
+    !(await customConfirm(
+      `Ignorer la proposition ? Les ${drafts} ligne${drafts > 1 ? 's' : ''} que vous avez acceptée${drafts > 1 ? 's' : ''} ` +
+        'seront retirée' + (drafts > 1 ? 's' : '') + ' du CV proposé. Le CV de base n’est pas affecté.',
+      { confirmLabel: 'Ignorer', danger: true }
+    ))
+  ) {
+    return;
+  }
+  state.proposal = null;
+  proposalSaved = false;
+  rerender();
+}
+
 resultsEl.addEventListener('click', (e) => {
   if (e.target.closest('#saveProposalBtn')) {
     saveProposalVersion();
   } else if (e.target.closest('#discardProposalBtn')) {
-    // Le CV de base n'a jamais été modifié : ignorer la proposition se limite
-    // à l'oublier (ré-analyser l'offre la reconstruit à l'identique).
-    state.proposal = null;
-    proposalSaved = false;
-    rerender();
+    discardProposal();
   }
 });
 
@@ -3062,6 +3089,7 @@ function renderAssist() {
   const offer = effectiveJobText();
   assistPanelEl.hidden = !offer;
   if (!offer) return;
+  renderCandidates();
 
   const nbBullets = state.experiences.reduce((n, e) => n + e.bullets.length, 0);
   const nbExp = state.experiences.length;
@@ -3184,6 +3212,233 @@ $('#parseReplyBtn').addEventListener('click', () => {
 $('#clearReplyBtn').addEventListener('click', () => {
   $('#llmReply').value = '';
   assistNote('#parseNote', '');
+});
+
+/* ============================================================
+   Assistant — étape 3 : arbitrage ligne par ligne
+   ============================================================
+
+   Le cœur de ce parcours : chaque ligne proposée est une carte, et rien ne
+   rejoint le CV proposé sans un clic sur « Accepter ». Chaque carte montre à
+   quelle expérience la ligne se rattache, quelle puce du CV de base elle
+   remplacerait (affichée en vis-à-vis, pour un arbitrage informé), et laisse
+   la modifier avant de l'accepter. Tout est réversible : « Annuler » retire la
+   ligne du CV proposé et la remet en attente. */
+
+const candidateListEl = $('#candidateList');
+
+function proposalCandidates() {
+  return state.proposal ? state.proposal.candidates : [];
+}
+
+function findCandidate(id) {
+  return proposalCandidates().find((c) => c.id === id) || null;
+}
+
+// Intitulé court d'une expérience, pour les menus déroulants.
+function expLabel(exp) {
+  return [exp.role, exp.company].filter(Boolean).join(' — ') || 'Expérience sans intitulé';
+}
+
+function ellipsis(text, max = 64) {
+  const t = text.trim();
+  return t.length > max ? t.slice(0, max - 1) + '…' : t;
+}
+
+// Menu « à quelle expérience cette ligne se rattache-t-elle ? »
+function candidateExpSelect(c, disabled) {
+  const sel = el('select', {
+    class: 'candidate-select',
+    'data-cfield': 'expId',
+    'aria-label': 'Expérience visée',
+    ...(disabled ? { disabled: 'disabled' } : {}),
+  });
+  sel.append(el('option', { value: '', text: '— à rattacher —' }));
+  for (const exp of state.experiences) {
+    sel.append(el('option', { value: exp.id, text: ellipsis(expLabel(exp), 40) }));
+  }
+  sel.value = c.expId;
+  return sel;
+}
+
+// Menu « quelle puce cette ligne remplace-t-elle ? »
+function candidateBulletSelect(c, disabled) {
+  const exp = findExp(c.expId);
+  const sel = el('select', {
+    class: 'candidate-select',
+    'data-cfield': 'replaces',
+    'aria-label': 'Puce remplacée',
+    ...(disabled || !exp ? { disabled: 'disabled' } : {}),
+  });
+  sel.append(el('option', { value: '', text: 'Ajouter une ligne' }));
+  if (exp) {
+    exp.bullets.forEach((b, i) => {
+      sel.append(el('option', { value: b.id, text: `Remplacer n°${i + 1} — ${ellipsis(b.text, 34)}` }));
+    });
+  }
+  sel.value = exp && exp.bullets.some((b) => b.id === c.replaces) ? c.replaces : '';
+  return sel;
+}
+
+// La puce du CV de base que la ligne remplacerait, affichée telle quelle.
+function candidateOrigin(c) {
+  const exp = findExp(c.expId);
+  const bullet = exp && exp.bullets.find((b) => b.id === c.replaces);
+  if (!bullet) return null;
+  return el(
+    'div',
+    { class: 'candidate-origin' },
+    el('span', { class: 'candidate-origin-label', text: 'Aujourd’hui dans le CV' }),
+    el('p', { class: 'candidate-origin-text', text: bullet.text })
+  );
+}
+
+function candidateCard(c) {
+  const arbitrated = c.status !== 'pending';
+  const card = el('div', { class: `candidate ${'is-' + c.status}`, 'data-candidate-id': c.id });
+
+  card.append(
+    el(
+      'div',
+      { class: 'candidate-head' },
+      candidateExpSelect(c, arbitrated),
+      candidateBulletSelect(c, arbitrated)
+    )
+  );
+
+  const origin = candidateOrigin(c);
+  if (origin) card.append(origin);
+
+  if (c.status === 'accepted') {
+    // Acceptée : la ligne vit maintenant dans le CV proposé, où elle s'édite
+    // directement. La carte n'en garde qu'un rappel et le moyen d'annuler.
+    card.append(
+      el('div', { class: 'candidate-proposed' }, el('p', { class: 'candidate-text-static', text: c.text })),
+      el(
+        'div',
+        { class: 'candidate-actions' },
+        el('span', { class: 'candidate-state candidate-state-ok', text: 'Acceptée ✓ — modifiable dans le CV' }),
+        el('button', { type: 'button', class: 'ghost', 'data-cact': 'revoke', text: 'Annuler' })
+      )
+    );
+    return card;
+  }
+
+  if (c.status === 'rejected') {
+    card.append(
+      el('div', { class: 'candidate-proposed' }, el('p', { class: 'candidate-text-static', text: ellipsis(c.text, 110) })),
+      el(
+        'div',
+        { class: 'candidate-actions' },
+        el('span', { class: 'candidate-state', text: 'Rejetée' }),
+        el('button', { type: 'button', class: 'ghost', 'data-cact': 'restore', text: 'Rétablir' })
+      )
+    );
+    return card;
+  }
+
+  const ta = el('textarea', {
+    class: 'candidate-text',
+    rows: String(Math.max(2, Math.ceil(c.text.length / 48))),
+    'aria-label': 'Ligne proposée, modifiable avant acceptation',
+  });
+  ta.value = c.text;
+  card.append(
+    el(
+      'div',
+      { class: 'candidate-proposed' },
+      el('span', { class: 'candidate-proposed-label', text: 'Ligne proposée — modifiable' }),
+      ta
+    ),
+    el(
+      'div',
+      { class: 'candidate-actions' },
+      el('button', { type: 'button', 'data-cact': 'accept', text: '✓ Accepter' }),
+      el('button', { type: 'button', class: 'ghost', 'data-cact': 'reject', text: '✕ Rejeter' })
+    )
+  );
+  return card;
+}
+
+function renderCandidates() {
+  candidateListEl.textContent = '';
+  const list = proposalCandidates();
+  const step = $('#assistStep3');
+  const summary = $('#candidateSummary');
+
+  if (!list.length) {
+    step.classList.add('is-waiting');
+    summary.textContent = 'Les lignes proposées s’afficheront ici, une par une, dès que la réponse aura été relue.';
+    return;
+  }
+  step.classList.remove('is-waiting');
+
+  const nb = { pending: 0, accepted: 0, rejected: 0 };
+  for (const c of list) nb[c.status] += 1;
+  summary.textContent =
+    `${nb.pending} en attente · ${nb.accepted} acceptée${nb.accepted > 1 ? 's' : ''} · ` +
+    `${nb.rejected} rejetée${nb.rejected > 1 ? 's' : ''}. ` +
+    'Une ligne acceptée entre dans le CV proposé ci-contre — jamais dans le CV de base.';
+
+  // En attente d'abord : ce qui reste à trancher passe devant ce qui l'est déjà.
+  const rank = { pending: 0, accepted: 1, rejected: 2 };
+  [...list]
+    .sort((a, b) => rank[a.status] - rank[b.status])
+    .forEach((c) => candidateListEl.append(candidateCard(c)));
+}
+
+candidateListEl.addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-cact]');
+  if (!btn) return;
+  const c = findCandidate(btn.closest('[data-candidate-id]').dataset.candidateId);
+  if (!c) return;
+
+  switch (btn.dataset.cact) {
+    case 'accept':
+      if (!c.expId) {
+        assistNote('#parseNote', 'Choisissez d’abord l’expérience à laquelle rattacher cette ligne.', 'warn');
+        return;
+      }
+      acceptCandidate(c);
+      break;
+    case 'revoke':
+      revokeDraft(c.draftId);
+      break;
+    case 'reject':
+      c.status = 'rejected';
+      break;
+    case 'restore':
+      c.status = 'pending';
+      break;
+  }
+  assistNote('#parseNote', '');
+  rerender();
+});
+
+// Réaffectation : changer d'expérience remet à zéro la puce remplacée, qui
+// n'appartenait qu'à l'ancienne.
+candidateListEl.addEventListener('change', (e) => {
+  const sel = e.target.closest('select[data-cfield]');
+  if (!sel) return;
+  const c = findCandidate(sel.closest('[data-candidate-id]').dataset.candidateId);
+  if (!c) return;
+  if (sel.dataset.cfield === 'expId') {
+    c.expId = sel.value;
+    c.replaces = '';
+  } else {
+    c.replaces = sel.value;
+  }
+  rerender();
+});
+
+// Modification du texte avant acceptation : pas de re-rendu, le curseur reste.
+candidateListEl.addEventListener('input', (e) => {
+  const ta = e.target.closest('textarea.candidate-text');
+  if (!ta) return;
+  const c = findCandidate(ta.closest('[data-candidate-id]').dataset.candidateId);
+  if (!c) return;
+  c.text = ta.value.replace(/\s*\n\s*/g, ' ');
+  save();
 });
 
 /* ============================================================

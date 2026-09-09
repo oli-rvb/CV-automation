@@ -164,6 +164,15 @@
         </div>
         <p class="assist-note" id="parseNote" role="status" hidden></p>
       </div>
+
+      <!-- Étape 3 : l'arbitrage. Une carte par ligne proposée ; rien ne rejoint
+           le CV proposé sans un clic sur « Accepter », et rien n'y reste sans
+           que « Annuler » puisse l'en retirer. -->
+      <div class="assist-step" id="assistStep3">
+        <h3><span class="assist-step-num">3</span> Valider ligne par ligne</h3>
+        <p class="hint" id="candidateSummary"></p>
+        <div id="candidateList"></div>
+      </div>
     </section>
 
     <!-- Import/export JSON : sauvegarde/transfert de l'état complet, placé
