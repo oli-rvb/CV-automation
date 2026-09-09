@@ -237,7 +237,7 @@ function defaultCV() {
 }
 
 function defaultState() {
-  return { ...defaultCV(), versions: [], activeVersionId: null, proposal: null, activeTab: 'create', recentColors: [] };
+  return { ...defaultCV(), versions: [], activeVersionId: null, proposal: null, rewrite: null, activeTab: 'create', recentColors: [] };
 }
 
 /* ---------- Chargement / sauvegarde ---------- */
@@ -333,6 +333,60 @@ function normalizeCV(data) {
   return cv;
 }
 
+// Couche de relecture (variante « semi-auto ») : les lignes d'expérience
+// recalibrées sur une offre, appliquées d'un bloc. Comme la proposition
+// d'ordre, c'est une SURCOUCHE D'AFFICHAGE — le CV de base garde son texte,
+// qui reste toujours accessible en désactivant une ligne.
+//
+//   { createdAt, versionId, name, lang, jobText, entries: { [expId]: [entry] } }
+//   entry = { id, kind: 'edit', bulletId, before, after, active }
+//         | { id, kind: 'add',                before: '', after, active }
+//
+// `before` est le texte du CV de base au moment de l'application : il ne sert
+// qu'à afficher le diff. Annuler une ligne ne réécrit rien, cela repasse
+// simplement l'affichage sur le tiret du CV de base (toujours à jour).
+function normalizeRewrite(data, experiences) {
+  if (!data || typeof data !== 'object') return null;
+  const known = new Set(experiences.map((e) => e.id));
+  const entries = {};
+  const src = data.entries && typeof data.entries === 'object' ? data.entries : {};
+  for (const [expId, list] of Object.entries(src)) {
+    if (!known.has(expId) || !Array.isArray(list)) continue;
+    const exp = experiences.find((e) => e.id === expId);
+    const bulletIds = new Set(exp.bullets.map((b) => b.id));
+    const kept = [];
+    for (const e of list) {
+      if (!e || typeof e !== 'object') continue;
+      const after = String(e.after ?? '');
+      // Une ligne recalibrée vidée à la main reste une ligne de la relecture :
+      // seule une ligne AJOUTÉE vide n'a plus d'objet.
+      if (e.kind === 'add' && !after.trim()) continue;
+      if (e.kind === 'add') {
+        kept.push({ id: String(e.id || uid()), kind: 'add', bulletId: null, before: '', after, active: e.active !== false });
+      } else if (typeof e.bulletId === 'string' && bulletIds.has(e.bulletId)) {
+        kept.push({
+          id: String(e.id || uid()),
+          kind: 'edit',
+          bulletId: e.bulletId,
+          before: String(e.before ?? ''),
+          after,
+          active: e.active !== false,
+        });
+      }
+    }
+    if (kept.length) entries[expId] = kept;
+  }
+  if (Object.keys(entries).length === 0) return null;
+  return {
+    createdAt: Number(data.createdAt) || Date.now(),
+    versionId: typeof data.versionId === 'string' ? data.versionId : null,
+    name: String(data.name || ''),
+    lang: data.lang === 'en' ? 'en' : 'fr',
+    jobText: typeof data.jobText === 'string' ? data.jobText : '',
+    entries,
+  };
+}
+
 function normalizeState(data) {
   const s = normalizeCV(data);
   s.versions = (Array.isArray(data.versions) ? data.versions : []).map((v) => ({
@@ -355,6 +409,7 @@ function normalizeState(data) {
     }
     if (Object.keys(orders).length > 0) s.proposal = { orders };
   }
+  s.rewrite = normalizeRewrite(data.rewrite, s.experiences);
   s.activeTab = data.activeTab === 'base' ? 'base' : 'create';
   // Dernières couleurs libres utilisées (pipette), de la plus récente à la
   // plus ancienne. On ne garde que des hex valides, dédoublonnés, 5 au plus.
@@ -779,7 +834,7 @@ function proposalOrderFor(ownerId) {
 // l'ordre du CV de base partout ailleurs.
 function displayBullets(exp) {
   const order = inCreateTab() ? proposalOrderFor(exp.id) : null;
-  if (!order) return exp.bullets;
+  if (!order) return applyRewriteLayer(exp, exp.bullets);
   const byId = new Map(exp.bullets.map((b) => [b.id, b]));
   const out = [];
   for (const id of order) {
@@ -790,7 +845,7 @@ function displayBullets(exp) {
     }
   }
   out.push(...byId.values());
-  return out;
+  return applyRewriteLayer(exp, out);
 }
 
 // Badge de diff d'un tiret de la proposition : compare sa position affichée à
@@ -813,24 +868,44 @@ function diffBadge(bulletId, index, ownerId) {
 // et les projets (l'identité du propriétaire se retrouve via ownerFromSection,
 // pas via un attribut sur le <ul> lui-même). `ownerId` n'est fourni que pour
 // les expériences : il sert au diff avec le CV de base pendant une proposition.
+// Badge de relecture : dit d'un coup d'œil qu'un tiret a été recalibré (avec
+// le texte du CV de base en infobulle) ou qu'il a été ajouté. Même vie que le
+// badge d'ordre : visible au survol du CV seulement, donc jamais imprimé.
+function rewriteBadge(b) {
+  if (!b.rw) return null;
+  return el('span', {
+    class: 'rw-badge rw-badge-' + b.rw,
+    title: b.rw === 'add' ? 'Ligne ajoutée par la relecture' : `Texte du CV de base : ${b.rwBefore}`,
+    text: b.rw === 'add' ? '+ ajoutée' : '↻ réécrite',
+  });
+}
+
 function bulletsUl(bullets, ownerId) {
   const ul = el('ul', { class: 'bullets' });
+  // Dernier tiret réordonnable : les lignes ajoutées par la relecture ferment
+  // la liste sans en faire partie, le ↓ du tiret qui les précède n'a donc rien
+  // à déplacer.
+  const lastMovable = bullets.reduce((acc, b, k) => (b.rw === 'add' ? acc : k), -1);
   bullets.forEach((b, j) => {
     const badge = diffBadge(b.id, j, ownerId);
+    const rwBadge = rewriteBadge(b);
+    // Une ligne ajoutée par la relecture n'existe pas dans le CV de base :
+    // elle ne se réordonne pas (le ✕ la retire de la relecture).
+    const added = b.rw === 'add';
     ul.append(
       el(
         'li',
-        { class: 'bullet' + (badge ? ' moved' : ''), 'data-bullet-id': b.id },
-        el('span', { class: 'drag-handle', title: 'Glisser pour réordonner', text: '⠿' }),
+        { class: 'bullet' + (badge ? ' moved' : '') + (b.rw ? ' rw-' + b.rw : ''), 'data-bullet-id': b.id },
+        !added && el('span', { class: 'drag-handle', title: 'Glisser pour réordonner', text: '⠿' }),
         el('span', { class: 'bullet-dot', text: '•' }),
         el('div', { class: 'bullet-text', contenteditable: 'true', 'data-bullet-id': b.id }, b.text),
-        badge,
+        (badge || rwBadge) && el('span', { class: 'bullet-badges' }, rwBadge, badge),
         el(
           'div',
           { class: 'bullet-controls' },
-          j > 0 && iconBtn('↑', 'bullet-up', 'Monter le point'),
-          j < bullets.length - 1 && iconBtn('↓', 'bullet-down', 'Descendre le point'),
-          iconBtn('✕', 'bullet-del', 'Supprimer le point', 'del')
+          !added && j > 0 && iconBtn('↑', 'bullet-up', 'Monter le point'),
+          !added && j < lastMovable && iconBtn('↓', 'bullet-down', 'Descendre le point'),
+          iconBtn('✕', 'bullet-del', added ? 'Retirer cette ligne ajoutée' : 'Supprimer le point', 'del')
         )
       )
     );
@@ -1554,8 +1629,12 @@ function updateTabs() {
 }
 
 function rerender() {
+  // Le CV nommé de la relecture reflète le CV affiché : il doit suivre toutes
+  // les modifications, pas seulement les bascules de lignes recalibrées.
+  syncRewriteVersion();
   renderCV();
   renderSuggestions();
+  renderRewritePanel();
   renderVersions();
   updateTemplateToggle();
   updateSideColorControl();
@@ -1601,15 +1680,27 @@ cvEl.addEventListener('input', (e) => {
     const item = row && state.profile.contact.find((x) => x.id === row.dataset.contactId);
     if (item) item[t.dataset.cfield] = text;
   } else if (t.classList.contains('bullet-text')) {
-    const owner = ownerFromSection(t.closest('section.exp'));
-    const b = owner && owner.bullets.find((x) => x.id === t.dataset.bulletId);
-    if (b) b.text = text;
+    const section = t.closest('section.exp');
+    // Pendant une relecture, retoucher une ligne recalibrée modifie la couche
+    // (et le CV nommé qui la suit), pas le texte du CV de base.
+    const entry = section && rewriteEntryForBullet(section.dataset.expId, t.dataset.bulletId);
+    if (entry) {
+      entry.after = text;
+      scheduleRewriteSync();
+    } else {
+      const owner = ownerFromSection(section);
+      const b = owner && owner.bullets.find((x) => x.id === t.dataset.bulletId);
+      if (b) b.text = text;
+    }
     scheduleSuggestions();
   } else if (t.dataset.field) {
     const owner = ownerFromSection(t.closest('section.exp'));
     if (owner) owner[t.dataset.field] = text;
     scheduleSuggestions();
   }
+  // La saisie ne re-rend pas le CV (le curseur y survivrait mal) : le report
+  // vers le CV nommé passe donc par son propre report différé.
+  if (state.rewrite) scheduleRewriteSync();
   save();
 });
 
@@ -1642,8 +1733,10 @@ cvEl.addEventListener('keydown', (e) => {
     if (!owner) return;
     const idx = owner.bullets.findIndex((b) => b.id === t.dataset.bulletId);
     const nb = { id: uid(), text: '' };
-    owner.bullets.splice(idx + 1, 0, nb);
-    proposalInsert(section.dataset.expId, nb.id, t.dataset.bulletId);
+    // idx === -1 : ligne ajoutée par la relecture, sans place dans le CV de
+    // base — le nouveau tiret rejoint la fin de l'expérience.
+    owner.bullets.splice(idx === -1 ? owner.bullets.length : idx + 1, 0, nb);
+    proposalInsert(section.dataset.expId, nb.id, idx === -1 ? null : t.dataset.bulletId);
     pendingFocusBulletId = nb.id;
     rerender();
   } else {
@@ -1680,6 +1773,9 @@ cvEl.addEventListener('click', async (e) => {
       if (!owner || !li) return;
       owner.bullets = owner.bullets.filter((b) => b.id !== li.dataset.bulletId);
       proposalRemove(expSection.dataset.expId, li.dataset.bulletId);
+      // Ligne ajoutée par la relecture : elle n'existe que dans la couche.
+      rewriteRemoveBullet(expSection.dataset.expId, li.dataset.bulletId);
+      syncRewriteVersion();
       break;
     }
     case 'bullet-up':
@@ -1688,13 +1784,11 @@ cvEl.addEventListener('click', async (e) => {
       // Dans l'onglet « Nouveau CV » pendant une proposition, les flèches
       // réordonnent la proposition ; sinon, le CV de base.
       const ord = inCreateTab() ? proposalOrderFor(expSection.dataset.expId) : null;
-      if (ord) {
-        const idx = ord.indexOf(li.dataset.bulletId);
-        move(ord, idx, action === 'bullet-up' ? idx - 1 : idx + 1);
-      } else {
-        const idx = owner.bullets.findIndex((b) => b.id === li.dataset.bulletId);
-        move(owner.bullets, idx, action === 'bullet-up' ? idx - 1 : idx + 1);
-      }
+      const arr = ord || owner.bullets;
+      const idx = ord ? ord.indexOf(li.dataset.bulletId) : owner.bullets.findIndex((b) => b.id === li.dataset.bulletId);
+      // Introuvable (ligne ajoutée par la relecture) : ne rien déplacer.
+      if (idx === -1) return;
+      move(arr, idx, action === 'bullet-up' ? idx - 1 : idx + 1);
       break;
     }
     case 'exp-add': {
@@ -1714,6 +1808,11 @@ cvEl.addEventListener('click', async (e) => {
       if (!(await customConfirm('Supprimer cette expérience et tous ses tirets ?', { confirmLabel: 'Supprimer', danger: true }))) return;
       state.experiences = state.experiences.filter((x) => x.id !== exp.id);
       if (state.proposal) delete state.proposal.orders[exp.id];
+      if (state.rewrite) {
+        delete state.rewrite.entries[exp.id];
+        dropEmptyRewrite();
+        syncRewriteVersion();
+      }
       break;
     }
     case 'exp-up':
@@ -2157,7 +2256,10 @@ cvEl.addEventListener('dragend', () => {
   const owner = ownerFromSection(section);
   dragEl = null;
   if (owner) {
-    const order = [...ul.querySelectorAll('li.bullet')].map((li) => li.dataset.bulletId);
+    const known = new Set(owner.bullets.map((b) => b.id));
+    const order = [...ul.querySelectorAll('li.bullet')]
+      .map((li) => li.dataset.bulletId)
+      .filter((id) => known.has(id));
     // Pendant une proposition (onglet « Nouveau CV »), le glisser-déposer
     // réordonne la proposition ; sinon, le CV de base.
     const ord = inCreateTab() ? proposalOrderFor(section.dataset.expId) : null;
@@ -2364,8 +2466,9 @@ versionListEl.addEventListener('click', async (e) => {
         { confirmLabel: 'Charger' }
       ))) return;
       applyCV(v.data);
-      // La proposition en cours référençait l'ancien CV : elle n'a plus de sens.
+      // Proposition et relecture référençaient l'ancien CV : plus de sens.
       state.proposal = null;
+      state.rewrite = null;
       state.activeVersionId = v.id;
       rerender();
       break;
@@ -2594,7 +2697,7 @@ function renderSuggestions() {
       if (!proposalOrderFor(exp.id)) continue;
       let moved = 0;
       displayBullets(exp).forEach((b, i) => {
-        if (exp.bullets[i] !== b) moved += 1;
+        if (!exp.bullets[i] || exp.bullets[i].id !== b.id) moved += 1;
       });
       box.append(
         el(
@@ -2666,8 +2769,12 @@ $('#analyzeBtn').addEventListener('click', () => {
 });
 
 $('#clearAnalysisBtn').addEventListener('click', async () => {
-  if (state.proposal && !(await customConfirm('Effacer l’offre et la proposition en cours ? Le CV de base n’est pas affecté.', { confirmLabel: 'Effacer' }))) return;
+  if ((state.proposal || state.rewrite) && !(await customConfirm(
+    'Effacer l’offre, la proposition et la relecture en cours ? Le CV de base n’est pas affecté, et les CV enregistrés sont conservés.',
+    { confirmLabel: 'Effacer' }
+  ))) return;
   state.proposal = null;
+  state.rewrite = null;
   proposalSaved = false;
   newCvNameDraft = '';
   jobTextEl.value = '';
@@ -2680,6 +2787,697 @@ jobTextEl.addEventListener('input', () => {
   state.jobText = jobTextEl.value;
   save();
 });
+
+/* ============================================================
+   Relecture : lignes d'expérience recalibrées sur l'offre
+   ============================================================
+   Variante « semi-auto » : l'app fabrique le prompt, l'utilisateur le passe à
+   son assistant IA et recolle la réponse, puis TOUT est appliqué d'un bloc.
+   Rien n'est écrit dans le CV de base : la relecture est une surcouche
+   d'affichage (state.rewrite, voir normalizeRewrite) doublée d'un CV nommé
+   créé automatiquement. Chaque ligne reste annulable, seule ou en bloc. */
+
+const promptPreviewEl = $('#promptPreview');
+const promptStatusEl = $('#promptStatus');
+const llmAnswerEl = $('#llmAnswer');
+const rewriteErrorEl = $('#rewriteError');
+const rewriteReportEl = $('#rewriteReport');
+
+/* ---------- Langue de l'offre ---------- */
+
+// Mots-outils très fréquents et propres à chaque langue : suffisants pour
+// trancher entre une offre française et une offre anglaise, sans dictionnaire.
+const LANG_MARKERS = {
+  fr: ['le', 'la', 'les', 'des', 'une', 'un', 'vous', 'nous', 'et', 'du', 'dans', 'pour', 'avec', 'sur', 'est', 'sont', 'au', 'aux', 'votre', 'notre', 'que', 'qui'],
+  en: ['the', 'and', 'you', 'we', 'with', 'for', 'our', 'your', 'this', 'that', 'will', 'are', 'is', 'to', 'of', 'in', 'on', 'as', 'have', 'their'],
+};
+
+// Langue dominante de l'offre : les lignes recalibrées devront la suivre.
+function detectOfferLang(text) {
+  const words = normalizeText(text).match(/[a-z']+/g) || [];
+  const counts = { fr: 0, en: 0 };
+  const sets = { fr: new Set(LANG_MARKERS.fr), en: new Set(LANG_MARKERS.en) };
+  for (const w of words) {
+    if (sets.fr.has(w)) counts.fr += 1;
+    if (sets.en.has(w)) counts.en += 1;
+  }
+  return counts.en > counts.fr ? 'en' : 'fr';
+}
+
+/* ---------- Fabrication du prompt ---------- */
+
+// Nettoie une ligne venue d'un texte collé (offre ou réponse de l'assistant) :
+// balisage Markdown courant, guillemets d'encadrement, espaces multiples.
+function cleanRewriteLine(raw) {
+  return String(raw ?? '')
+    .replace(/^[\s>#]+/, '')
+    .replace(/\*\*|__|`/g, '')
+    .replace(/^[*_]+|[*_]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^["«“]\s*|\s*["»”]$/g, '')
+    .trim();
+}
+
+// Rappel du parcours envoyé à l'assistant : il doit recalibrer, pas inventer.
+function rewriteCareerBrief() {
+  const out = [];
+  state.experiences.forEach((exp, i) => {
+    out.push(`[EXP ${i + 1}] ${exp.role || 'Poste'} — ${exp.company || 'Entreprise'}${exp.period ? ` (${exp.period})` : ''}`);
+    if (exp.companyDescription.trim()) out.push(`Contexte : ${exp.companyDescription.trim()}`);
+    out.push(`Lignes actuelles (${exp.bullets.length}) :`);
+    exp.bullets.forEach((b, j) => out.push(`${j + 1}. ${b.text}`));
+    out.push('');
+  });
+
+  const list = (title, items) => {
+    const rows = items.filter(Boolean);
+    if (!rows.length) return;
+    out.push(title);
+    rows.forEach((r) => out.push(`- ${r}`));
+    out.push('');
+  };
+  list('Formation :', state.education.map((e) => [e.title, e.detail].filter(Boolean).join(' — ')));
+  list('Projets :', state.projects.map((p) => [p.title, p.detail].filter(Boolean).join(' — ')));
+  list('Compétences :', state.skillGroups.map((g) => `${g.label} : ${g.text.replace(/\n+/g, ' ; ')}`));
+  if (state.skills.trim()) list('Autres compétences :', [state.skills.trim()]);
+  return out.join('\n').trim();
+}
+
+// Le prompt complet : offre + parcours + anatomie imposée d'une ligne + format
+// de réponse analysable par parseRewriteAnswer().
+function buildRewritePrompt() {
+  const offer = effectiveJobText();
+  const lang = detectOfferLang(offer);
+  const counts = state.experiences.map((exp, i) => `[EXP ${i + 1}] : exactement ${exp.bullets.length} ligne${exp.bullets.length > 1 ? 's' : ''}`);
+
+  return [
+    "Tu réécris les lignes d'expérience d'un CV pour qu'elles répondent à une offre d'emploi précise.",
+    '',
+    "## Offre d'emploi",
+    '"""',
+    offer,
+    '"""',
+    '',
+    '## Parcours actuel (seule matière autorisée : n’invente rien)',
+    rewriteCareerBrief(),
+    '',
+    '## Anatomie imposée de chaque ligne',
+    "Verbe d'action au passé + objet quantifié + méthode ou outil + résultat quantifié + destinataire ou usage.",
+    lang === 'en'
+      ? 'Example: « Analyzed purchasing behavior of 100,000 customers through clustering to create 3 personas used by the Product, Marketing, and Purchasing teams. »'
+      : 'Exemple : « Analysé le comportement d’achat de 100 000 clients par clustering pour produire 3 personas utilisés par les équipes Produit, Marketing et Achats. »',
+    '',
+    'Règles :',
+    '- une seule phrase par ligne, sans « je », sans sous-liste ;',
+    "- aucun adjectif d'auto-évaluation (« excellent », « passionné », « rigoureux ») ;",
+    '- les chiffres priment : reprends ceux du parcours, ne fabrique aucun chiffre absent ;',
+    "- reprends le vocabulaire de l'offre uniquement quand il décrit vraiment le travail fait ;",
+    lang === 'en'
+      ? "- the posting is written in English: write every line in English."
+      : "- l'offre est rédigée en français : rédige toutes les lignes en français.",
+    '',
+    '## Format de réponse imposé',
+    'Réponds UNIQUEMENT par les blocs suivants, sans introduction ni commentaire :',
+    '',
+    state.experiences.map((_, i) => `[EXP ${i + 1}]\n- …\n- …`).join('\n\n'),
+    '',
+    'Une ligne par tiret, dans le même ordre que les lignes actuelles, et :',
+    ...counts.map((c) => `- ${c}`),
+  ].join('\n');
+}
+
+/* ---------- Copie du prompt ---------- */
+
+function flashPromptStatus(message, ok = true) {
+  promptStatusEl.textContent = message;
+  promptStatusEl.classList.toggle('ko', !ok);
+  promptStatusEl.hidden = false;
+}
+
+// Copie sans dépendance ni permission : l'API moderne quand elle est là (elle
+// ne l'est pas toujours en file://), sinon la sélection d'un textarea.
+async function copyToClipboard(text) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    /* refus du navigateur : on retombe sur execCommand ci-dessous */
+  }
+  const ta = el('textarea', { style: 'position:fixed;top:-1000px;opacity:0' });
+  ta.value = text;
+  document.body.append(ta);
+  ta.select();
+  let ok = false;
+  try {
+    ok = document.execCommand('copy');
+  } catch {
+    ok = false;
+  }
+  ta.remove();
+  return ok;
+}
+
+function showPrompt(open) {
+  promptPreviewEl.hidden = !open;
+  $('#togglePromptBtn').setAttribute('aria-expanded', String(open));
+  $('#togglePromptBtn').textContent = open ? 'Masquer le prompt' : 'Voir le prompt';
+  if (open) promptPreviewEl.value = buildRewritePrompt();
+}
+
+$('#copyPromptBtn').addEventListener('click', async () => {
+  state.jobText = jobTextEl.value;
+  if (!effectiveJobText()) {
+    flashPromptStatus("Collez d'abord le texte de l'offre ci-dessus.", false);
+    return;
+  }
+  const prompt = buildRewritePrompt();
+  promptPreviewEl.value = prompt;
+  const ok = await copyToClipboard(prompt);
+  if (ok) {
+    flashPromptStatus('Prompt copié ✓ — collez-le dans votre assistant, puis recollez sa réponse ci-dessous.');
+  } else {
+    showPrompt(true);
+    flashPromptStatus('Copie automatique refusée par le navigateur : le prompt est affiché ci-dessous, copiez-le à la main.', false);
+  }
+});
+
+$('#togglePromptBtn').addEventListener('click', () => {
+  state.jobText = jobTextEl.value;
+  showPrompt(promptPreviewEl.hidden);
+});
+
+$('#clearAnswerBtn').addEventListener('click', () => {
+  llmAnswerEl.value = '';
+  rewriteErrorEl.hidden = true;
+  llmAnswerEl.focus();
+});
+
+/* ---------- Analyse de la réponse de l'assistant ---------- */
+
+// En-tête de bloc : « [EXP 2] », « **[EXP 2]** Chef de projet… », « EXP 2 : »
+const RW_HEAD_BRACKET = /^[\s>#*_]*\[\s*EXP\s*(\d+)\s*\].*$/i;
+const RW_HEAD_BARE = /^[\s>#*_]*EXP\s*(\d+)\s*[:.)–—-]?[\s*_]*$/i;
+// Puce : « - … », « • … », « 1. … », « 1) … »
+const RW_BULLET = /^\s*(?:[-–—*•]|\d+[.)])\s+(.*)$/;
+
+// Réponse → { numéro d'expérience → lignes }. Tolère le préambule, le
+// balisage Markdown et les lignes repliées (une puce coupée sur deux lignes
+// est recollée à la précédente). Un en-tête vu deux fois complète le bloc.
+function parseRewriteAnswer(text) {
+  const blocks = new Map();
+  let current = null;
+  for (const raw of String(text ?? '').replace(/\r\n?/g, '\n').split('\n')) {
+    const head = raw.match(RW_HEAD_BRACKET) || raw.match(RW_HEAD_BARE);
+    if (head) {
+      const n = Number(head[1]);
+      if (!blocks.has(n)) blocks.set(n, []);
+      current = blocks.get(n);
+      continue;
+    }
+    if (!current) continue;
+    const bullet = raw.match(RW_BULLET);
+    const line = cleanRewriteLine(bullet ? bullet[1] : raw);
+    if (!line) continue;
+    if (bullet) {
+      current.push(line);
+    } else if (current.length && !/[.!?»:;]$/.test(current[current.length - 1])) {
+      // Suite d'une puce coupée en deux : on ne recolle que si la précédente
+      // n'est pas déjà finie, sinon la phrase de conclusion de l'assistant
+      // (« Dis-moi si tu veux une variante… ») atterrirait dans le CV.
+      current[current.length - 1] += ' ' + line;
+    }
+  }
+  for (const [n, lines] of blocks) if (!lines.length) blocks.delete(n);
+  return blocks;
+}
+
+/* ---------- Application en bloc ---------- */
+
+// Nom proposé pour le CV créé : entreprise + intitulé lus en tête de l'offre.
+function rewriteVersionName() {
+  const lines = effectiveJobText().split('\n').map(cleanRewriteLine).filter(Boolean);
+  const title = (lines[0] || '')
+    .replace(/\s*[(（]\s*(?:h\/f|f\/h|m\/f|h\/f\/x|w\/m|m\/w)\s*[)）]\s*$/i, '')
+    .trim();
+  let company = '';
+  for (const l of lines.slice(1, 4)) {
+    const m = l.match(/^([^—–·|,:]{2,40}?)\s*[—–·|]/);
+    if (m) {
+      company = m[1].trim();
+      break;
+    }
+  }
+  const name = [company, title].filter(Boolean).join(' — ');
+  if (!name) return `Offre du ${new Date().toLocaleDateString('fr-FR')}`;
+  return name.length > 70 ? name.slice(0, 69).trimEnd() + '…' : name;
+}
+
+// Construit la couche de relecture à partir de la réponse collée. Appariement
+// POSITIONNEL : la k-ième ligne d'un bloc recalibre le k-ième tiret de
+// l'expérience. Moins de lignes que de tirets → les tirets restants sont
+// conservés tels quels ; plus de lignes → le surplus est ajouté en fin
+// d'expérience (et reste supprimable).
+function buildRewriteEntries(blocks) {
+  const entries = {};
+  state.experiences.forEach((exp, i) => {
+    const lines = blocks.get(i + 1);
+    if (!lines || !lines.length) return;
+    const list = [];
+    exp.bullets.forEach((b, j) => {
+      const after = lines[j];
+      if (after === undefined) return; // moins de lignes que de tirets : tiret conservé
+      list.push({ id: uid(), kind: 'edit', bulletId: b.id, before: b.text, after, active: true });
+    });
+    lines.slice(exp.bullets.length).forEach((after) => {
+      list.push({ id: uid(), kind: 'add', bulletId: null, before: '', after, active: true });
+    });
+    if (list.length) entries[exp.id] = list;
+  });
+  return entries;
+}
+
+// Compteurs du rapport, recalculés à chaque rendu : ils survivent ainsi au
+// rechargement de la page et suivent les tirets ajoutés ou supprimés depuis.
+function rewriteStats() {
+  const s = { rewritten: 0, unchanged: 0, kept: 0, added: 0 };
+  if (!state.rewrite) return s;
+  for (const exp of state.experiences) {
+    const list = rewriteEntriesFor(exp.id) || [];
+    let edits = 0;
+    for (const e of list) {
+      if (e.kind === 'add') {
+        s.added += 1;
+      } else {
+        edits += 1;
+        if (e.after === baseTextFor(exp.id, e)) s.unchanged += 1;
+        else s.rewritten += 1;
+      }
+    }
+    s.kept += Math.max(0, exp.bullets.length - edits);
+  }
+  return s;
+}
+
+// Le CV tel qu'il s'affiche pendant la relecture : ordre proposé par l'analyse
+// + textes recalibrés actifs + lignes ajoutées actives. C'est ce qui est
+// enregistré dans le CV nommé.
+function snapshotRewriteCV() {
+  const snap = snapshotProposalCV();
+  if (!state.rewrite) return snap;
+  for (const exp of snap.experiences) {
+    const list = state.rewrite.entries[exp.id];
+    if (!list) continue;
+    const edits = new Map();
+    for (const e of list) if (e.kind === 'edit' && e.active) edits.set(e.bulletId, e.after);
+    exp.bullets = exp.bullets.map((b) => (edits.has(b.id) ? { ...b, text: edits.get(b.id) } : b));
+    for (const e of list) if (e.kind === 'add' && e.active) exp.bullets.push({ id: e.id, text: e.after });
+  }
+  return snap;
+}
+
+// Le CV nommé suit la relecture : chaque annulation, rétablissement ou
+// retouche de texte y est reportée. Si l'utilisateur l'a supprimé de la liste,
+// on cesse simplement de le suivre.
+function syncRewriteVersion() {
+  if (!state.rewrite || !state.rewrite.versionId) return;
+  const v = state.versions.find((x) => x.id === state.rewrite.versionId);
+  if (!v) {
+    state.rewrite.versionId = null;
+    return;
+  }
+  v.data = snapshotRewriteCV();
+}
+
+async function applyRewriteAnswer() {
+  rewriteErrorEl.hidden = true;
+  state.jobText = jobTextEl.value;
+  if (!effectiveJobText()) {
+    return showRewriteError("Collez d'abord le texte de l'offre ci-dessus.");
+  }
+  const answer = llmAnswerEl.value.trim();
+  if (!answer) {
+    return showRewriteError("Collez la réponse de votre assistant avant d'appliquer.");
+  }
+  const blocks = parseRewriteAnswer(answer);
+  if (blocks.size === 0) {
+    return showRewriteError(
+      'Format non reconnu : la réponse doit contenir des blocs « [EXP 1] », « [EXP 2] »… suivis de lignes à tiret. Vérifiez que le prompt a bien été copié en entier.'
+    );
+  }
+  const entries = buildRewriteEntries(blocks);
+  if (Object.keys(entries).length === 0) {
+    return showRewriteError("Aucune ligne exploitable : les blocs trouvés ne correspondent à aucune expérience du CV.");
+  }
+  // Une relecture en cours serait remplacée : le CV nommé déjà créé est
+  // réutilisé, pour ne pas empiler les sauvegardes à chaque nouvel essai.
+  const previous = state.rewrite;
+  if (previous && !(await customConfirm(
+    'Remplacer la relecture en cours par cette nouvelle réponse ? Les annulations déjà faites seront perdues.',
+    { confirmLabel: 'Remplacer' }
+  ))) return;
+
+  const reusable = previous && previous.versionId && state.versions.find((x) => x.id === previous.versionId);
+  state.rewrite = {
+    createdAt: Date.now(),
+    versionId: reusable ? reusable.id : null,
+    name: reusable ? reusable.name : rewriteVersionName(),
+    lang: detectOfferLang(effectiveJobText()),
+    jobText: effectiveJobText(),
+    entries,
+  };
+  if (reusable) {
+    reusable.data = snapshotRewriteCV();
+    reusable.createdAt = Date.now();
+  } else {
+    const v = { id: uid(), name: state.rewrite.name, createdAt: Date.now(), data: snapshotRewriteCV() };
+    state.rewrite.versionId = v.id;
+    state.versions.unshift(v);
+  }
+  rerender();
+}
+
+function showRewriteError(message) {
+  rewriteErrorEl.textContent = message;
+  rewriteErrorEl.hidden = false;
+}
+
+/* ---------- Couche d'affichage ---------- */
+
+// Lignes recalibrées d'une expérience (null hors relecture).
+function rewriteEntriesFor(expId) {
+  return (state.rewrite && state.rewrite.entries[expId]) || null;
+}
+
+// Entrée de relecture correspondant à un tiret affiché : soit le tiret du CV
+// de base qu'elle recalibre, soit la ligne ajoutée qu'elle est elle-même.
+function rewriteEntryForBullet(expId, bulletId) {
+  const list = inCreateTab() ? rewriteEntriesFor(expId) : null;
+  if (!list) return null;
+  return list.find((e) => e.active && (e.kind === 'add' ? e.id === bulletId : e.bulletId === bulletId)) || null;
+}
+
+// Superpose les textes recalibrés et les lignes ajoutées à la liste affichée.
+// Les objets renvoyés portent `rw` (« edit » / « add »), `rwBefore` et
+// `rwEntryId` pour le rendu des badges — les tirets inchangés restent les
+// objets du CV de base.
+function applyRewriteLayer(exp, bullets) {
+  const list = inCreateTab() ? rewriteEntriesFor(exp.id) : null;
+  if (!list) return bullets;
+  const edits = new Map();
+  for (const e of list) if (e.kind === 'edit' && e.active) edits.set(e.bulletId, e);
+  const out = bullets.map((b) => {
+    const e = edits.get(b.id);
+    return e ? { id: b.id, text: e.after, rw: 'edit', rwBefore: e.before, rwEntryId: e.id } : b;
+  });
+  for (const e of list) {
+    if (e.kind === 'add' && e.active) out.push({ id: e.id, text: e.after, rw: 'add', rwBefore: '', rwEntryId: e.id });
+  }
+  return out;
+}
+
+// Un tiret supprimé du CV de base emporte la ligne recalibrée qui le visait.
+function rewriteRemoveBullet(expId, bulletId) {
+  const list = rewriteEntriesFor(expId);
+  if (!list) return;
+  const next = list.filter((e) => (e.kind === 'add' ? e.id !== bulletId : e.bulletId !== bulletId));
+  if (next.length) state.rewrite.entries[expId] = next;
+  else delete state.rewrite.entries[expId];
+  dropEmptyRewrite();
+}
+
+// Une relecture qui n'a plus aucune ligne n'existe plus : sans cela le panneau
+// resterait ouvert et vide, et le rechargement de la page (où normalizeRewrite
+// écarte les relectures vides) donnerait un autre résultat.
+function dropEmptyRewrite() {
+  if (state.rewrite && Object.keys(state.rewrite.entries).length === 0) state.rewrite = null;
+}
+
+/* ---------- Rapport de relecture ---------- */
+
+// Report différé du texte retouché vers le CV nommé : la saisie ne doit pas
+// recopier tout le CV à chaque frappe.
+let rewriteSyncTimer = null;
+function scheduleRewriteSync() {
+  clearTimeout(rewriteSyncTimer);
+  rewriteSyncTimer = setTimeout(() => {
+    syncRewriteVersion();
+    renderRewritePanel();
+    save();
+  }, 400);
+}
+
+function rewriteVersion() {
+  return (state.rewrite && state.versions.find((v) => v.id === state.rewrite.versionId)) || null;
+}
+
+/* ---------- Diff mot à mot ---------- */
+
+// Comparaison souple : casse, accents et ponctuation finale ne comptent pas,
+// pour ne surligner que les vraies différences de fond.
+function diffWordKey(w) {
+  return normalizeText(w).replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, '');
+}
+
+// Diff mot à mot par plus longue sous-séquence commune. Renvoie deux listes de
+// jetons { t, on } — `on` marquant les mots retirés (avant) ou ajoutés (après).
+function wordDiff(before, after) {
+  const A = before.match(/\S+/g) || [];
+  const B = after.match(/\S+/g) || [];
+  // Lignes anormalement longues : on affiche les deux textes en entier plutôt
+  // que de calculer une matrice qui n'apprendrait rien.
+  if (A.length * B.length > 40000) {
+    return { a: A.map((t) => ({ t, on: true })), b: B.map((t) => ({ t, on: true })) };
+  }
+  const ka = A.map(diffWordKey);
+  const kb = B.map(diffWordKey);
+  const m = A.length;
+  const n = B.length;
+  const L = Array.from({ length: m + 1 }, () => new Uint16Array(n + 1));
+  for (let i = m - 1; i >= 0; i--) {
+    for (let j = n - 1; j >= 0; j--) {
+      L[i][j] = ka[i] === kb[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+    }
+  }
+  const a = [];
+  const b = [];
+  let i = 0;
+  let j = 0;
+  while (i < m && j < n) {
+    if (ka[i] === kb[j]) {
+      a.push({ t: A[i++] });
+      b.push({ t: B[j++] });
+    } else if (L[i + 1][j] >= L[i][j + 1]) {
+      a.push({ t: A[i++], on: true });
+    } else {
+      b.push({ t: B[j++], on: true });
+    }
+  }
+  while (i < m) a.push({ t: A[i++], on: true });
+  while (j < n) b.push({ t: B[j++], on: true });
+  return { a, b };
+}
+
+function diffLineEl(tokens, cls) {
+  const node = el('div', { class: cls });
+  tokens.forEach((tk, i) => {
+    if (i) node.append(' ');
+    node.append(tk.on ? el('span', { class: 'w', text: tk.t }) : tk.t);
+  });
+  return node;
+}
+
+/* ---------- Rendu du rapport ---------- */
+
+// Texte du CV de base visé par une entrée, tel qu'il est AUJOURD'HUI : c'est
+// lui qui réapparaît quand on annule la ligne, pas le `before` figé.
+function baseTextFor(expId, entry) {
+  if (entry.kind === 'add') return '';
+  const exp = findExp(expId);
+  const b = exp && exp.bullets.find((x) => x.id === entry.bulletId);
+  return b ? b.text : entry.before;
+}
+
+function rewriteLineItem(expId, entry) {
+  const base = baseTextFor(expId, entry);
+  const isAdd = entry.kind === 'add';
+  const same = !isAdd && base === entry.after;
+  const li = el('li', {
+    class: 'rw-line' + (entry.active ? '' : ' off') + (isAdd ? ' add' : '') + (same ? ' same' : ''),
+    'data-entry': entry.id,
+  });
+
+  const tag = isAdd ? 'ligne ajoutée' : same ? 'inchangée' : entry.active ? 'réécrite' : 'annulée';
+  li.append(
+    el(
+      'div',
+      { class: 'rw-line-top' },
+      el('span', { class: 'rw-tag', text: tag }),
+      el('button', {
+        type: 'button',
+        class: 'ghost rw-toggle',
+        'data-rw': 'toggle',
+        title: entry.active
+          ? (isAdd ? 'Retirer cette ligne ajoutée' : 'Revenir au texte du CV de base')
+          : 'Réappliquer la ligne recalibrée',
+        text: entry.active ? 'Annuler' : 'Rétablir',
+      })
+    )
+  );
+
+  if (isAdd) {
+    li.append(diffLineEl([{ t: entry.after, on: true }], 'rw-after'));
+  } else if (same) {
+    li.append(diffLineEl([{ t: entry.after }], 'rw-after'));
+  } else {
+    const { a, b } = wordDiff(base, entry.after);
+    li.append(diffLineEl(a, 'rw-before'), diffLineEl(b, 'rw-after'));
+  }
+  return li;
+}
+
+function renderRewritePanel() {
+  rewriteReportEl.textContent = '';
+  const rw = state.rewrite;
+  if (!rw) return;
+
+  const s = rewriteStats();
+  const plural = (n, one, many) => `${n} ${n > 1 ? many : one}`;
+  const parts = [plural(s.rewritten, 'ligne réécrite', 'lignes réécrites')];
+  if (s.unchanged) parts.push(plural(s.unchanged, 'inchangée', 'inchangées'));
+  if (s.added) parts.push(plural(s.added, 'ajoutée', 'ajoutées'));
+  if (s.kept) parts.push(plural(s.kept, 'tiret conservé', 'tirets conservés'));
+
+  const all = Object.values(rw.entries).flat();
+  const off = all.filter((e) => !e.active).length;
+
+  const box = el('div', { class: 'rw-report' });
+  box.append(
+    el('div', { class: 'rw-summary', text: parts.join(' · ') }),
+    el('p', {
+      class: 'hint rw-hint',
+      text: off
+        ? `${plural(off, 'ligne annulée', 'lignes annulées')} sur ${all.length} — les lignes annulées reprennent le texte du CV de base.`
+        : 'Tout est appliqué. Relisez ligne à ligne : le texte barré est celui du CV de base, qui n’a pas bougé.',
+    })
+  );
+
+  const v = rewriteVersion();
+  box.append(
+    el(
+      'div',
+      { class: 'rw-version' },
+      el('label', { class: 'rw-version-label', for: 'rwName', text: v ? 'CV créé ✓' : 'CV supprimé' }),
+      el('input', {
+        id: 'rwName',
+        type: 'text',
+        value: rw.name,
+        disabled: v ? undefined : '',
+        'aria-label': 'Nom du CV créé',
+      })
+    )
+  );
+
+  if (rw.jobText !== effectiveJobText()) {
+    box.append(el('p', { class: 'rw-stale', text: 'L’offre a changé depuis cette relecture — recopiez le prompt pour la remettre à jour.' }));
+  }
+
+  box.append(
+    el(
+      'div',
+      { class: 'panel-actions rw-global' },
+      el('button', { type: 'button', class: 'ghost', 'data-rw': 'all-off', disabled: off === all.length ? '' : undefined, text: 'Tout annuler' }),
+      el('button', { type: 'button', class: 'ghost', 'data-rw': 'all-on', disabled: off === 0 ? '' : undefined, text: 'Tout réappliquer' }),
+      el('button', { type: 'button', class: 'ghost danger', 'data-rw': 'discard', text: 'Abandonner' })
+    )
+  );
+
+  for (const exp of state.experiences) {
+    const list = rewriteEntriesFor(exp.id);
+    const kept = Math.max(0, exp.bullets.length - (list ? list.filter((e) => e.kind === 'edit').length : 0));
+    if (!list && !kept) continue;
+    const block = el('div', { class: 'rw-exp' }, el('h4', { text: exp.role || 'Expérience' }));
+    if (list) block.append(el('ol', { class: 'rw-lines' }, ...list.map((e) => rewriteLineItem(exp.id, e))));
+    if (kept > 0) {
+      block.append(
+        el('p', {
+          class: 'rw-kept',
+          text: `${plural(kept, 'tiret du CV de base conservé tel quel', 'tirets du CV de base conservés tels quels')} (l’assistant n’a pas rendu de ligne pour ${kept > 1 ? 'eux' : 'lui'}).`,
+        })
+      );
+    }
+    box.append(block);
+  }
+
+  rewriteReportEl.append(box);
+}
+
+// Bascule d'une ligne : la couche est la seule à changer, le CV nommé suit.
+function setRewriteEntryActive(entryId, active) {
+  for (const list of Object.values(state.rewrite.entries)) {
+    const e = list.find((x) => x.id === entryId);
+    if (e) {
+      e.active = active;
+      return true;
+    }
+  }
+  return false;
+}
+
+function setAllRewriteActive(active) {
+  for (const list of Object.values(state.rewrite.entries)) for (const e of list) e.active = active;
+}
+
+// Abandonner : la couche disparaît, le CV redevient celui de base. Le CV nommé
+// déjà créé, lui, reste dans la liste des sauvegardes — rien n'est perdu.
+async function discardRewrite() {
+  if (!(await customConfirm(
+    'Abandonner la relecture ? Le CV affiché revient au texte du CV de base ; le CV enregistré reste dans « CV sauvegardés ».',
+    { confirmLabel: 'Abandonner' }
+  ))) return;
+  state.rewrite = null;
+  rerender();
+}
+
+rewriteReportEl.addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-rw]');
+  if (!btn || !state.rewrite) return;
+  switch (btn.dataset.rw) {
+    case 'toggle': {
+      const li = btn.closest('.rw-line');
+      if (!li || !setRewriteEntryActive(li.dataset.entry, li.classList.contains('off'))) return;
+      break;
+    }
+    case 'all-off':
+      setAllRewriteActive(false);
+      break;
+    case 'all-on':
+      setAllRewriteActive(true);
+      break;
+    case 'discard':
+      discardRewrite();
+      return;
+    default:
+      return;
+  }
+  syncRewriteVersion();
+  rerender();
+});
+
+// Renommer le CV créé depuis le panneau, sans re-rendre (le champ garderait
+// le curseur) : le nom part directement dans la sauvegarde.
+rewriteReportEl.addEventListener('input', (e) => {
+  if (e.target.id !== 'rwName' || !state.rewrite) return;
+  state.rewrite.name = e.target.value;
+  const v = rewriteVersion();
+  if (v) v.name = e.target.value;
+  save();
+  renderVersions();
+});
+
+$('#applyRewriteBtn').addEventListener('click', applyRewriteAnswer);
 
 /* ============================================================
    Barre d'outils
@@ -2763,7 +3561,7 @@ $('#pdfBtn').addEventListener('click', async () => {
 $('#resetBtn').addEventListener('click', async () => {
   if (!(await customConfirm('Réinitialiser le CV avec le contenu d’exemple ? Les versions sauvegardées sont conservées.', { confirmLabel: 'Réinitialiser', danger: true }))) return;
   const { versions, activeTab } = state;
-  state = { ...defaultCV(), versions, activeVersionId: null, proposal: null, activeTab };
+  state = { ...defaultCV(), versions, activeVersionId: null, proposal: null, rewrite: null, activeTab };
   jobTextEl.value = '';
   rerender();
 });

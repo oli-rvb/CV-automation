@@ -1196,12 +1196,19 @@ li.bullet:hover .bullet-controls { display: flex; }
    d'édition : superposés (aucune place prise dans le flux), absents au repos
    — donc absents du PDF et de l'impression. */
 
-.diff-badge {
+.bullet-badges {
   position: absolute;
   right: 0;
   top: 0;
   z-index: 2;
   display: none;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 120ms ease, display 120ms allow-discrete;
+}
+
+.diff-badge,
+.rw-badge {
   font-size: 11px;
   font-weight: 700;
   white-space: nowrap;
@@ -1209,28 +1216,38 @@ li.bullet:hover .bullet-controls { display: flex; }
   padding: 1px 7px;
   background: var(--accent-soft);
   color: #1e40af;
-  opacity: 0;
-  transition: opacity 120ms ease, display 120ms allow-discrete;
 }
 
-#cv:is(:hover, :focus-within) .diff-badge {
-  display: inline-block;
+/* Relecture : un tiret recalibré, ou une ligne ajoutée par la relecture. */
+.rw-badge-edit { background: #fef3c7; color: #92400e; }
+.rw-badge-add { background: #dcfce7; color: #166534; }
+
+#cv:is(:hover, :focus-within) .bullet-badges {
+  display: inline-flex;
   opacity: 1;
 }
 
 @starting-style {
-  #cv:is(:hover, :focus-within) .diff-badge { opacity: 0; }
+  #cv:is(:hover, :focus-within) .bullet-badges { opacity: 0; }
 }
 
 /* Au survol d'un tiret précis, les contrôles ✕ / ↑ / ↓ reprennent la place
-   du badge (tous deux sont ancrés en fin de ligne). */
-#cv li.bullet:hover .diff-badge {
+   des badges (tous sont ancrés en fin de ligne). */
+#cv li.bullet:hover .bullet-badges {
   display: none;
   opacity: 0;
 }
 
 #cv:is(:hover, :focus-within) li.bullet.moved {
   background: color-mix(in srgb, var(--accent-soft) 45%, #fff);
+}
+
+#cv:is(:hover, :focus-within) li.bullet.rw-edit {
+  background: color-mix(in srgb, #fef3c7 55%, #fff);
+}
+
+#cv:is(:hover, :focus-within) li.bullet.rw-add {
+  background: color-mix(in srgb, #dcfce7 55%, #fff);
 }
 
 .icon-btn {
@@ -1540,7 +1557,9 @@ main.tab-create #createLeft {
 
 .panel-box .hint { font-size: 13px; color: var(--muted); margin: 0 0 10px; }
 
-#jobText {
+#jobText,
+#promptPreview,
+#llmAnswer {
   width: 100%;
   font: inherit;
   font-size: 13px;
@@ -1550,7 +1569,9 @@ main.tab-create #createLeft {
   resize: vertical;
 }
 
-#jobText:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+#jobText:focus,
+#promptPreview:focus,
+#llmAnswer:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
 
 .panel-actions {
   display: flex;
@@ -1881,6 +1902,214 @@ main.tab-create #createLeft {
 
 .empty-note { font-size: 13px; color: var(--muted); }
 
+/* ---------- Recalibrage des lignes d'expérience ---------- */
+
+#rewritePanel .rw-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 14px 0 6px;
+}
+
+#promptPreview {
+  margin-top: 8px;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.rw-status {
+  font-size: 12.5px;
+  color: var(--ok);
+  margin: 4px 0 0;
+}
+
+.rw-status.ko { color: var(--danger); }
+
+.rw-error {
+  font-size: 12.5px;
+  color: var(--danger);
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  padding: 7px 9px;
+  margin: 6px 0 0;
+}
+
+/* Rapport de relecture : ce qui a été appliqué, et de quoi revenir en arrière */
+
+.rw-report {
+  border: 1px solid var(--accent);
+  background: #f6f9ff;
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-top: 12px;
+}
+
+.rw-summary {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.rw-version {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.rw-version-label {
+  flex: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ok);
+  white-space: nowrap;
+}
+
+.rw-version input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 13px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 9px;
+  background: #fff;
+}
+
+.rw-version input:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+.rw-version input:disabled { color: var(--muted); background: var(--bg); }
+
+.rw-stale {
+  font-size: 12.5px;
+  color: #92400e;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  padding: 6px 9px;
+  margin: 10px 0 0;
+}
+
+.rw-report .panel-actions { margin-bottom: 0; }
+.rw-report .panel-actions button { font-size: 13px; padding: 5px 12px; }
+
+/* Diff ligne à ligne : avant / après, et le bouton qui revient en arrière */
+
+.rw-hint { margin: 6px 0 0; }
+
+.rw-global { flex-wrap: wrap; margin-top: 12px; }
+.rw-global button:disabled { opacity: 0.45; cursor: default; }
+
+.rw-exp { margin-top: 14px; }
+
+.rw-exp h4 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.rw-lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rw-line {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.rw-line.add { border-left-color: var(--ok); }
+.rw-line.same { border-left-color: var(--line); }
+.rw-line.off { border-left-color: var(--muted); background: var(--bg); }
+
+.rw-line-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.rw-tag {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+}
+
+.rw-line.add .rw-tag { color: var(--ok); }
+.rw-line.same .rw-tag,
+.rw-line.off .rw-tag { color: var(--muted); }
+
+.rw-toggle {
+  flex: none;
+  font-size: 11.5px;
+  padding: 2px 9px;
+}
+
+/* Les deux versions du texte. Au repos, « après » est ce qu'affiche le CV ;
+   une ligne annulée inverse les rôles (c'est « avant » qui redevient vrai). */
+.rw-before,
+.rw-after { padding-left: 14px; position: relative; }
+
+.rw-before { color: var(--muted); }
+.rw-after { color: var(--ink); }
+
+.rw-before::before,
+.rw-after::before {
+  position: absolute;
+  left: 0;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.rw-before::before { content: '−'; }
+.rw-after::before { content: '+'; }
+
+.rw-before .w {
+  background: #fee2e2;
+  text-decoration: line-through;
+  border-radius: 3px;
+  padding: 0 1px;
+}
+
+.rw-after .w {
+  background: #dcfce7;
+  border-radius: 3px;
+  padding: 0 1px;
+}
+
+.rw-line.off .rw-before { color: var(--ink); }
+.rw-line.off .rw-before .w { background: none; text-decoration: none; }
+.rw-line.off .rw-after { color: var(--muted); text-decoration: line-through; }
+.rw-line.off .rw-after .w { background: none; }
+
+.rw-line.same .rw-after::before,
+.rw-line.add .rw-after::before { content: '+'; color: var(--ok); }
+
+.rw-kept {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 6px 0 0;
+}
+
 /* ---------- Impression : page A4 identique au rendu écran ---------- */
 
 /* Marges de page A4 (haut/bas/gauche/droite) : chaque page exportée les porte,
@@ -1920,9 +2149,10 @@ main.tab-create #createLeft {
      déjà hors du flux au repos et ne reviennent que sur :hover / :focus-within,
      qui ne s'appliquent pas sans souris : le PDF reprend la feuille au repos.
      Filet de sécurité pour les contrôles flottants ✕ / ↑ / ↓ : */
-  .bullet-controls, .exp-controls, .photo-controls, .diff-badge { display: none !important; }
+  .bullet-controls, .exp-controls, .photo-controls,
+  .bullet-badges, .diff-badge, .rw-badge { display: none !important; }
 
-  li.bullet.moved { background: none !important; }
+  li.bullet.moved, li.bullet.rw-edit, li.bullet.rw-add { background: none !important; }
   .exp:hover { background: none; }
   [contenteditable]:hover, [contenteditable]:focus { background: none; }
 

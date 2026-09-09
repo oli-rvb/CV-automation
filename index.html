@@ -121,6 +121,44 @@
       <div id="results"></div>
     </section>
 
+    <!-- Recalibrage des lignes d'expérience (variante « semi-auto ») :
+         l'app fabrique un prompt à partir du parcours connu et de l'offre,
+         l'utilisateur le passe à son assistant IA puis recolle la réponse.
+         « Appliquer tout » réécrit toutes les lignes d'un coup et crée un
+         nouveau CV nommé — le CV de base n'est jamais touché, et chaque
+         ligne reste annulable, individuellement ou en bloc. -->
+    <section class="panel-box" id="rewritePanel">
+      <h2>Recalibrer les lignes d'expérience</h2>
+      <p class="hint">
+        L'app écrit le prompt pour vous à partir de l'offre ci-dessus et de
+        votre parcours&nbsp;; passez-le à votre assistant IA, recollez sa
+        réponse, et <strong>tout est appliqué d'un coup</strong> dans un
+        nouveau CV. Vous relisez ensuite le diff et annulez ce qui ne vous
+        convient pas.
+      </p>
+
+      <div class="panel-actions">
+        <button id="copyPromptBtn" type="button">Copier le prompt</button>
+        <button id="togglePromptBtn" class="ghost" type="button"
+                aria-expanded="false" aria-controls="promptPreview">Voir le prompt</button>
+      </div>
+      <p id="promptStatus" class="rw-status" role="status" hidden></p>
+      <textarea id="promptPreview" rows="10" readonly spellcheck="false" hidden
+                aria-label="Prompt à copier"></textarea>
+
+      <label class="rw-label" for="llmAnswer">Réponse de l'assistant</label>
+      <textarea id="llmAnswer" rows="6" spellcheck="false"
+                placeholder="Collez ici la réponse de votre assistant (blocs [EXP 1], [EXP 2]…)"></textarea>
+      <div class="panel-actions">
+        <button id="applyRewriteBtn" type="button">Appliquer tout</button>
+        <button id="clearAnswerBtn" class="ghost" type="button">Effacer la réponse</button>
+      </div>
+      <p id="rewriteError" class="rw-error" role="alert" hidden></p>
+
+      <!-- Diff avant/après + retours arrière, construit par app.js -->
+      <div id="rewriteReport"></div>
+    </section>
+
     <!-- Import/export JSON : sauvegarde/transfert de l'état complet, placé
          sous l'offre dans l'onglet « Nouveau CV ». -->
     <section class="panel-box" id="jsonBox">

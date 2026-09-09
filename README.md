@@ -11,6 +11,18 @@ Application web centrée sur les offres d'emploi : collez le texte d'une offre, 
 3. **Survolez le CV** pour voir les modifications : chaque tiret déplacé est surligné et porte un badge « ↑ était n°X » indiquant sa position dans le CV de base. Le panneau résume les déplacements par expérience. Vous pouvez encore affiner à la main (glisser-déposer, flèches) : cela modifie la proposition, pas le CV de base.
 4. **Enregistrez ce nouveau CV** (nom proposé d'après le site de l'offre ou la date) : il rejoint les CV sauvegardés de l'onglet « CV de base ». « Ignorer la proposition » ou « Effacer » l'abandonne — le CV de base n'a jamais bougé.
 
+#### Recalibrer les lignes d'expérience sur l'offre
+
+Réordonner ne suffit pas toujours : les tirets eux-mêmes peuvent être réécrits pour parler le langage de l'offre. Le panneau **« Recalibrer les lignes d'expérience »**, sous l'offre, s'en charge en trois gestes.
+
+1. **« Copier le prompt »** : l'application compose un prompt à partir de l'offre collée et de votre parcours (expériences avec leurs tirets, formation, projets, compétences). Il impose l'anatomie d'une bonne ligne de CV — verbe d'action au passé, objet quantifié, méthode, résultat quantifié, destinataire —, interdit d'inventer un chiffre, et demande la réponse dans **la langue de l'offre** (détectée automatiquement). Aucune clé d'API n'est nécessaire : vous passez le prompt à l'assistant de votre choix. « Voir le prompt » l'affiche pour une copie à la main si le navigateur refuse le presse-papiers.
+2. **Collez la réponse** dans le champ prévu, puis **« Appliquer tout »** : **toutes** les lignes entrent d'un coup et un **nouveau CV nommé** est créé aussitôt (nom déduit de l'en-tête de l'offre, ex. « Nortis Group — Product Owner Data »), visible dans les CV sauvegardés. Le CV de base, lui, n'est pas touché : la relecture est une surcouche d'affichage.
+3. **Relisez le diff** : sous le bouton, chaque ligne montre le texte du CV de base et la ligne recalibrée, **mot à mot** — mots retirés barrés en rouge, mots ajoutés en vert. Dans le CV lui-même, les tirets concernés portent au survol un badge « ↻ réécrite » (texte d'origine en infobulle) ou « + ajoutée ». Ces repères ne sont jamais imprimés ni exportés.
+
+Rien n'est irréversible : **« Annuler »** sur une ligne la ramène au texte du CV de base, **« Rétablir »** la réapplique, et **« Tout annuler » / « Tout réappliquer »** font de même en bloc. Le CV nommé suit chacune de ces décisions. « Abandonner » retire la surcouche sans supprimer le CV déjà enregistré.
+
+Si l'assistant rend **moins** de lignes qu'il n'y a de tirets, les tirets restants sont conservés tels quels et le rapport le dit ; s'il en rend **plus**, le surplus est ajouté en fin d'expérience et reste supprimable d'un ✕.
+
 ### « CV de base » — le CV de référence et les CV sauvegardés
 
 Le CV de base s'édite ici (textes, tirets, sections, photo, liens…) ; c'est lui qui sert de matrice à chaque nouvelle analyse. À côté, la liste des **CV sauvegardés** : ceux enregistrés depuis l'onglet « Nouveau CV » et ceux que vous sauvegardez manuellement. Chacun peut être chargé (il devient le CV de base), écrasé, renommé ou supprimé.
