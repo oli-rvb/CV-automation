@@ -1922,6 +1922,64 @@ main.tab-create #createLeft {
   margin: 6px 0 0;
 }
 
+/* Rapport de relecture : ce qui a été appliqué, et de quoi revenir en arrière */
+
+.rw-report {
+  border: 1px solid var(--accent);
+  background: #f6f9ff;
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-top: 12px;
+}
+
+.rw-summary {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.rw-version {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.rw-version-label {
+  flex: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ok);
+  white-space: nowrap;
+}
+
+.rw-version input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 13px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 9px;
+  background: #fff;
+}
+
+.rw-version input:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+.rw-version input:disabled { color: var(--muted); background: var(--bg); }
+
+.rw-stale {
+  font-size: 12.5px;
+  color: #92400e;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  padding: 6px 9px;
+  margin: 10px 0 0;
+}
+
+.rw-report .panel-actions { margin-bottom: 0; }
+.rw-report .panel-actions button { font-size: 13px; padding: 5px 12px; }
+
 /* ---------- Impression : page A4 identique au rendu écran ---------- */
 
 /* Marges de page A4 (haut/bas/gauche/droite) : chaque page exportée les porte,
