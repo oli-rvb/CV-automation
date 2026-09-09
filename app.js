@@ -1808,6 +1808,9 @@ cvEl.addEventListener('click', async (e) => {
       const ord = inCreateTab() && state.proposal ? state.proposal.expOrder : null;
       if (ord) {
         const idx = ord.indexOf(exp.id);
+        // Absente de l'ordre généré (ajoutée depuis l'onglet « CV de base ») :
+        // sans ce garde-fou, indexOf === -1 déplacerait la dernière du lot.
+        if (idx === -1) return;
         move(ord, idx, action === 'exp-up' ? idx - 1 : idx + 1);
       } else {
         const idx = state.experiences.indexOf(exp);
@@ -2429,6 +2432,9 @@ versionListEl.addEventListener('input', (e) => {
   const v = state.versions.find((x) => x.id === nameEl.closest('.version-item').dataset.versionId);
   if (v) {
     v.name = nameEl.textContent;
+    // Si c'est le CV généré, la proposition doit suivre : sans cela, la
+    // resynchronisation automatique réécrirait le nom qu'on vient de saisir.
+    if (state.proposal && state.proposal.versionId === v.id) state.proposal.name = v.name;
     save();
   }
 });
@@ -3370,17 +3376,21 @@ function ingestRewrite(raw) {
   const applied = applyRewrite(lines, 'clipboard');
   if (!applied) {
     setGenStatus('Réponse non exploitable : attendu le JSON demandé par le prompt.', 'warn');
-    return;
+    return false;
   }
   syncGeneratedVersion();
   setGenStatus(`${applied} ligne${applied > 1 ? 's' : ''} recalibrée${applied > 1 ? 's' : ''} — CV enregistré à jour.`, 'done');
   rerender();
+  return true;
 }
 
 resultsEl.addEventListener('paste', (e) => {
   if (e.target.id !== 'llmPaste') return;
   e.preventDefault();
-  ingestRewrite(e.clipboardData.getData('text/plain'));
+  const raw = e.clipboardData.getData('text/plain');
+  // Réponse illisible : on la laisse dans le champ au lieu de l'avaler, pour
+  // que l'utilisateur voie ce qu'il a collé et puisse le corriger.
+  if (!ingestRewrite(raw)) e.target.value = raw;
 });
 
 resultsEl.addEventListener('click', async (e) => {
@@ -3467,7 +3477,15 @@ async function generateCv() {
   const btn = $('#generateBtn');
   btn.disabled = true;
   try {
-    const text = await resolveOfferText();
+    let text;
+    try {
+      text = await resolveOfferText();
+    } catch (err) {
+      // Erreur propre à la récupération de l'offre : c'est la seule qui mérite
+      // ce libellé, les suivantes ne viennent pas de là.
+      setGenStatus(`Offre non récupérée : ${err.message}`, 'warn');
+      return;
+    }
     state.jobText = jobTextEl.value;
     if (!text) {
       setGenStatus('Collez le texte de l’offre (ou son adresse) pour lancer la génération.', 'warn');
@@ -3510,7 +3528,8 @@ async function generateCv() {
     );
     rerender();
   } catch (err) {
-    setGenStatus(`Offre non récupérée : ${err.message}`, 'warn');
+    console.error(err);
+    setGenStatus('La génération a échoué. Réessayez, ou vérifiez le texte de l’offre.', 'warn');
   } finally {
     btn.disabled = false;
   }
