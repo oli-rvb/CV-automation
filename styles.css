@@ -1540,7 +1540,9 @@ main.tab-create #createLeft {
 
 .panel-box .hint { font-size: 13px; color: var(--muted); margin: 0 0 10px; }
 
-#jobText {
+#jobText,
+#promptPreview,
+#llmAnswer {
   width: 100%;
   font: inherit;
   font-size: 13px;
@@ -1550,7 +1552,9 @@ main.tab-create #createLeft {
   resize: vertical;
 }
 
-#jobText:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+#jobText:focus,
+#promptPreview:focus,
+#llmAnswer:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
 
 .panel-actions {
   display: flex;
@@ -1880,6 +1884,43 @@ main.tab-create #createLeft {
 .apply-note { color: var(--ok); font-size: 13px; font-weight: 600; }
 
 .empty-note { font-size: 13px; color: var(--muted); }
+
+/* ---------- Recalibrage des lignes d'expérience ---------- */
+
+#rewritePanel .rw-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 14px 0 6px;
+}
+
+#promptPreview {
+  margin-top: 8px;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.rw-status {
+  font-size: 12.5px;
+  color: var(--ok);
+  margin: 4px 0 0;
+}
+
+.rw-status.ko { color: var(--danger); }
+
+.rw-error {
+  font-size: 12.5px;
+  color: var(--danger);
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  padding: 7px 9px;
+  margin: 6px 0 0;
+}
 
 /* ---------- Impression : page A4 identique au rendu écran ---------- */
 

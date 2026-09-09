@@ -2735,6 +2735,191 @@ jobTextEl.addEventListener('input', () => {
 });
 
 /* ============================================================
+   Relecture : lignes d'expérience recalibrées sur l'offre
+   ============================================================
+   Variante « semi-auto » : l'app fabrique le prompt, l'utilisateur le passe à
+   son assistant IA et recolle la réponse, puis TOUT est appliqué d'un bloc.
+   Rien n'est écrit dans le CV de base : la relecture est une surcouche
+   d'affichage (state.rewrite, voir normalizeRewrite) doublée d'un CV nommé
+   créé automatiquement. Chaque ligne reste annulable, seule ou en bloc. */
+
+const promptPreviewEl = $('#promptPreview');
+const promptStatusEl = $('#promptStatus');
+const llmAnswerEl = $('#llmAnswer');
+const rewriteErrorEl = $('#rewriteError');
+const rewriteReportEl = $('#rewriteReport');
+
+/* ---------- Langue de l'offre ---------- */
+
+// Mots-outils très fréquents et propres à chaque langue : suffisants pour
+// trancher entre une offre française et une offre anglaise, sans dictionnaire.
+const LANG_MARKERS = {
+  fr: ['le', 'la', 'les', 'des', 'une', 'un', 'vous', 'nous', 'et', 'du', 'dans', 'pour', 'avec', 'sur', 'est', 'sont', 'au', 'aux', 'votre', 'notre', 'que', 'qui'],
+  en: ['the', 'and', 'you', 'we', 'with', 'for', 'our', 'your', 'this', 'that', 'will', 'are', 'is', 'to', 'of', 'in', 'on', 'as', 'have', 'their'],
+};
+
+// Langue dominante de l'offre : les lignes recalibrées devront la suivre.
+function detectOfferLang(text) {
+  const words = normalizeText(text).match(/[a-z']+/g) || [];
+  const counts = { fr: 0, en: 0 };
+  const sets = { fr: new Set(LANG_MARKERS.fr), en: new Set(LANG_MARKERS.en) };
+  for (const w of words) {
+    if (sets.fr.has(w)) counts.fr += 1;
+    if (sets.en.has(w)) counts.en += 1;
+  }
+  return counts.en > counts.fr ? 'en' : 'fr';
+}
+
+/* ---------- Fabrication du prompt ---------- */
+
+// Nettoie une ligne venue d'un texte collé (offre ou réponse de l'assistant) :
+// balisage Markdown courant, guillemets d'encadrement, espaces multiples.
+function cleanRewriteLine(raw) {
+  return String(raw ?? '')
+    .replace(/^[\s>#]+/, '')
+    .replace(/\*\*|__|`/g, '')
+    .replace(/^[*_]+|[*_]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^["«“]\s*|\s*["»”]$/g, '')
+    .trim();
+}
+
+// Rappel du parcours envoyé à l'assistant : il doit recalibrer, pas inventer.
+function rewriteCareerBrief() {
+  const out = [];
+  state.experiences.forEach((exp, i) => {
+    out.push(`[EXP ${i + 1}] ${exp.role || 'Poste'} — ${exp.company || 'Entreprise'}${exp.period ? ` (${exp.period})` : ''}`);
+    if (exp.companyDescription.trim()) out.push(`Contexte : ${exp.companyDescription.trim()}`);
+    out.push(`Lignes actuelles (${exp.bullets.length}) :`);
+    exp.bullets.forEach((b, j) => out.push(`${j + 1}. ${b.text}`));
+    out.push('');
+  });
+
+  const list = (title, items) => {
+    const rows = items.filter(Boolean);
+    if (!rows.length) return;
+    out.push(title);
+    rows.forEach((r) => out.push(`- ${r}`));
+    out.push('');
+  };
+  list('Formation :', state.education.map((e) => [e.title, e.detail].filter(Boolean).join(' — ')));
+  list('Projets :', state.projects.map((p) => [p.title, p.detail].filter(Boolean).join(' — ')));
+  list('Compétences :', state.skillGroups.map((g) => `${g.label} : ${g.text.replace(/\n+/g, ' ; ')}`));
+  if (state.skills.trim()) list('Autres compétences :', [state.skills.trim()]);
+  return out.join('\n').trim();
+}
+
+// Le prompt complet : offre + parcours + anatomie imposée d'une ligne + format
+// de réponse analysable par parseRewriteAnswer().
+function buildRewritePrompt() {
+  const offer = effectiveJobText();
+  const lang = detectOfferLang(offer);
+  const counts = state.experiences.map((exp, i) => `[EXP ${i + 1}] : exactement ${exp.bullets.length} ligne${exp.bullets.length > 1 ? 's' : ''}`);
+
+  return [
+    "Tu réécris les lignes d'expérience d'un CV pour qu'elles répondent à une offre d'emploi précise.",
+    '',
+    "## Offre d'emploi",
+    '"""',
+    offer,
+    '"""',
+    '',
+    '## Parcours actuel (seule matière autorisée : n’invente rien)',
+    rewriteCareerBrief(),
+    '',
+    '## Anatomie imposée de chaque ligne',
+    "Verbe d'action au passé + objet quantifié + méthode ou outil + résultat quantifié + destinataire ou usage.",
+    'Exemple : « Analyzed purchasing behavior of 100,000 customers through clustering to create 3 personas used by the Product, Marketing, and Purchasing teams. »',
+    '',
+    'Règles :',
+    '- une seule phrase par ligne, sans « je », sans sous-liste ;',
+    "- aucun adjectif d'auto-évaluation (« excellent », « passionné », « rigoureux ») ;",
+    '- les chiffres priment : reprends ceux du parcours, ne fabrique aucun chiffre absent ;',
+    "- reprends le vocabulaire de l'offre uniquement quand il décrit vraiment le travail fait ;",
+    lang === 'en'
+      ? "- the posting is written in English: write every line in English."
+      : "- l'offre est rédigée en français : rédige toutes les lignes en français.",
+    '',
+    '## Format de réponse imposé',
+    'Réponds UNIQUEMENT par les blocs suivants, sans introduction ni commentaire :',
+    '',
+    ...state.experiences.map((_, i) => `[EXP ${i + 1}]\n- …\n- …`),
+    '',
+    'Une ligne par tiret, dans le même ordre que les lignes actuelles, et :',
+    ...counts.map((c) => `- ${c}`),
+  ].join('\n');
+}
+
+/* ---------- Copie du prompt ---------- */
+
+function flashPromptStatus(message, ok = true) {
+  promptStatusEl.textContent = message;
+  promptStatusEl.classList.toggle('ko', !ok);
+  promptStatusEl.hidden = false;
+}
+
+// Copie sans dépendance ni permission : l'API moderne quand elle est là (elle
+// ne l'est pas toujours en file://), sinon la sélection d'un textarea.
+async function copyToClipboard(text) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    /* refus du navigateur : on retombe sur execCommand ci-dessous */
+  }
+  const ta = el('textarea', { style: 'position:fixed;top:-1000px;opacity:0' });
+  ta.value = text;
+  document.body.append(ta);
+  ta.select();
+  let ok = false;
+  try {
+    ok = document.execCommand('copy');
+  } catch {
+    ok = false;
+  }
+  ta.remove();
+  return ok;
+}
+
+function showPrompt(open) {
+  promptPreviewEl.hidden = !open;
+  $('#togglePromptBtn').setAttribute('aria-expanded', String(open));
+  $('#togglePromptBtn').textContent = open ? 'Masquer le prompt' : 'Voir le prompt';
+  if (open) promptPreviewEl.value = buildRewritePrompt();
+}
+
+$('#copyPromptBtn').addEventListener('click', async () => {
+  state.jobText = jobTextEl.value;
+  if (!effectiveJobText()) {
+    flashPromptStatus("Collez d'abord le texte de l'offre ci-dessus.", false);
+    return;
+  }
+  const prompt = buildRewritePrompt();
+  promptPreviewEl.value = prompt;
+  const ok = await copyToClipboard(prompt);
+  if (ok) {
+    flashPromptStatus('Prompt copié ✓ — collez-le dans votre assistant, puis recollez sa réponse ci-dessous.');
+  } else {
+    showPrompt(true);
+    flashPromptStatus('Copie automatique refusée par le navigateur : le prompt est affiché ci-dessous, copiez-le à la main.', false);
+  }
+});
+
+$('#togglePromptBtn').addEventListener('click', () => {
+  state.jobText = jobTextEl.value;
+  showPrompt(promptPreviewEl.hidden);
+});
+
+$('#clearAnswerBtn').addEventListener('click', () => {
+  llmAnswerEl.value = '';
+  rewriteErrorEl.hidden = true;
+  llmAnswerEl.focus();
+});
+
+/* ============================================================
    Barre d'outils
    ============================================================ */
 
