@@ -880,6 +880,10 @@ function rewriteBadge(b) {
 
 function bulletsUl(bullets, ownerId) {
   const ul = el('ul', { class: 'bullets' });
+  // Dernier tiret réordonnable : les lignes ajoutées par la relecture ferment
+  // la liste sans en faire partie, le ↓ du tiret qui les précède n'a donc rien
+  // à déplacer.
+  const lastMovable = bullets.reduce((acc, b, k) => (b.rw === 'add' ? acc : k), -1);
   bullets.forEach((b, j) => {
     const badge = diffBadge(b.id, j, ownerId);
     const rwBadge = rewriteBadge(b);
@@ -898,7 +902,7 @@ function bulletsUl(bullets, ownerId) {
           'div',
           { class: 'bullet-controls' },
           !added && j > 0 && iconBtn('↑', 'bullet-up', 'Monter le point'),
-          !added && j < bullets.length - 1 && iconBtn('↓', 'bullet-down', 'Descendre le point'),
+          !added && j < lastMovable && iconBtn('↓', 'bullet-down', 'Descendre le point'),
           iconBtn('✕', 'bullet-del', added ? 'Retirer cette ligne ajoutée' : 'Supprimer le point', 'del')
         )
       )
@@ -1721,8 +1725,10 @@ cvEl.addEventListener('keydown', (e) => {
     if (!owner) return;
     const idx = owner.bullets.findIndex((b) => b.id === t.dataset.bulletId);
     const nb = { id: uid(), text: '' };
-    owner.bullets.splice(idx + 1, 0, nb);
-    proposalInsert(section.dataset.expId, nb.id, t.dataset.bulletId);
+    // idx === -1 : ligne ajoutée par la relecture, sans place dans le CV de
+    // base — le nouveau tiret rejoint la fin de l'expérience.
+    owner.bullets.splice(idx === -1 ? owner.bullets.length : idx + 1, 0, nb);
+    proposalInsert(section.dataset.expId, nb.id, idx === -1 ? null : t.dataset.bulletId);
     pendingFocusBulletId = nb.id;
     rerender();
   } else {
@@ -2869,7 +2875,9 @@ function buildRewritePrompt() {
     '',
     '## Anatomie imposée de chaque ligne',
     "Verbe d'action au passé + objet quantifié + méthode ou outil + résultat quantifié + destinataire ou usage.",
-    'Exemple : « Analyzed purchasing behavior of 100,000 customers through clustering to create 3 personas used by the Product, Marketing, and Purchasing teams. »',
+    lang === 'en'
+      ? 'Example: « Analyzed purchasing behavior of 100,000 customers through clustering to create 3 personas used by the Product, Marketing, and Purchasing teams. »'
+      : 'Exemple : « Analysé le comportement d’achat de 100 000 clients par clustering pour produire 3 personas utilisés par les équipes Produit, Marketing et Achats. »',
     '',
     'Règles :',
     '- une seule phrase par ligne, sans « je », sans sous-liste ;',
@@ -2883,7 +2891,7 @@ function buildRewritePrompt() {
     '## Format de réponse imposé',
     'Réponds UNIQUEMENT par les blocs suivants, sans introduction ni commentaire :',
     '',
-    ...state.experiences.map((_, i) => `[EXP ${i + 1}]\n- …\n- …`),
+    state.experiences.map((_, i) => `[EXP ${i + 1}]\n- …\n- …`).join('\n\n'),
     '',
     'Une ligne par tiret, dans le même ordre que les lignes actuelles, et :',
     ...counts.map((c) => `- ${c}`),
@@ -3019,31 +3027,43 @@ function rewriteVersionName() {
 // d'expérience (et reste supprimable).
 function buildRewriteEntries(blocks) {
   const entries = {};
-  const stats = { rewritten: 0, unchanged: 0, kept: 0, added: 0 };
   state.experiences.forEach((exp, i) => {
     const lines = blocks.get(i + 1);
-    if (!lines || !lines.length) {
-      stats.kept += exp.bullets.length;
-      return;
-    }
+    if (!lines || !lines.length) return;
     const list = [];
     exp.bullets.forEach((b, j) => {
       const after = lines[j];
-      if (after === undefined) {
-        stats.kept += 1;
-        return;
-      }
+      if (after === undefined) return; // moins de lignes que de tirets : tiret conservé
       list.push({ id: uid(), kind: 'edit', bulletId: b.id, before: b.text, after, active: true });
-      if (after === b.text) stats.unchanged += 1;
-      else stats.rewritten += 1;
     });
     lines.slice(exp.bullets.length).forEach((after) => {
       list.push({ id: uid(), kind: 'add', bulletId: null, before: '', after, active: true });
-      stats.added += 1;
     });
     if (list.length) entries[exp.id] = list;
   });
-  return { entries, stats };
+  return entries;
+}
+
+// Compteurs du rapport, recalculés à chaque rendu : ils survivent ainsi au
+// rechargement de la page et suivent les tirets ajoutés ou supprimés depuis.
+function rewriteStats() {
+  const s = { rewritten: 0, unchanged: 0, kept: 0, added: 0 };
+  if (!state.rewrite) return s;
+  for (const exp of state.experiences) {
+    const list = rewriteEntriesFor(exp.id) || [];
+    let edits = 0;
+    for (const e of list) {
+      if (e.kind === 'add') {
+        s.added += 1;
+      } else {
+        edits += 1;
+        if (e.after === baseTextFor(exp.id, e)) s.unchanged += 1;
+        else s.rewritten += 1;
+      }
+    }
+    s.kept += Math.max(0, exp.bullets.length - edits);
+  }
+  return s;
 }
 
 // Le CV tel qu'il s'affiche pendant la relecture : ordre proposé par l'analyse
@@ -3092,7 +3112,7 @@ async function applyRewriteAnswer() {
       'Format non reconnu : la réponse doit contenir des blocs « [EXP 1] », « [EXP 2] »… suivis de lignes à tiret. Vérifiez que le prompt a bien été copié en entier.'
     );
   }
-  const { entries, stats } = buildRewriteEntries(blocks);
+  const entries = buildRewriteEntries(blocks);
   if (Object.keys(entries).length === 0) {
     return showRewriteError("Aucune ligne exploitable : les blocs trouvés ne correspondent à aucune expérience du CV.");
   }
@@ -3112,7 +3132,6 @@ async function applyRewriteAnswer() {
     lang: detectOfferLang(effectiveJobText()),
     jobText: effectiveJobText(),
     entries,
-    stats,
   };
   if (reusable) {
     reusable.data = snapshotRewriteCV();
@@ -3302,7 +3321,7 @@ function renderRewritePanel() {
   const rw = state.rewrite;
   if (!rw) return;
 
-  const s = rw.stats || { rewritten: 0, unchanged: 0, kept: 0, added: 0 };
+  const s = rewriteStats();
   const plural = (n, one, many) => `${n} ${n > 1 ? many : one}`;
   const parts = [plural(s.rewritten, 'ligne réécrite', 'lignes réécrites')];
   if (s.unchanged) parts.push(plural(s.unchanged, 'inchangée', 'inchangées'));
@@ -3355,7 +3374,7 @@ function renderRewritePanel() {
 
   for (const exp of state.experiences) {
     const list = rewriteEntriesFor(exp.id);
-    const kept = exp.bullets.length - (list ? list.filter((e) => e.kind === 'edit').length : 0);
+    const kept = Math.max(0, exp.bullets.length - (list ? list.filter((e) => e.kind === 'edit').length : 0));
     if (!list && !kept) continue;
     const block = el('div', { class: 'rw-exp' }, el('h4', { text: exp.role || 'Expérience' }));
     if (list) block.append(el('ol', { class: 'rw-lines' }, ...list.map((e) => rewriteLineItem(exp.id, e))));
