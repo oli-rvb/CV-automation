@@ -1855,6 +1855,52 @@ main.tab-create #createLeft {
 
 .chip.small { font-size: 11px; padding: 1px 7px; }
 
+/* Encadré « Ce que l'app a décidé seule » : la contrepartie du tout-automatique.
+   Chaque expérience y dit si elle a été retenue, avec quel score et sur quels
+   mots de l'offre. Une expérience écartée reste affichée, en grisé. */
+
+.decision-box {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  background: #fff;
+}
+
+.decision-box h3 { margin: 0 0 6px; font-size: 14px; }
+
+.decision-box .hint { margin-bottom: 10px; }
+
+.decision-exp { padding: 6px 0; border-top: 1px solid var(--line); }
+
+.decision-exp:first-of-type { border-top: 0; }
+
+.decision-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.decision-head strong { font-weight: 600; }
+
+.decision-mark { color: var(--ok); font-weight: 700; }
+
+.decision-exp.dropped { opacity: 0.6; }
+
+.decision-exp.dropped .decision-mark { color: var(--danger); }
+
+.decision-score {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.decision-detail { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+
+.decision-chips { margin-top: 5px; }
+
 /* Encadré « Nouveau CV proposé » */
 
 .proposal-box {

@@ -405,6 +405,8 @@ function save() {
     /* stockage indisponible : l'édition reste possible dans la page */
   }
   updateSaveIndicator();
+  // Le CV généré est déjà enregistré : ses retouches doivent y arriver seules.
+  scheduleGeneratedSync();
 }
 
 let state = loadState();
@@ -2714,41 +2716,160 @@ function effectiveJobText() {
   return (state.jobText || '').trim();
 }
 
-// Détails d'affichage de la proposition, remis à zéro à chaque nouvelle
-// analyse : nom saisi pour le futur CV et confirmation d'enregistrement.
-let newCvNameDraft = '';
+// Confirmation d'enregistrement, remise à zéro à chaque génération.
 let proposalSaved = false;
 
 // Forme complète d'une proposition. `orders` seul suffisait avant la
 // génération ; les autres champs portent la surcouche « CV généré ».
 function emptyProposal() {
-  return { orders: {}, texts: {}, expOrder: null, dropped: [], name: '', report: null };
+  return {
+    orders: {},
+    texts: {},
+    expOrder: null,
+    dropped: [],
+    name: '',
+    report: null,
+    versionId: null,
+  };
 }
 
-// Construit la proposition : l'ordre suggéré par l'analyse, par expérience.
-// Le CV de base n'est PAS modifié — la proposition n'est qu'une surcouche
-// d'ordre, affichée dans l'onglet « Nouveau CV ».
-function buildProposal() {
-  newCvNameDraft = '';
-  proposalSaved = false;
-  const model = buildJobModel(effectiveJobText());
-  if (model.empty) {
-    state.proposal = null;
-    return;
-  }
-  const orders = {};
-  let changed = false;
-  for (const exp of state.experiences) {
-    const suggested = suggestOrder(exp, model).scored.map((s) => s.bullet.id);
-    orders[exp.id] = suggested;
-    if (suggested.some((id, i) => exp.bullets[i].id !== id)) changed = true;
-  }
-  state.proposal = changed ? { ...emptyProposal(), orders } : null;
+/* ---------- Sélection automatique des expériences ---------- */
+
+// Un CV sans expérience n'a aucun intérêt : on en garde toujours au moins
+// deux, même quand l'offre ne correspond à rien.
+const MIN_KEPT_EXPERIENCES = 2;
+// Une expérience qui pèse moins que ce ratio de la meilleure est écartée.
+const KEEP_RATIO = 0.3;
+
+// Pertinence d'une expérience entière : ses tirets, plus son intitulé et son
+// entreprise (comptés une fois et demie — « Product Owner » dans le titre du
+// poste en dit plus long qu'au détour d'un tiret).
+function scoreExperience(exp, model) {
+  const head = scoreBullet(`${exp.role} ${exp.company} ${exp.companyDescription}`, model);
+  const bullets = exp.bullets.map((b) => scoreBullet(b.text, model));
+  return {
+    score: head.score * 1.5 + bullets.reduce((sum, s) => sum + s.score, 0),
+    matched: [...new Set([...head.matched, ...bullets.flatMap((s) => s.matched)])],
+  };
 }
 
-// Nom proposé pour le CV enregistré : la date de l'analyse.
+// Décide seule quelles expériences entrent dans le CV généré. Renvoie le
+// détail du calcul : c'est lui qui est montré à l'utilisateur, l'app ne doit
+// pas trancher en cachette.
+function selectExperiences(model) {
+  const scored = state.experiences.map((exp) => ({ exp, ...scoreExperience(exp, model) }));
+  const best = scored.reduce((m, s) => Math.max(m, s.score), 0);
+  const floor = best * KEEP_RATIO;
+  const byScore = [...scored].sort((a, b) => b.score - a.score);
+  const keep = new Set(
+    byScore.filter((s, rank) => rank < MIN_KEPT_EXPERIENCES || s.score >= floor).map((s) => s.exp.id)
+  );
+  return { scored, keep };
+}
+
+/* ---------- Langue de l'offre ---------- */
+
+// La ligne recalibrée suit la langue de l'offre. Repérage par mots outils :
+// suffisant pour départager français et anglais sur un texte d'offre entier.
+const FR_MARKERS = /\b(les|des|une|vous|nous|pour|avec|dans|votre|notre|est|sont|aux|chez)\b/g;
+const EN_MARKERS = /\b(the|and|of|to|with|for|your|our|are|is|will|you|as)\b/g;
+
+function offerLanguage(text) {
+  const t = normalizeText(text);
+  const fr = (t.match(FR_MARKERS) || []).length;
+  const en = (t.match(EN_MARKERS) || []).length;
+  return en > fr ? 'en' : 'fr';
+}
+
+/* ---------- Nom automatique du CV ---------- */
+
+// Nettoie un intitulé de poste : puces de titre markdown, mentions H/F,
+// ponctuation résiduelle.
+function cleanHeadline(line) {
+  return String(line || '')
+    .replace(/^[#>*\-•\s]+/, '')
+    .replace(/[*_`]/g, '')
+    .replace(/\(\s*[hfmw]\s*\/\s*[hfmw]\s*\)/gi, '')
+    .replace(/\b[hfmw]\s*\/\s*[hfmw]\b/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/[\s\-–—·|,;:]+$/, '')
+    .trim();
+}
+
+// Devine l'entreprise dans les premières lignes de l'offre : un nom mis en
+// gras, ou le premier segment d'une ligne « Entreprise — Ville · CDI ».
+function guessCompany(lines) {
+  for (const line of lines.slice(0, 6)) {
+    const bold = /\*\*([^*]{2,40})\*\*/.exec(line);
+    if (bold) return cleanHeadline(bold[1]);
+    const head = line.split(/\s[—–|·]\s|\s-\s/)[0].trim();
+    if (head && head !== line.trim() && head.length >= 2 && head.length <= 40 && /[a-zA-Zà-ÿ]/.test(head)) {
+      return cleanHeadline(head);
+    }
+  }
+  return '';
+}
+
+// Nom donné au CV sans rien demander : « intitulé du poste · entreprise »
+// quand on sait les lire, la date sinon.
+function autoCvName(text) {
+  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+  const title = offerMeta && offerMeta.title ? cleanHeadline(offerMeta.title) : cleanHeadline(lines[0]);
+  const company = offerMeta && offerMeta.company ? cleanHeadline(offerMeta.company) : guessCompany(lines.slice(1));
+  const parts = [];
+  if (title && title.length <= 70) parts.push(title);
+  if (company && company !== title) parts.push(company);
+  const name = parts.join(' · ').slice(0, 80).trim();
+  return name || defaultVersionName();
+}
+
+// Repli quand l'offre ne dit ni le poste ni l'entreprise.
 function defaultVersionName() {
   return `Offre du ${new Date().toLocaleDateString('fr-FR')}`;
+}
+
+/* ---------- Construction du CV généré ---------- */
+
+// Enchaîne tout ce qui se décide sans LLM : sélection des expériences, ordre
+// des tirets, nom du CV, rapport de décision. Le recalibrage des lignes
+// (llm.js du pauvre : presse-papiers ou backend) vient se poser par-dessus.
+function buildGeneration() {
+  proposalSaved = false;
+  const text = effectiveJobText();
+  const model = buildJobModel(text);
+  if (model.empty) {
+    state.proposal = null;
+    return null;
+  }
+
+  const { scored, keep } = selectExperiences(model);
+  const proposal = emptyProposal();
+  proposal.expOrder = [];
+  // L'ordre des expériences reste anti-chronologique : c'est ce qu'un lecteur
+  // de CV attend. La génération ne fait que retirer les non pertinentes ; le
+  // classement par pertinence, lui, joue à l'intérieur de chaque expérience.
+  for (const exp of state.experiences) {
+    proposal.orders[exp.id] = suggestOrder(exp, model).scored.map((s) => s.bullet.id);
+    if (keep.has(exp.id)) proposal.expOrder.push(exp.id);
+    else proposal.dropped.push(exp.id);
+  }
+
+  proposal.name = autoCvName(text);
+  proposal.report = {
+    lang: offerLanguage(text),
+    keywords: topKeywords(model, 12),
+    experiences: scored.map((s) => ({
+      id: s.exp.id,
+      role: s.exp.role,
+      company: s.exp.company,
+      score: Math.round(s.score * 10) / 10,
+      kept: keep.has(s.exp.id),
+      matched: s.matched.slice(0, 8),
+    })),
+    rewrite: 'none',
+  };
+  state.proposal = proposal;
+  return proposal;
 }
 
 // Le CV de base, aplati avec toute la surcouche de la proposition : seules
@@ -2797,21 +2918,148 @@ function snapshotProposalCV() {
   return snap;
 }
 
-function saveProposalVersion() {
-  const input = $('#newCvName');
-  const name = (input && input.value.trim()) || defaultVersionName();
-  const v = { id: uid(), name, createdAt: Date.now(), data: snapshotProposalCV() };
-  state.versions.unshift(v);
-  state.activeVersionId = v.id;
+/* ---------- Enregistrement automatique du CV généré ---------- */
+
+// Le CV généré est enregistré sans qu'on le demande, sous son nom
+// automatique : c'est le principe de cette variante, la main ne revient à
+// l'utilisateur qu'une fois le CV prêt. La sauvegarde est mise à jour ensuite
+// à chaque retouche, jamais dupliquée.
+function syncGeneratedVersion() {
+  const p = state.proposal;
+  if (!p || !p.expOrder) return;
+  const data = snapshotProposalCV();
+  const existing = p.versionId && state.versions.find((v) => v.id === p.versionId);
+  if (existing) {
+    existing.name = p.name || existing.name;
+    existing.data = data;
+  } else {
+    const v = { id: uid(), name: p.name || defaultVersionName(), createdAt: Date.now(), data };
+    state.versions.unshift(v);
+    p.versionId = v.id;
+  }
   proposalSaved = true;
-  rerender();
+}
+
+// Les retouches faites après coup sur le CV généré (texte d'une ligne, ordre,
+// expérience écartée) doivent se retrouver dans le CV enregistré, sans que
+// l'utilisateur ait à re-sauvegarder. On regroupe les frappes successives.
+let generatedSyncTimer = null;
+function scheduleGeneratedSync() {
+  if (!state.proposal || !state.proposal.versionId) return;
+  clearTimeout(generatedSyncTimer);
+  generatedSyncTimer = setTimeout(() => {
+    syncGeneratedVersion();
+    try {
+      localStorage.setItem(LS_KEY, JSON.stringify(state));
+    } catch {
+      /* stockage indisponible : l'édition reste possible dans la page */
+    }
+  }, 400);
+}
+
+/* ---------- Rendu du panneau de résultats ---------- */
+
+// Détail chiffré d'une expérience du CV généré : tirets déplacés et lignes
+// recalibrées, par rapport au CV de base.
+function generationStats(exp) {
+  const p = state.proposal;
+  const shown = displayBullets(exp);
+  let moved = 0;
+  let rewritten = 0;
+  shown.forEach((b, i) => {
+    if (!exp.bullets[i] || exp.bullets[i].id !== b.id) moved += 1;
+    if (p && typeof p.texts[b.id] === 'string' && p.texts[b.id] !== (exp.bullets.find((x) => x.id === b.id) || {}).text) {
+      rewritten += 1;
+    }
+  });
+  return { moved, rewritten };
+}
+
+// Encadré « Ce que l'app a décidé seule » : sans lui, l'automatisation serait
+// une boîte noire. Une ligne par expérience, retenue ou écartée, avec son
+// score, les mots de l'offre qu'elle capte et ce qui lui a été fait.
+function decisionBox() {
+  const report = state.proposal && state.proposal.report;
+  if (!report || !Array.isArray(report.experiences)) return null;
+
+  const box = el(
+    'div',
+    { class: 'decision-box' },
+    el('h3', { text: 'Ce que l’app a décidé seule' }),
+    el('p', {
+      class: 'hint',
+      text: `Offre analysée en ${report.lang === 'en' ? 'anglais' : 'français'}. ` +
+        'Rien de tout cela n’a touché au CV de base — tout est modifiable ci-contre.',
+    })
+  );
+
+  for (const r of report.experiences) {
+    const exp = findExp(r.id);
+    const line = el(
+      'div',
+      { class: 'decision-exp' + (r.kept ? '' : ' dropped') },
+      el('div', { class: 'decision-head' },
+        el('span', { class: 'decision-mark', 'aria-hidden': 'true', text: r.kept ? '✓' : '✕' }),
+        el('strong', { text: r.role || 'Expérience' }),
+        el('span', { class: 'decision-score', text: `${r.kept ? 'retenue' : 'écartée'} · score ${r.score}` })
+      )
+    );
+    if (exp && r.kept) {
+      const { moved, rewritten } = generationStats(exp);
+      line.append(
+        el('div', {
+          class: 'decision-detail',
+          text: `${moved || 'aucun'} tiret${moved > 1 ? 's' : ''} déplacé${moved > 1 ? 's' : ''} · ` +
+            `${rewritten || 'aucune'} ligne${rewritten > 1 ? 's' : ''} recalibrée${rewritten > 1 ? 's' : ''}`,
+        })
+      );
+    }
+    if (Array.isArray(r.matched) && r.matched.length) {
+      const chips = el('div', { class: 'decision-chips' });
+      r.matched.forEach((w) => chips.append(el('span', { class: 'chip small', text: w })));
+      line.append(chips);
+    }
+    box.append(line);
+  }
+  return box;
+}
+
+// Bloc final : le CV est prêt, nommé et déjà enregistré. Le nom reste
+// modifiable — c'est la seule chose que l'app a inventée et qui se corrige en
+// un mot.
+function readyBox() {
+  const p = state.proposal;
+  const box = el('div', { class: 'proposal-box' }, el('h3', { text: 'CV prêt à exporter' }));
+  box.append(
+    el('p', {
+      class: 'hint',
+      text: 'Le CV ci-contre est enregistré sous ce nom ; « Télécharger PDF » l’exporte tel quel. ' +
+        'Toute retouche faite ici est reprise dans le CV enregistré.',
+    }),
+    el(
+      'div',
+      { class: 'proposal-save' },
+      el('input', {
+        id: 'newCvName',
+        type: 'text',
+        value: p.name,
+        placeholder: 'Nom du CV',
+        'aria-label': 'Nom du CV généré',
+      })
+    )
+  );
+  if (proposalSaved) {
+    box.append(el('p', { class: 'apply-note', text: 'Enregistré ✓ — disponible dans l’onglet « CV de base ».' }));
+  }
+  box.append(el('button', { type: 'button', id: 'discardProposalBtn', class: 'ghost', text: 'Repartir du CV de base' }));
+  return box;
 }
 
 function renderSuggestions() {
   resultsEl.textContent = '';
   const jobText = effectiveJobText();
   if (!jobText) {
-    resultsEl.append(el('p', { class: 'empty-note', text: 'Aucune offre analysée pour le moment.' }));
+    resultsEl.append(el('p', { class: 'empty-note', text: 'Aucune offre pour le moment.' }));
     return;
   }
 
@@ -2821,90 +3069,48 @@ function renderSuggestions() {
     return;
   }
 
-  // Mots-clés principaux de l'offre
   const kwBox = el('div', { class: 'keywords-box' }, el('div', { class: 'label', text: 'Mots-clés principaux de l’offre' }));
   topKeywords(model, 12).forEach((w) => kwBox.append(el('span', { class: 'chip', text: w })));
   resultsEl.append(kwBox);
 
-  if (state.proposal) {
-    const box = el(
-      'div',
-      { class: 'proposal-box' },
-      el('h3', { text: 'Nouveau CV proposé' }),
-      el('p', {
-        class: 'hint',
-        text: 'Le CV ci-dessous est réordonné pour cette offre — le CV de base n’est pas modifié. ' +
-          'Survolez le CV pour voir les tirets déplacés (badge « était n°X »), ' +
-          'puis enregistrez ce nouveau CV pour le retrouver dans l’onglet « CV de base ».',
-      })
-    );
-    for (const exp of state.experiences) {
-      if (!proposalOrderFor(exp.id)) continue;
-      let moved = 0;
-      displayBullets(exp).forEach((b, i) => {
-        if (exp.bullets[i] !== b) moved += 1;
-      });
-      box.append(
-        el(
-          'div',
-          { class: 'proposal-exp-line' },
-          el('strong', { text: exp.role || 'Expérience' }),
-          ` : ${moved ? `${moved} tiret${moved > 1 ? 's' : ''} déplacé${moved > 1 ? 's' : ''}` : 'ordre inchangé'}`
-        )
-      );
-    }
-    box.append(
-      el(
-        'div',
-        { class: 'proposal-save' },
-        el('input', {
-          id: 'newCvName',
-          type: 'text',
-          placeholder: 'Nom du nouveau CV',
-          value: newCvNameDraft || defaultVersionName(),
-          'aria-label': 'Nom du nouveau CV',
-        }),
-        el('button', { type: 'button', id: 'saveProposalBtn', text: 'Enregistrer ce nouveau CV' })
-      ),
-      el('button', { type: 'button', id: 'discardProposalBtn', class: 'ghost', text: 'Ignorer la proposition' })
-    );
-    if (proposalSaved) {
-      box.append(el('p', { class: 'apply-note', text: 'Nouveau CV enregistré ✓ — retrouvez-le dans l’onglet « CV de base ».' }));
-    }
-    resultsEl.append(box);
-  } else {
-    const upToDate = state.experiences.every((exp) => suggestOrder(exp, model).alreadyApplied);
+  if (!state.proposal || !state.proposal.expOrder) {
     resultsEl.append(
-      el('p', {
-        class: upToDate ? 'apply-note' : 'empty-note',
-        text: upToDate
-          ? 'Le CV de base est déjà dans l’ordre le plus pertinent pour cette offre ✓'
-          : 'Cliquez sur « Analyser l’offre » pour obtenir un nouveau CV proposé.',
-      })
+      el('p', { class: 'empty-note', text: 'Cliquez sur « Générer le CV » pour obtenir un CV calibré sur cette offre.' })
     );
+    return;
   }
+
+  const decisions = decisionBox();
+  if (decisions) resultsEl.append(decisions);
+  resultsEl.append(readyBox());
 }
 
-resultsEl.addEventListener('click', (e) => {
-  if (e.target.closest('#saveProposalBtn')) {
-    saveProposalVersion();
-  } else if (e.target.closest('#discardProposalBtn')) {
-    // Le CV de base n'a jamais été modifié : ignorer la proposition se limite
-    // à l'oublier (ré-analyser l'offre la reconstruit à l'identique).
+resultsEl.addEventListener('click', async (e) => {
+  if (e.target.closest('#discardProposalBtn')) {
+    // Le CV de base n'a jamais été modifié : abandonner la génération se
+    // limite à l'oublier. Le CV enregistré, lui, reste dans la liste.
+    if (!(await customConfirm(
+      'Repartir du CV de base ? Le CV généré reste enregistré dans « CV sauvegardés ».',
+      { confirmLabel: 'Repartir' }
+    ))) return;
     state.proposal = null;
     proposalSaved = false;
+    setGenStatus('');
     rerender();
   }
 });
 
-// Le nom saisi survit aux re-rendus du panneau (chaque édition du CV en
-// déclenche un), sans provoquer de re-rendu lui-même.
+// Le nom se corrige à la volée : il est repris dans le CV enregistré sans
+// re-rendu (qui ferait perdre le curseur).
 resultsEl.addEventListener('input', (e) => {
-  if (e.target.id === 'newCvName') newCvNameDraft = e.target.value;
+  if (e.target.id !== 'newCvName' || !state.proposal) return;
+  state.proposal.name = e.target.value;
+  save();
+  scheduleGeneratedSync();
 });
 
 resultsEl.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && e.target.id === 'newCvName') saveProposalVersion();
+  if (e.key === 'Enter' && e.target.id === 'newCvName') e.target.blur();
 });
 
 /* ---------- Ligne d'avancement de la génération ---------- */
@@ -2954,8 +3160,15 @@ async function generateCv() {
       rerender();
       return;
     }
-    setGenStatus('');
-    buildProposal();
+    setGenStatus('Sélection des expériences…');
+    const proposal = buildGeneration();
+    if (!proposal) {
+      setGenStatus('Aucun mot-clé exploitable dans ce texte.', 'warn');
+      rerender();
+      return;
+    }
+    syncGeneratedVersion();
+    setGenStatus(`CV « ${proposal.name} » généré et enregistré.`, 'done');
     rerender();
   } catch (err) {
     setGenStatus(`Offre non récupérée : ${err.message}`, 'warn');
@@ -2970,7 +3183,6 @@ $('#clearAnalysisBtn').addEventListener('click', async () => {
   if (state.proposal && !(await customConfirm('Effacer l’offre et la proposition en cours ? Le CV de base n’est pas affecté.', { confirmLabel: 'Effacer' }))) return;
   state.proposal = null;
   proposalSaved = false;
-  newCvNameDraft = '';
   offerMeta = null;
   jobTextEl.value = '';
   state.jobText = '';
