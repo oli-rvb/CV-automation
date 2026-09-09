@@ -16,7 +16,14 @@
    - POST /fetch-job { url } : rapatrie le HTML d'une offre
      d'emploi (le navigateur ne peut pas le faire lui-même,
      bloqué par le CORS des sites) — l'extraction du texte de
-     l'offre reste côté client (app.js).
+     l'offre reste côté client (app.js) ;
+   - POST /rewrite { prompt } : OPTIONNEL. Relaie le prompt de
+     recalibrage vers l'API Anthropic, uniquement si la variable
+     d'environnement ANTHROPIC_API_KEY est définie. Aucune clé
+     n'est lue ailleurs (ni dans le dépôt, ni depuis le client),
+     et sans clé le point d'entrée se déclare simplement
+     indisponible : l'app retombe alors sur le copier-coller,
+     qui reste le mode par défaut du projet.
 
    Lancement :  node server.js   (port 3333 par défaut)
    ============================================================ */
@@ -30,6 +37,15 @@ const dns = require('dns').promises;
 const { spawn } = require('child_process');
 
 const PORT = Number(process.env.PORT) || 3333;
+
+/* ---------- Recalibrage des lignes par l'API Anthropic (optionnel) ---------- */
+
+// La clé ne vient QUE de l'environnement. Absente, tout ce bloc reste inerte.
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
+const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-opus-5';
+const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
+const MAX_PROMPT = 200 * 1024;
+
 const ROOT = __dirname;
 const MAX_BODY = 15 * 1024 * 1024; // photo en data-URL incluse
 
@@ -279,6 +295,53 @@ async function fetchJobPage(url) {
   }
 }
 
+// Relaie le prompt de recalibrage tel quel : c'est le même que celui proposé
+// à la copie côté client, pour que les deux chemins produisent la même chose.
+async function rewriteWithClaude(prompt) {
+  if (!ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY absente');
+  if (typeof fetch !== 'function') throw new Error('Node 18 ou plus récent requis.');
+
+  const ctrl = new AbortController();
+  const guard = setTimeout(() => ctrl.abort(), 120000);
+  try {
+    const res = await fetch(ANTHROPIC_URL, {
+      method: 'POST',
+      signal: ctrl.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        // Repli côté serveur : si un classificateur refuse la demande, elle est
+        // reprise par un autre modèle au lieu de revenir vide.
+        'anthropic-beta': 'server-side-fallback-2026-07-01',
+      },
+      body: JSON.stringify({
+        model: ANTHROPIC_MODEL,
+        max_tokens: 8000,
+        // Réécrire une dizaine de lignes ne demande pas de longue réflexion.
+        output_config: { effort: 'low' },
+        fallbacks: 'default',
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      throw new Error(`API Anthropic : HTTP ${res.status} ${detail.slice(0, 200)}`);
+    }
+    const data = await res.json();
+    if (data.stop_reason === 'refusal') throw new Error('demande refusée par le modèle');
+    const text = (data.content || [])
+      .filter((b) => b && b.type === 'text')
+      .map((b) => b.text)
+      .join('\n')
+      .trim();
+    if (!text) throw new Error('réponse vide');
+    return text;
+  } finally {
+    clearTimeout(guard);
+  }
+}
+
 /* ---------- Serveur HTTP ---------- */
 
 const MIME = {
@@ -308,6 +371,34 @@ function cors(req, res) {
   }
 }
 
+// Lecture d'un corps de requête JSON, plafonnée. Partagée par les trois
+// points d'entrée POST, qui la répétaient à l'identique.
+function readJsonBody(req, res) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    let size = 0;
+    req.on('data', (chunk) => {
+      size += chunk.length;
+      if (size > MAX_BODY) {
+        res.writeHead(413);
+        res.end('Corps trop volumineux');
+        req.destroy();
+        reject(new Error('corps trop volumineux'));
+        return;
+      }
+      body += chunk;
+    });
+    req.on('error', reject);
+    req.on('end', () => {
+      try {
+        resolve(JSON.parse(body));
+      } catch {
+        reject(new Error('JSON invalide'));
+      }
+    });
+  });
+}
+
 const server = http.createServer((req, res) => {
   cors(req, res);
 
@@ -318,60 +409,62 @@ const server = http.createServer((req, res) => {
   }
 
   if (req.method === 'POST' && req.url === '/pdf') {
-    let body = '';
-    let size = 0;
-    req.on('data', (chunk) => {
-      size += chunk.length;
-      if (size > MAX_BODY) {
-        res.writeHead(413);
-        res.end('Corps trop volumineux');
-        req.destroy();
-        return;
-      }
-      body += chunk;
-    });
-    req.on('end', async () => {
-      try {
-        const { html } = JSON.parse(body);
+    readJsonBody(req, res)
+      .then(async ({ html }) => {
         if (typeof html !== 'string' || !html.trim()) throw new Error('html manquant');
         const pdf = await printToPdf(html);
         res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Length': pdf.length });
         res.end(pdf);
-      } catch (err) {
+      })
+      .catch((err) => {
+        if (res.headersSent) return;
         console.error('[pdf]', err.message);
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: err.message }));
-      }
-    });
+      });
     return;
   }
 
   if (req.method === 'POST' && req.url === '/fetch-job') {
-    let body = '';
-    let size = 0;
-    req.on('data', (chunk) => {
-      size += chunk.length;
-      if (size > MAX_BODY) {
-        res.writeHead(413);
-        res.end('Corps trop volumineux');
-        req.destroy();
-        return;
-      }
-      body += chunk;
-    });
-    req.on('end', async () => {
-      try {
-        const { url } = JSON.parse(body);
+    readJsonBody(req, res)
+      .then(async ({ url }) => {
         if (typeof url !== 'string' || !url.trim()) throw new Error('url manquante');
         const html = await fetchJobPage(url.trim());
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ html }));
-      } catch (err) {
+      })
+      .catch((err) => {
+        if (res.headersSent) return;
         console.error('[fetch-job]', err.message);
         res.writeHead(502, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: err.message }));
-      }
-    });
+      });
+    return;
+  }
+
+  // Recalibrage des lignes par l'API Anthropic. Sans clé d'environnement, le
+  // point d'entrée répond « indisponible » et le front reprend son chemin
+  // presse-papiers — l'utilisateur ne voit passer aucune erreur.
+  if (req.method === 'POST' && req.url === '/rewrite') {
+    if (!ANTHROPIC_API_KEY) {
+      res.writeHead(501, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'ANTHROPIC_API_KEY non définie' }));
+      return;
+    }
+    readJsonBody(req, res)
+      .then(async ({ prompt }) => {
+        if (typeof prompt !== 'string' || !prompt.trim()) throw new Error('prompt manquant');
+        if (prompt.length > MAX_PROMPT) throw new Error('prompt trop long');
+        const text = await rewriteWithClaude(prompt);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ text }));
+      })
+      .catch((err) => {
+        if (res.headersSent) return;
+        console.error('[rewrite]', err.message);
+        res.writeHead(502, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      });
     return;
   }
 
@@ -379,7 +472,7 @@ const server = http.createServer((req, res) => {
     // Statut du backend (utilisé par le front pour choisir le mode PDF)
     if (req.url === '/status') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: true, chrome: Boolean(CHROME) }));
+      res.end(JSON.stringify({ ok: true, chrome: Boolean(CHROME), llm: Boolean(ANTHROPIC_API_KEY) }));
       return;
     }
     const urlPath = decodeURIComponent((req.url || '/').split('?')[0]);
@@ -404,4 +497,9 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, '127.0.0.1', () => {
   console.log(`Éditeur de CV : http://localhost:${PORT}`);
   console.log(CHROME ? `PDF via ${CHROME}` : 'ATTENTION : aucun Chromium trouvé, le PDF backend est indisponible.');
+  console.log(
+    ANTHROPIC_API_KEY
+      ? `Recalibrage des lignes via l'API Anthropic (${ANTHROPIC_MODEL}).`
+      : 'Recalibrage des lignes par copier-coller (définissez ANTHROPIC_API_KEY pour l’automatiser).'
+  );
 });

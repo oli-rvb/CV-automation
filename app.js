@@ -3076,6 +3076,41 @@ async function copyPromptToClipboard() {
   return legacyCopy(prompt);
 }
 
+/* ---------- Chemin serveur, quand une clé d'API est configurée ---------- */
+
+// Le backend expose-t-il le recalibrage ? Interrogé une seule fois par
+// chargement. Toute réponse douteuse vaut « non » : le copier-coller reste le
+// mode par défaut, et rien de tout cela ne doit produire d'erreur visible.
+let backendLlmPromise = null;
+function backendLlmAvailable() {
+  if (!backendLlmPromise) {
+    backendLlmPromise = fetch(backendUrl('/status'))
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => Boolean(data && data.llm))
+      .catch(() => false);
+  }
+  return backendLlmPromise;
+}
+
+// Demande le recalibrage au backend. Renvoie le nombre de lignes appliquées,
+// 0 si le chemin serveur n'a rien donné — l'appelant enchaîne alors sur le
+// presse-papiers sans le dire à l'utilisateur.
+async function rewriteViaBackend() {
+  try {
+    const res = await fetch(backendUrl('/rewrite'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: buildRewritePrompt() }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    return applyRewrite(parseRewriteResponse(data.text), 'server');
+  } catch (err) {
+    console.info('Recalibrage serveur indisponible, repli sur le presse-papiers.', err);
+    return 0;
+  }
+}
+
 // Le presse-papiers a-t-il bien reçu le prompt lors de la dernière génération ?
 let promptCopied = false;
 // La zone de collage n'est mise au premier plan qu'une fois : re-focaliser à
@@ -3442,13 +3477,26 @@ async function generateCv() {
     }
     syncGeneratedVersion();
 
-    // Recalibrage des lignes : le prompt part seul dans le presse-papiers, il
-    // ne reste qu'un collage à faire. (Le chemin serveur, quand une clé d'API
-    // est configurée, s'insère ici et supprime même ce collage.)
-    setGenStatus('Préparation du recalibrage des lignes…');
+    // Recalibrage des lignes. Chemin serveur d'abord quand une clé d'API est
+    // configurée : le CV est alors complet sans un geste de plus. Sinon, le
+    // prompt part seul dans le presse-papiers et il ne reste qu'un collage.
     pasteZoneFocused = false;
-    promptCopied = await copyPromptToClipboard();
+    if (await backendLlmAvailable()) {
+      setGenStatus('Recalibrage des lignes…');
+      const applied = await rewriteViaBackend();
+      if (applied) {
+        syncGeneratedVersion();
+        setGenStatus(
+          `CV « ${proposal.name} » généré, ${applied} ligne${applied > 1 ? 's' : ''} recalibrée${applied > 1 ? 's' : ''}, enregistré.`,
+          'done'
+        );
+        rerender();
+        return;
+      }
+    }
 
+    setGenStatus('Préparation du recalibrage des lignes…');
+    promptCopied = await copyPromptToClipboard();
     setGenStatus(
       `CV « ${proposal.name} » généré et enregistré.` +
         (promptCopied ? ' Prompt de recalibrage copié : collez la réponse de votre IA ci-dessous.' : ''),
