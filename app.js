@@ -333,6 +333,38 @@ function normalizeCV(data) {
   return cv;
 }
 
+/* Lignes proposées ACCEPTÉES, qui n'existent que dans la proposition :
+   { id, expId, text, replaces }. `replaces` est l'identifiant de la puce du
+   CV de base que la ligne remplace (vide = ligne ajoutée). Le CV de base ne
+   les connaît pas : seul l'enregistrement du nouveau CV les matérialise. */
+function normalizeDrafts(list) {
+  return (Array.isArray(list) ? list : [])
+    .map((d) => ({
+      id: String((d && d.id) || uid()),
+      expId: String((d && d.expId) ?? ''),
+      text: String((d && d.text) ?? ''),
+      replaces: String((d && d.replaces) ?? ''),
+    }))
+    .filter((d) => d.expId && d.text);
+}
+
+// Lignes proposées EN ATTENTE D'ARBITRAGE, telles que sorties de la réponse
+// du LLM : { id, text, expId, replaces, status, draftId }.
+function normalizeCandidates(list) {
+  return (Array.isArray(list) ? list : [])
+    .map((c) => ({
+      id: String((c && c.id) || uid()),
+      text: String((c && c.text) ?? ''),
+      expId: String((c && c.expId) ?? ''),
+      replaces: String((c && c.replaces) ?? ''),
+      status: CANDIDATE_STATUS.includes(c && c.status) ? c.status : 'pending',
+      draftId: String((c && c.draftId) ?? ''),
+    }))
+    .filter((c) => c.text);
+}
+
+const CANDIDATE_STATUS = ['pending', 'accepted', 'rejected'];
+
 function normalizeState(data) {
   const s = normalizeCV(data);
   s.versions = (Array.isArray(data.versions) ? data.versions : []).map((v) => ({
@@ -348,12 +380,18 @@ function normalizeState(data) {
   // « Nouveau CV » et enregistrable comme CV sauvegardé.
   s.proposal = null;
   const p = data.proposal;
-  if (p && typeof p === 'object' && p.orders && typeof p.orders === 'object') {
+  if (p && typeof p === 'object') {
     const orders = {};
-    for (const [expId, ids] of Object.entries(p.orders)) {
-      if (Array.isArray(ids)) orders[expId] = ids.map(String);
+    if (p.orders && typeof p.orders === 'object') {
+      for (const [expId, ids] of Object.entries(p.orders)) {
+        if (Array.isArray(ids)) orders[expId] = ids.map(String);
+      }
     }
-    if (Object.keys(orders).length > 0) s.proposal = { orders };
+    const drafts = normalizeDrafts(p.drafts);
+    const candidates = normalizeCandidates(p.candidates);
+    if (Object.keys(orders).length > 0 || drafts.length > 0 || candidates.length > 0) {
+      s.proposal = { orders, drafts, candidates };
+    }
   }
   s.activeTab = data.activeTab === 'base' ? 'base' : 'create';
   // Dernières couleurs libres utilisées (pipette), de la plus récente à la
@@ -774,6 +812,93 @@ function proposalOrderFor(ownerId) {
   return (state.proposal && state.proposal.orders[ownerId]) || null;
 }
 
+/* ---------- Brouillons : les lignes proposées acceptées ----------
+
+   Une ligne acceptée dans le panneau d'arbitrage n'entre PAS dans
+   `state.experiences` : elle est ajoutée à `state.proposal.drafts` et
+   affichée comme un tiret ordinaire de la proposition. Le CV de base reste
+   donc intact tant que l'utilisateur n'enregistre pas le nouveau CV. */
+
+function proposalDrafts(expId) {
+  if (!state.proposal) return [];
+  return state.proposal.drafts.filter((d) => d.expId === expId);
+}
+
+function findDraft(id) {
+  return state.proposal ? state.proposal.drafts.find((d) => d.id === id) || null : null;
+}
+
+// Puces du CV de base masquées par un brouillon qui les remplace.
+function replacedBulletIds(expId) {
+  return new Set(proposalDrafts(expId).map((d) => d.replaces).filter(Boolean));
+}
+
+// Crée la proposition si elle n'existe pas encore : l'ordre de départ de
+// chaque expérience est celui du CV de base (aucun réordonnancement implicite).
+function ensureProposal() {
+  if (!state.proposal) state.proposal = { orders: {}, drafts: [], candidates: [] };
+  for (const exp of state.experiences) {
+    if (!state.proposal.orders[exp.id]) state.proposal.orders[exp.id] = exp.bullets.map((b) => b.id);
+  }
+  return state.proposal;
+}
+
+// La proposition n'a plus de raison d'être si elle ne porte ni brouillon, ni
+// candidate, ni réordonnancement par rapport au CV de base.
+function pruneProposal() {
+  const p = state.proposal;
+  if (!p) return;
+  if (p.drafts.length || p.candidates.length) return;
+  const reordered = state.experiences.some((exp) => {
+    const ord = p.orders[exp.id];
+    return ord && ord.some((id, i) => !exp.bullets[i] || exp.bullets[i].id !== id);
+  });
+  if (!reordered) state.proposal = null;
+}
+
+// Replace chaque brouillon dans l'ordre proposé de son expérience : juste
+// après (ou à la place de) la puce qu'il remplace, en fin de liste sinon.
+function syncDraftsIntoOrders() {
+  const p = state.proposal;
+  if (!p) return;
+  for (const d of p.drafts) {
+    const ord = p.orders[d.expId] || (p.orders[d.expId] = []);
+    if (ord.includes(d.id)) continue;
+    const i = d.replaces ? ord.indexOf(d.replaces) : -1;
+    ord.splice(i === -1 ? ord.length : i + 1, 0, d.id);
+  }
+}
+
+// Accepter une proposition : elle devient un brouillon, donc un tiret visible
+// dans le CV proposé. Rien d'autre ne bouge.
+function acceptCandidate(c) {
+  if (!c || !c.expId || !findExp(c.expId)) return false;
+  ensureProposal();
+  const d = { id: uid(), expId: c.expId, text: c.text, replaces: c.replaces || '' };
+  state.proposal.drafts.push(d);
+  syncDraftsIntoOrders();
+  c.status = 'accepted';
+  c.draftId = d.id;
+  return true;
+}
+
+// Annuler une acceptation : le brouillon disparaît du CV proposé, la puce
+// d'origine qu'il masquait réapparaît, et la proposition retourne en attente.
+function revokeDraft(draftId) {
+  const p = state.proposal;
+  if (!p) return;
+  const d = p.drafts.find((x) => x.id === draftId);
+  if (!d) return;
+  p.drafts = p.drafts.filter((x) => x.id !== draftId);
+  proposalRemove(d.expId, draftId);
+  const c = p.candidates.find((x) => x.draftId === draftId);
+  if (c) {
+    c.status = 'pending';
+    c.draftId = '';
+  }
+  pruneProposal();
+}
+
 // Tirets d'une expérience dans l'ordre AFFICHÉ : l'ordre proposé dans
 // l'onglet « Nouveau CV » (tirets ajoutés depuis l'analyse en fin de liste),
 // l'ordre du CV de base partout ailleurs.
@@ -781,15 +906,21 @@ function displayBullets(exp) {
   const order = inCreateTab() ? proposalOrderFor(exp.id) : null;
   if (!order) return exp.bullets;
   const byId = new Map(exp.bullets.map((b) => [b.id, b]));
+  // Les lignes acceptées s'affichent comme des tirets ordinaires ; la puce
+  // d'origine qu'elles remplacent disparaît de l'affichage (elle reste dans
+  // le CV de base).
+  const replaced = replacedBulletIds(exp.id);
+  for (const d of proposalDrafts(exp.id)) byId.set(d.id, { id: d.id, text: d.text });
   const out = [];
   for (const id of order) {
+    if (replaced.has(id)) continue;
     const b = byId.get(id);
     if (b) {
       out.push(b);
       byId.delete(id);
     }
   }
-  out.push(...byId.values());
+  for (const [id, b] of byId) if (!replaced.has(id)) out.push(b);
   return out;
 }
 
@@ -799,6 +930,17 @@ function displayBullets(exp) {
 function diffBadge(bulletId, index, ownerId) {
   if (!ownerId || !inCreateTab() || !proposalOrderFor(ownerId)) return null;
   const exp = findExp(ownerId);
+  // Ligne proposée acceptée : elle n'a pas de position d'origine. Le badge dit
+  // d'où elle vient (ajout, ou remplacement d'une puce précise).
+  const draft = findDraft(bulletId);
+  if (draft) {
+    const repIdx = draft.replaces && exp ? exp.bullets.findIndex((b) => b.id === draft.replaces) : -1;
+    return el('span', {
+      class: 'diff-badge diff-badge-new',
+      title: 'Ligne proposée, acceptée par vous — absente du CV de base',
+      text: repIdx === -1 ? '✦ ligne proposée' : `✦ remplace n°${repIdx + 1}`,
+    });
+  }
   const baseIdx = exp ? exp.bullets.findIndex((b) => b.id === bulletId) : -1;
   if (baseIdx === -1 || baseIdx === index) return null;
   const arrow = baseIdx > index ? '↑' : '↓';
@@ -1603,7 +1745,11 @@ cvEl.addEventListener('input', (e) => {
   } else if (t.classList.contains('bullet-text')) {
     const owner = ownerFromSection(t.closest('section.exp'));
     const b = owner && owner.bullets.find((x) => x.id === t.dataset.bulletId);
+    // Une ligne proposée acceptée s'édite dans la proposition, pas dans le
+    // CV de base — qui ne la contient pas.
+    const draft = b ? null : findDraft(t.dataset.bulletId);
     if (b) b.text = text;
+    else if (draft) draft.text = text;
     scheduleSuggestions();
   } else if (t.dataset.field) {
     const owner = ownerFromSection(t.closest('section.exp'));
@@ -1678,8 +1824,15 @@ cvEl.addEventListener('click', async (e) => {
     }
     case 'bullet-del': {
       if (!owner || !li) return;
-      owner.bullets = owner.bullets.filter((b) => b.id !== li.dataset.bulletId);
-      proposalRemove(expSection.dataset.expId, li.dataset.bulletId);
+      const bid = li.dataset.bulletId;
+      // Retirer une ligne proposée du CV ne supprime rien : elle redevient
+      // simplement une proposition en attente dans le panneau d'arbitrage.
+      if (findDraft(bid)) {
+        revokeDraft(bid);
+        break;
+      }
+      owner.bullets = owner.bullets.filter((b) => b.id !== bid);
+      proposalRemove(expSection.dataset.expId, bid);
       break;
     }
     case 'bullet-up':
@@ -1713,7 +1866,23 @@ cvEl.addEventListener('click', async (e) => {
       if (!exp) return;
       if (!(await customConfirm('Supprimer cette expérience et tous ses tirets ?', { confirmLabel: 'Supprimer', danger: true }))) return;
       state.experiences = state.experiences.filter((x) => x.id !== exp.id);
-      if (state.proposal) delete state.proposal.orders[exp.id];
+      if (state.proposal) {
+        delete state.proposal.orders[exp.id];
+        state.proposal.drafts = state.proposal.drafts.filter((d) => d.expId !== exp.id);
+        // Les propositions rattachées à cette expérience redeviennent
+        // orphelines : à réaffecter, plutôt que disparaître sans un mot.
+        for (const c of state.proposal.candidates) {
+          if (c.expId === exp.id) {
+            c.expId = '';
+            c.replaces = '';
+            if (c.status === 'accepted') {
+              c.status = 'pending';
+              c.draftId = '';
+            }
+          }
+        }
+        pruneProposal();
+      }
       break;
     }
     case 'exp-up':
@@ -2508,9 +2677,17 @@ let proposalSaved = false;
 function buildProposal() {
   newCvNameDraft = '';
   proposalSaved = false;
+  // Le travail d'arbitrage déjà fait (lignes acceptées, lignes en attente)
+  // survit à une nouvelle analyse : seul l'ordre des tirets est recalculé.
+  const drafts = state.proposal ? state.proposal.drafts : [];
+  const candidates = state.proposal ? state.proposal.candidates : [];
   const model = buildJobModel(effectiveJobText());
   if (model.empty) {
-    state.proposal = null;
+    state.proposal = drafts.length || candidates.length ? { orders: {}, drafts, candidates } : null;
+    if (state.proposal) {
+      ensureProposal();
+      syncDraftsIntoOrders();
+    }
     return;
   }
   const orders = {};
@@ -2520,7 +2697,8 @@ function buildProposal() {
     orders[exp.id] = suggested;
     if (suggested.some((id, i) => exp.bullets[i].id !== id)) changed = true;
   }
-  state.proposal = changed ? { orders } : null;
+  state.proposal = changed || drafts.length || candidates.length ? { orders, drafts, candidates } : null;
+  syncDraftsIntoOrders();
 }
 
 // Nom proposé pour le CV enregistré : la date de l'analyse.
@@ -2534,10 +2712,15 @@ function snapshotProposalCV() {
   const snap = snapshotCV();
   for (const exp of snap.experiences) {
     const ord = proposalOrderFor(exp.id);
-    if (!ord) continue;
-    const byId = new Map(exp.bullets.map((b) => [b.id, b]));
+    const drafts = proposalDrafts(exp.id);
+    if (!ord && !drafts.length) continue;
+    // C'est ici — et seulement ici — que les lignes acceptées deviennent de
+    // vrais tirets, dans le CV enregistré. Le CV de base n'est pas touché.
+    const replaced = replacedBulletIds(exp.id);
+    const byId = new Map(exp.bullets.filter((b) => !replaced.has(b.id)).map((b) => [b.id, b]));
+    for (const d of drafts) byId.set(d.id, { id: d.id, text: d.text });
     const out = [];
-    for (const id of ord) {
+    for (const id of ord || []) {
       const b = byId.get(id);
       if (b) {
         out.push(b);
