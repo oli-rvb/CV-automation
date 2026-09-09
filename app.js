@@ -2900,8 +2900,25 @@ $('#analyzeBtn').addEventListener('click', () => {
   rerender();
 });
 
+// « Effacer » emporte l'offre, la proposition, les lignes acceptées ET les
+// propositions encore en attente d'arbitrage : la confirmation les compte,
+// plutôt que de parler vaguement de « la proposition en cours ».
+function clearAnalysisMessage() {
+  const p = state.proposal;
+  const drafts = p ? p.drafts.length : 0;
+  const pending = p ? p.candidates.filter((c) => c.status === 'pending').length : 0;
+  const perdu = [];
+  if (drafts) perdu.push(`${drafts} ligne${drafts > 1 ? 's' : ''} acceptée${drafts > 1 ? 's' : ''}`);
+  if (pending) perdu.push(`${pending} ligne${pending > 1 ? 's' : ''} encore à arbitrer`);
+  return (
+    'Effacer l’offre et la proposition en cours ?' +
+    (perdu.length ? ` Vous perdez ${perdu.join(' et ')}.` : '') +
+    ' Le CV de base n’est pas affecté.'
+  );
+}
+
 $('#clearAnalysisBtn').addEventListener('click', async () => {
-  if (state.proposal && !(await customConfirm('Effacer l’offre et la proposition en cours ? Le CV de base n’est pas affecté.', { confirmLabel: 'Effacer' }))) return;
+  if (state.proposal && !(await customConfirm(clearAnalysisMessage(), { confirmLabel: 'Effacer', danger: true }))) return;
   state.proposal = null;
   proposalSaved = false;
   newCvNameDraft = '';
