@@ -1881,6 +1881,69 @@ main.tab-create #createLeft {
 
 .empty-note { font-size: 13px; color: var(--muted); }
 
+/* ---------- Assistant « lignes calibrées » ----------
+   Panneau de la colonne de gauche (onglet « Nouveau CV »), en trois étapes
+   numérotées : copier le prompt, coller la réponse, arbitrer ligne par ligne. */
+
+.assist-step + .assist-step {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.assist-step h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+
+.assist-step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* Étape désactivée tant que la précédente n'a rien produit : lisible, mais
+   visiblement pas encore d'actualité. */
+.assist-step.is-waiting { opacity: 0.55; }
+.assist-step.is-waiting .assist-step-num { background: var(--muted); }
+
+#promptPreview,
+#llmReply {
+  width: 100%;
+  margin-top: 8px;
+  font: inherit;
+  font-size: 12.5px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  resize: vertical;
+}
+
+#promptPreview { background: #f9fafb; color: var(--muted); }
+
+#promptPreview:focus,
+#llmReply:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+
+.assist-note {
+  font-size: 12.5px;
+  margin: 8px 0 0;
+}
+
+.assist-note-ok { color: var(--ok); font-weight: 600; }
+.assist-note-warn { color: #b45309; }
+.assist-note-muted { color: var(--muted); }
+
 /* ---------- Impression : page A4 identique au rendu écran ---------- */
 
 /* Marges de page A4 (haut/bas/gauche/droite) : chaque page exportée les porte,

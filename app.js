@@ -1698,6 +1698,7 @@ function updateTabs() {
 function rerender() {
   renderCV();
   renderSuggestions();
+  renderAssist();
   renderVersions();
   updateTemplateToggle();
   updateSideColorControl();
@@ -2859,10 +2860,217 @@ $('#clearAnalysisBtn').addEventListener('click', async () => {
 });
 
 jobTextEl.addEventListener('input', () => {
-  // L'analyse ne se relance qu'au clic sur « Analyser », mais on mémorise la saisie
+  // L'analyse ne se relance qu'au clic sur « Analyser », mais on mémorise la
+  // saisie — et l'assistant, lui, n'a besoin que du texte de l'offre : il
+  // apparaît dès qu'elle est collée, sans clic supplémentaire.
   state.jobText = jobTextEl.value;
+  renderAssist();
   save();
 });
+
+/* ============================================================
+   Assistant « lignes calibrées » — étape 1 : le prompt
+   ============================================================
+
+   Le projet ne parle à aucun LLM lui-même (aucune clé d'API, aucun appel
+   réseau) : il fabrique un prompt que l'utilisateur fait tourner dans son
+   propre assistant, puis il sait relire la réponse. Tout est donc côté
+   client et fonctionne aussi bien en file:// qu'avec `node server.js`. */
+
+const assistPanelEl = $('#assistPanel');
+const promptPreviewEl = $('#promptPreview');
+
+/* ---------- Langue de l'offre ----------
+   Les lignes produites doivent suivre la langue de l'offre. Le repérage est
+   volontairement grossier — compter des mots outils très fréquents suffit à
+   séparer une offre française d'une offre anglaise. */
+const LANG_MARKERS = {
+  fr: ['le', 'la', 'les', 'des', 'une', 'vous', 'nous', 'pour', 'avec', 'dans', 'et', 'du'],
+  en: ['the', 'and', 'with', 'you', 'for', 'of', 'our', 'will', 'we', 'to', 'in', 'a'],
+};
+
+function detectOfferLang(text) {
+  const words = normalizeText(text).match(/[a-z]+/g) || [];
+  const tally = { fr: 0, en: 0 };
+  for (const w of words) {
+    if (LANG_MARKERS.fr.includes(w)) tally.fr += 1;
+    if (LANG_MARKERS.en.includes(w)) tally.en += 1;
+  }
+  return tally.en > tally.fr ? 'en' : 'fr';
+}
+
+const LANG_LABEL = { fr: 'français', en: 'anglais' };
+
+/* ---------- Construction du prompt ----------
+
+   Deux exigences se rejoignent ici : donner au LLM tout le parcours connu et
+   le format de ligne attendu, et obtenir une réponse RELISIBLE — d'où le
+   contrat de sortie « [E1B2] texte », qui rattache chaque ligne proposée à
+   son expérience et à la puce qu'elle remplace. */
+
+// Numérotation partagée entre le prompt et la relecture de la réponse :
+// E1, E2… dans l'ordre des expériences ; B1, B2… dans l'ordre des puces.
+function experienceIndexMap() {
+  return state.experiences.map((exp, i) => ({ exp, tag: `E${i + 1}` }));
+}
+
+function promptParcours() {
+  const lines = [];
+  for (const { exp, tag } of experienceIndexMap()) {
+    const head = [exp.role, exp.company, exp.period].filter(Boolean).join(' — ');
+    lines.push(`[${tag}] ${head || 'Expérience sans intitulé'}`);
+    if (exp.companyDescription) lines.push(`  (contexte : ${exp.companyDescription})`);
+    exp.bullets.forEach((b, j) => lines.push(`  B${j + 1}. ${b.text}`));
+    if (!exp.bullets.length) lines.push('  (aucune puce pour le moment)');
+    lines.push('');
+  }
+  return lines.join('\n').trimEnd();
+}
+
+function promptAnnexes() {
+  const blocks = [];
+  const sub = (title, items) => {
+    if (!items.length) return;
+    const lines = [title.toUpperCase()];
+    for (const it of items) {
+      lines.push(`- ${[it.title, it.detail].filter(Boolean).join(' — ')}`);
+      for (const b of it.bullets) lines.push(`  · ${b.text}`);
+    }
+    blocks.push(lines.join('\n'));
+  };
+  sub('Formation', state.education);
+  sub('Projets', state.projects);
+  const skills = [
+    state.skills,
+    ...state.skillGroups.map((g) => `${g.label} : ${g.text.replace(/\n/g, ' ; ')}`),
+  ].filter((t) => t && t.trim());
+  if (skills.length) blocks.push('COMPÉTENCES\n' + skills.map((t) => `- ${t}`).join('\n'));
+  return blocks.join('\n\n');
+}
+
+function buildAssistPrompt() {
+  const offer = effectiveJobText();
+  const langue = LANG_LABEL[detectOfferLang(offer)];
+  const annexes = promptAnnexes();
+  return `RÔLE
+Tu réécris des lignes d'expérience de CV pour qu'elles répondent à une offre
+d'emploi précise. Tu ne rédiges rien d'autre.
+
+FORMAT D'UNE LIGNE (impératif)
+Une seule phrase construite ainsi :
+verbe d'action au passé + objet quantifié + méthode ou outil + résultat
+quantifié + destinataire ou usage.
+Exemple : « Analyzed purchasing behavior of 100,000 customers through
+clustering to create 3 personas used by the Product, Marketing, and
+Purchasing teams. »
+
+RÈGLES
+- Une phrase, jamais deux. Pas de « je ». Pas d'adjectif d'auto-évaluation
+  (« excellent », « passionné », « rigoureux »).
+- Les chiffres priment : reprends tous ceux du parcours ci-dessous.
+  N'en invente aucun ; si une réalisation n'en porte pas, écris la ligne
+  sans chiffre plutôt que d'en inventer un.
+- N'invente ni mission, ni outil, ni employeur, ni résultat : tu reformules
+  uniquement ce que le parcours contient déjà.
+- Reprends le vocabulaire de l'offre quand il désigne réellement la même chose.
+- Rédige toutes les lignes en ${langue}, la langue de l'offre.
+
+SORTIE (impératif)
+Une ligne par proposition, rien d'autre : ni titre, ni préambule, ni
+commentaire, ni puce, ni ligne vide entre les propositions.
+Chaque ligne commence par une étiquette entre crochets :
+  [E<n>B<m>] texte   → réécrit la puce n°m de l'expérience n
+  [E<n>B0] texte     → ligne entièrement nouvelle pour l'expérience n
+Propose une réécriture pour chaque puce qui gagne à être recalibrée sur
+l'offre, et au plus deux lignes nouvelles par expérience.
+
+PARCOURS
+${promptParcours()}
+${annexes ? '\n' + annexes + '\n' : ''}
+OFFRE D'EMPLOI
+${offer}`;
+}
+
+/* ---------- Copie du prompt ----------
+   `navigator.clipboard` n'est offert qu'en contexte sécurisé : en file://,
+   il est absent ou refusé. On retombe alors sur execCommand, puis, en
+   dernier recours, sur la sélection du prompt à copier à la main. */
+async function copyText(text) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    /* refus du navigateur : on tente la voie de secours */
+  }
+  try {
+    const ta = el('textarea', { style: 'position:fixed;top:-1000px;opacity:0' });
+    ta.value = text;
+    document.body.append(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    ta.remove();
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+// Message sous les boutons de l'étape 1 (copie réussie, ou marche à suivre).
+function assistNote(id, text, kind = 'ok') {
+  const note = $(id);
+  if (!note) return;
+  note.textContent = text || '';
+  note.className = `assist-note${kind ? ' assist-note-' + kind : ''}`;
+  note.hidden = !text;
+}
+
+$('#copyPromptBtn').addEventListener('click', async () => {
+  const prompt = buildAssistPrompt();
+  promptPreviewEl.value = prompt;
+  if (await copyText(prompt)) {
+    assistNote('#copyPromptNote', 'Prompt copié ✓ — collez-le dans votre assistant IA.');
+    return;
+  }
+  // Dernier recours : on montre le prompt, sélectionné, à copier à la main.
+  showPromptPreview(true);
+  promptPreviewEl.focus();
+  promptPreviewEl.select();
+  assistNote(
+    '#copyPromptNote',
+    'Copie automatique refusée par le navigateur : le prompt est sélectionné ci-dessous, faites Ctrl/Cmd+C.',
+    'warn'
+  );
+});
+
+function showPromptPreview(on) {
+  promptPreviewEl.hidden = !on;
+  const btn = $('#togglePromptBtn');
+  btn.textContent = on ? 'Masquer le prompt' : 'Voir le prompt';
+  btn.setAttribute('aria-expanded', String(on));
+}
+
+$('#togglePromptBtn').addEventListener('click', () => {
+  const on = promptPreviewEl.hidden;
+  if (on) promptPreviewEl.value = buildAssistPrompt();
+  showPromptPreview(on);
+});
+
+// Le panneau n'a de sens qu'avec une offre sous la main.
+function renderAssist() {
+  const offer = effectiveJobText();
+  assistPanelEl.hidden = !offer;
+  if (!offer) return;
+
+  const nbBullets = state.experiences.reduce((n, e) => n + e.bullets.length, 0);
+  const nbExp = state.experiences.length;
+  $('#assistPromptHint').textContent =
+    `Le prompt reprend votre parcours (${nbExp} expérience${nbExp > 1 ? 's' : ''}, ` +
+    `${nbBullets} tiret${nbBullets > 1 ? 's' : ''}) et cette offre, détectée en ` +
+    `${LANG_LABEL[detectOfferLang(offer)]} : les lignes proposées seront rédigées dans cette langue.`;
+  if (!promptPreviewEl.hidden) promptPreviewEl.value = buildAssistPrompt();
+}
 
 /* ============================================================
    Barre d'outils

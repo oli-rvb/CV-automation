@@ -121,6 +121,34 @@
       <div id="results"></div>
     </section>
 
+    <!-- Assistant « lignes calibrées » : l'app fabrique un prompt à partir du
+         parcours connu et de l'offre collée ci-dessus ; l'utilisateur le fait
+         tourner dans son propre assistant IA, recolle la réponse, puis arbitre
+         chaque ligne proposée UNE PAR UNE. Rien n'entre dans le CV sans un
+         geste explicite : accepter une ligne l'ajoute à la proposition, pas au
+         CV de base. -->
+    <section class="panel-box" id="assistPanel" hidden>
+      <h2>Lignes calibrées sur l'offre</h2>
+      <p class="hint">
+        Copiez le prompt, faites-le tourner dans votre assistant IA, recollez sa
+        réponse&nbsp;: vous validerez ensuite chaque ligne une par une.
+      </p>
+
+      <!-- Étape 1 : le prompt -->
+      <div class="assist-step">
+        <h3><span class="assist-step-num">1</span> Copier le prompt</h3>
+        <p class="hint" id="assistPromptHint"></p>
+        <div class="panel-actions">
+          <button id="copyPromptBtn" type="button">Copier le prompt</button>
+          <button id="togglePromptBtn" class="ghost" type="button"
+                  aria-expanded="false" aria-controls="promptPreview">Voir le prompt</button>
+        </div>
+        <textarea id="promptPreview" rows="10" readonly hidden
+                  aria-label="Prompt généré" spellcheck="false"></textarea>
+        <p class="assist-note" id="copyPromptNote" role="status" hidden></p>
+      </div>
+    </section>
+
     <!-- Import/export JSON : sauvegarde/transfert de l'état complet, placé
          sous l'offre dans l'onglet « Nouveau CV ». -->
     <section class="panel-box" id="jsonBox">
