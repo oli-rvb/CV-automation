@@ -2630,6 +2630,9 @@ function extractJobPosting(html) {
 // Récupère une offre depuis son adresse via le backend. Sans backend (mode
 // file:// sans serveur), l'appel échoue : l'appelant invite alors à coller le
 // texte, ce qui reste le mode nominal de l'app.
+const NO_BACKEND_HINT =
+  'adresse non récupérable sans le serveur local — lancez « node server.js », ou collez le texte de l’offre.';
+
 async function fetchOfferFromUrl(url) {
   let res;
   try {
@@ -2639,8 +2642,11 @@ async function fetchOfferFromUrl(url) {
       body: JSON.stringify({ url: toHttpUrl(url) }),
     });
   } catch {
-    throw new Error('adresse non récupérable sans le serveur local — lancez « node server.js », ou collez le texte de l’offre.');
+    throw new Error(NO_BACKEND_HINT);
   }
+  // 404/501 : l'app est servie, mais pas par server.js (hébergement statique).
+  // C'est le même cas de figure que « pas de backend du tout ».
+  if (res.status === 404 || res.status === 501) throw new Error(NO_BACKEND_HINT);
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `le site a répondu HTTP ${res.status}`);
   const posting = extractJobPosting(String(data.html || ''));
