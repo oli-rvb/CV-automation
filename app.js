@@ -856,16 +856,26 @@ function pruneProposal() {
   if (!reordered) state.proposal = null;
 }
 
-// Replace chaque brouillon dans l'ordre proposé de son expérience : juste
-// après (ou à la place de) la puce qu'il remplace, en fin de liste sinon.
+/* Replace chaque brouillon dans l'ordre proposé de son expérience : il prend
+   LA PLACE de la puce qu'il remplace, en fin de liste s'il n'en remplace
+   aucune. L'ordre proposé ne contient ainsi que des identifiants réellement
+   affichés — sans quoi les flèches ↑ / ↓ échangeraient un tiret avec une puce
+   masquée (clic sans effet visible) et le glisser-déposer, qui réécrit l'ordre
+   à partir du DOM, perdrait la puce d'origine. */
 function syncDraftsIntoOrders() {
   const p = state.proposal;
   if (!p) return;
   for (const d of p.drafts) {
     const ord = p.orders[d.expId] || (p.orders[d.expId] = []);
-    if (ord.includes(d.id)) continue;
-    const i = d.replaces ? ord.indexOf(d.replaces) : -1;
-    ord.splice(i === -1 ? ord.length : i + 1, 0, d.id);
+    const replacedAt = d.replaces ? ord.indexOf(d.replaces) : -1;
+    if (ord.includes(d.id)) {
+      // Ordre reconstruit par une nouvelle analyse : la puce remplacée y est
+      // revenue à côté de son brouillon, elle n'a rien à y faire.
+      if (replacedAt !== -1) ord.splice(replacedAt, 1);
+      continue;
+    }
+    if (replacedAt === -1) ord.push(d.id);
+    else ord.splice(replacedAt, 1, d.id);
   }
 }
 
@@ -894,7 +904,19 @@ function revokeDraft(draftId) {
   const d = p.drafts.find((x) => x.id === draftId);
   if (!d) return;
   p.drafts = p.drafts.filter((x) => x.id !== draftId);
-  proposalRemove(d.expId, draftId);
+  // La puce d'origine reprend exactement la place qu'occupait le brouillon.
+  const ord = p.orders[d.expId];
+  if (ord) {
+    const exp = findExp(d.expId);
+    const back = d.replaces && exp && exp.bullets.some((b) => b.id === d.replaces) ? d.replaces : '';
+    const i = ord.indexOf(draftId);
+    if (i !== -1) {
+      if (back) ord.splice(i, 1, back);
+      else ord.splice(i, 1);
+    } else if (back && !ord.includes(back)) {
+      ord.push(back);
+    }
+  }
   const c = p.candidates.find((x) => x.draftId === draftId);
   if (c) {
     c.status = 'pending';
@@ -912,7 +934,9 @@ function displayBullets(exp) {
   const byId = new Map(exp.bullets.map((b) => [b.id, b]));
   // Les lignes acceptées s'affichent comme des tirets ordinaires ; la puce
   // d'origine qu'elles remplacent disparaît de l'affichage (elle reste dans
-  // le CV de base).
+  // le CV de base). Elle a normalement quitté l'ordre proposé au moment de
+  // l'acceptation : le filtre ci-dessous n'est qu'un garde-fou, notamment
+  // pour les tirets restés hors de l'ordre.
   const replaced = replacedBulletIds(exp.id);
   for (const d of proposalDrafts(exp.id)) byId.set(d.id, { id: d.id, text: d.text });
   const out = [];
