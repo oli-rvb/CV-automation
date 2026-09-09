@@ -358,7 +358,9 @@ function normalizeRewrite(data, experiences) {
     for (const e of list) {
       if (!e || typeof e !== 'object') continue;
       const after = String(e.after ?? '');
-      if (!after.trim()) continue;
+      // Une ligne recalibrée vidée à la main reste une ligne de la relecture :
+      // seule une ligne AJOUTÉE vide n'a plus d'objet.
+      if (e.kind === 'add' && !after.trim()) continue;
       if (e.kind === 'add') {
         kept.push({ id: String(e.id || uid()), kind: 'add', bulletId: null, before: '', after, active: e.active !== false });
       } else if (typeof e.bulletId === 'string' && bulletIds.has(e.bulletId)) {
@@ -1627,6 +1629,9 @@ function updateTabs() {
 }
 
 function rerender() {
+  // Le CV nommé de la relecture reflète le CV affiché : il doit suivre toutes
+  // les modifications, pas seulement les bascules de lignes recalibrées.
+  syncRewriteVersion();
   renderCV();
   renderSuggestions();
   renderRewritePanel();
@@ -1693,6 +1698,9 @@ cvEl.addEventListener('input', (e) => {
     if (owner) owner[t.dataset.field] = text;
     scheduleSuggestions();
   }
+  // La saisie ne re-rend pas le CV (le curseur y survivrait mal) : le report
+  // vers le CV nommé passe donc par son propre report différé.
+  if (state.rewrite) scheduleRewriteSync();
   save();
 });
 
@@ -1802,6 +1810,7 @@ cvEl.addEventListener('click', async (e) => {
       if (state.proposal) delete state.proposal.orders[exp.id];
       if (state.rewrite) {
         delete state.rewrite.entries[exp.id];
+        dropEmptyRewrite();
         syncRewriteVersion();
       }
       break;
@@ -2992,8 +3001,14 @@ function parseRewriteAnswer(text) {
     const bullet = raw.match(RW_BULLET);
     const line = cleanRewriteLine(bullet ? bullet[1] : raw);
     if (!line) continue;
-    if (bullet) current.push(line);
-    else if (current.length) current[current.length - 1] += ' ' + line;
+    if (bullet) {
+      current.push(line);
+    } else if (current.length && !/[.!?»:;]$/.test(current[current.length - 1])) {
+      // Suite d'une puce coupée en deux : on ne recolle que si la précédente
+      // n'est pas déjà finie, sinon la phrase de conclusion de l'assistant
+      // (« Dis-moi si tu veux une variante… ») atterrirait dans le CV.
+      current[current.length - 1] += ' ' + line;
+    }
   }
   for (const [n, lines] of blocks) if (!lines.length) blocks.delete(n);
   return blocks;
@@ -3137,10 +3152,9 @@ async function applyRewriteAnswer() {
     reusable.data = snapshotRewriteCV();
     reusable.createdAt = Date.now();
   } else {
-    const v = { id: uid(), name: state.rewrite.name, createdAt: Date.now(), data: null };
+    const v = { id: uid(), name: state.rewrite.name, createdAt: Date.now(), data: snapshotRewriteCV() };
     state.rewrite.versionId = v.id;
     state.versions.unshift(v);
-    v.data = snapshotRewriteCV();
   }
   rerender();
 }
@@ -3191,6 +3205,14 @@ function rewriteRemoveBullet(expId, bulletId) {
   const next = list.filter((e) => (e.kind === 'add' ? e.id !== bulletId : e.bulletId !== bulletId));
   if (next.length) state.rewrite.entries[expId] = next;
   else delete state.rewrite.entries[expId];
+  dropEmptyRewrite();
+}
+
+// Une relecture qui n'a plus aucune ligne n'existe plus : sans cela le panneau
+// resterait ouvert et vide, et le rechargement de la page (où normalizeRewrite
+// écarte les relectures vides) donnerait un autre résultat.
+function dropEmptyRewrite() {
+  if (state.rewrite && Object.keys(state.rewrite.entries).length === 0) state.rewrite = null;
 }
 
 /* ---------- Rapport de relecture ---------- */
