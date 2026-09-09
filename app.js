@@ -2716,8 +2716,12 @@ function effectiveJobText() {
   return (state.jobText || '').trim();
 }
 
-// Confirmation d'enregistrement, remise à zéro à chaque génération.
-let proposalSaved = false;
+// Le CV généré est-il bien enregistré ? Déduit de l'état plutôt que mémorisé,
+// pour rester juste après un rechargement de la page.
+function generatedVersionExists() {
+  const p = state.proposal;
+  return Boolean(p && p.versionId && state.versions.some((v) => v.id === p.versionId));
+}
 
 // Forme complète d'une proposition. `orders` seul suffisait avant la
 // génération ; les autres champs portent la surcouche « CV généré ».
@@ -2834,7 +2838,6 @@ function defaultVersionName() {
 // des tirets, nom du CV, rapport de décision. Le recalibrage des lignes
 // (llm.js du pauvre : presse-papiers ou backend) vient se poser par-dessus.
 function buildGeneration() {
-  proposalSaved = false;
   const text = effectiveJobText();
   const model = buildJobModel(text);
   if (model.empty) {
@@ -2855,6 +2858,13 @@ function buildGeneration() {
   }
 
   proposal.name = autoCvName(text);
+  // Re-générer sur la même offre met à jour le CV déjà enregistré au lieu
+  // d'en empiler un second sous le même nom.
+  const previous = state.proposal;
+  if (previous && previous.versionId) {
+    const v = state.versions.find((x) => x.id === previous.versionId);
+    if (v && v.name === proposal.name) proposal.versionId = v.id;
+  }
   proposal.report = {
     lang: offerLanguage(text),
     keywords: topKeywords(model, 12),
@@ -2918,6 +2928,160 @@ function snapshotProposalCV() {
   return snap;
 }
 
+/* ---------- Recalibrage des lignes par un LLM ---------- */
+
+/* Le mode par défaut du projet est le copier-coller vers le LLM de
+   l'utilisateur. Cette variante en réduit le coût au minimum : le prompt est
+   copié tout seul au moment de la génération, et la réponse s'applique au
+   collage — un copier, un coller, rien d'autre. Quand server.js dispose d'une
+   clé d'API (ANTHROPIC_API_KEY), l'aller-retour disparaît complètement ; sans
+   clé, on retombe ici sans que l'utilisateur voie passer la moindre erreur. */
+
+// Le CV généré vu depuis la proposition seule (sans dépendre de l'onglet
+// affiché) : expériences retenues dans leur ordre, tirets dans le leur.
+function generatedView() {
+  const p = state.proposal;
+  const byId = new Map(state.experiences.map((e) => [e.id, e]));
+  const ids = p.expOrder || state.experiences.map((e) => e.id);
+  const out = [];
+  for (const id of ids) {
+    const exp = byId.get(id);
+    if (!exp) continue;
+    const bById = new Map(exp.bullets.map((b) => [b.id, b]));
+    const bullets = [];
+    for (const bid of p.orders[exp.id] || []) {
+      const b = bById.get(bid);
+      if (b) {
+        bullets.push(b);
+        bById.delete(bid);
+      }
+    }
+    out.push({ exp, bullets: [...bullets, ...bById.values()] });
+  }
+  return out;
+}
+
+// Prompt envoyé au LLM — le même quel que soit le chemin (presse-papiers ou
+// backend). Il interdit explicitement d'inventer : un CV est un document
+// factuel, un chiffre fabriqué est une faute, pas une amélioration.
+function buildRewritePrompt() {
+  const p = state.proposal;
+  const lang = p.report && p.report.lang === 'en' ? 'anglais' : 'français';
+  const blocks = generatedView()
+    .map(({ exp, bullets }) => {
+      const lines = bullets.map((b) => `[${b.id}] ${b.text}`).join('\n');
+      return `## ${exp.role} — ${exp.company} (${exp.period})\n${lines}`;
+    })
+    .join('\n\n');
+
+  return `Tu recalibres les lignes d'expérience d'un CV pour une offre d'emploi précise.
+
+# Offre d'emploi
+${effectiveJobText().slice(0, MAX_OFFER_CHARS)}
+
+# Lignes actuelles du CV
+${blocks}
+
+# Règles de rédaction
+- Une seule phrase par ligne, commençant par un verbe d'action au passé.
+- Objet quantifié dès qu'un chiffre existe dans la ligne d'origine, et résultat quantifié de même : les chiffres priment.
+- Cite la méthode ou l'outil, et le destinataire ou l'usage, quand la ligne d'origine les donne.
+- Pas de « je », pas d'adjectif d'auto-évaluation (« excellent », « passionné »).
+- N'invente AUCUN chiffre, AUCUN outil, AUCUN fait absent de la ligne d'origine : reformule et réoriente vers l'offre, ne fabrique rien.
+- Rédige en ${lang} (la langue de l'offre).
+- Rends exactement une ligne par identifiant, sans en ajouter ni en retirer.
+
+# Réponse attendue
+Uniquement ce JSON, sans phrase autour :
+{"lines":[{"id":"identifiant","text":"ligne recalibrée"}]}`;
+}
+
+// Réponse d'un LLM : rarement du JSON nu. On récupère le premier objet ou
+// tableau complet du texte, et à défaut on lit un format « [id] ligne ».
+function parseRewriteResponse(raw) {
+  const text = String(raw || '').trim();
+  if (!text) return [];
+
+  const start = text.search(/[[{]/);
+  if (start !== -1) {
+    const opener = text[start];
+    const closer = opener === '{' ? '}' : ']';
+    const end = text.lastIndexOf(closer);
+    if (end > start) {
+      try {
+        const data = JSON.parse(text.slice(start, end + 1));
+        const lines = Array.isArray(data) ? data : data.lines;
+        if (Array.isArray(lines)) return lines;
+      } catch {
+        /* pas du JSON exploitable : on tente le format ligne à ligne */
+      }
+    }
+  }
+
+  return text
+    .split('\n')
+    .map((l) => /^\s*[[(]?([A-Za-z0-9]{6,20})[\])]?\s*[:\-—.]?\s+(.*\S)\s*$/.exec(l))
+    .filter(Boolean)
+    .map((m) => ({ id: m[1], text: m[2] }));
+}
+
+// Pose les lignes recalibrées dans la surcouche. Les identifiants inconnus
+// (LLM qui invente une ligne) sont ignorés : le CV ne gagne jamais de contenu
+// dont l'utilisateur n'a pas l'original.
+function applyRewrite(lines, mode) {
+  const p = state.proposal;
+  if (!p || !Array.isArray(lines)) return 0;
+  const known = new Map(state.experiences.flatMap((e) => e.bullets.map((b) => [b.id, b.text])));
+  let applied = 0;
+  for (const line of lines) {
+    if (!line || typeof line.id !== 'string' || typeof line.text !== 'string') continue;
+    const text = line.text.replace(/\s+/g, ' ').trim();
+    if (!text || !known.has(line.id) || text === known.get(line.id)) continue;
+    p.texts[line.id] = text;
+    applied += 1;
+  }
+  if (applied && p.report) p.report.rewrite = mode;
+  return applied;
+}
+
+// Voie historique de la copie : une zone de texte hors écran, sélectionnée
+// puis copiée. Elle passe là où l'API Clipboard est refusée (permission non
+// accordée, page ouverte en file:// sur certains navigateurs).
+function legacyCopy(text) {
+  const ta = el('textarea', { style: 'position:fixed;top:-1000px;left:0;opacity:0' });
+  ta.value = text;
+  document.body.append(ta);
+  ta.select();
+  let ok = false;
+  try {
+    ok = document.execCommand('copy');
+  } catch {
+    ok = false;
+  }
+  ta.remove();
+  return ok;
+}
+
+// Copie le prompt sans rien demander. Échec possible (permission refusée,
+// contexte non sécurisé) : l'appelant affiche alors le prompt à copier à la
+// main, ce qui coûte un geste de plus mais ne bloque rien.
+async function copyPromptToClipboard() {
+  const prompt = buildRewritePrompt();
+  try {
+    await navigator.clipboard.writeText(prompt);
+    return true;
+  } catch {
+    /* API refusée : on retente par la voie historique avant d'abandonner */
+  }
+  return legacyCopy(prompt);
+}
+
+// Le presse-papiers a-t-il bien reçu le prompt lors de la dernière génération ?
+let promptCopied = false;
+// La zone de collage n'est mise au premier plan qu'une fois : re-focaliser à
+// chaque rendu volerait le curseur pendant l'édition du CV.
+let pasteZoneFocused = false;
+
 /* ---------- Enregistrement automatique du CV généré ---------- */
 
 // Le CV généré est enregistré sans qu'on le demande, sous son nom
@@ -2937,7 +3101,6 @@ function syncGeneratedVersion() {
     state.versions.unshift(v);
     p.versionId = v.id;
   }
-  proposalSaved = true;
 }
 
 // Les retouches faites après coup sur le CV généré (texte d'une ligne, ordre,
@@ -3024,6 +3187,71 @@ function decisionBox() {
   return box;
 }
 
+// Bloc de recalibrage : l'unique endroit où l'utilisateur peut avoir un geste
+// à faire. Le prompt est déjà dans son presse-papiers ; il le colle dans son
+// IA et colle la réponse ici — le collage seul déclenche tout le reste.
+function rewriteBox() {
+  const p = state.proposal;
+  const mode = (p.report && p.report.rewrite) || 'none';
+
+  if (mode === 'server') {
+    return el('p', { class: 'apply-note', text: 'Lignes recalibrées automatiquement ✓' });
+  }
+  if (mode === 'clipboard') {
+    return el('p', { class: 'apply-note', text: 'Lignes recalibrées à partir de la réponse collée ✓' });
+  }
+
+  const box = el(
+    'div',
+    { class: 'rewrite-box' },
+    el('h3', { text: 'Recalibrer les lignes' }),
+    el('p', {
+      class: 'hint',
+      text: promptCopied
+        ? 'Le prompt est déjà dans votre presse-papiers : collez-le dans votre IA, puis collez sa réponse ci-dessous. Elle s’applique au collage, sans rien valider.'
+        : 'Copiez le prompt ci-dessous, collez-le dans votre IA, puis collez sa réponse dans le second champ. Elle s’applique au collage.',
+    })
+  );
+
+  if (!promptCopied) {
+    box.append(
+      el('textarea', {
+        id: 'llmPrompt',
+        rows: '3',
+        readonly: 'readonly',
+        'aria-label': 'Prompt à copier',
+      }, buildRewritePrompt()),
+      el('button', { type: 'button', id: 'copyPromptBtn', class: 'ghost', text: 'Copier le prompt' })
+    );
+  }
+
+  box.append(
+    el('textarea', {
+      id: 'llmPaste',
+      rows: '3',
+      placeholder: 'Collez ici la réponse de votre IA',
+      'aria-label': 'Réponse de votre IA',
+    })
+  );
+
+  if (promptCopied) {
+    box.append(
+      el('details', { class: 'rewrite-peek' },
+        el('summary', { text: 'Voir le prompt copié' }),
+        el('pre', { text: buildRewritePrompt() })
+      )
+    );
+  }
+
+  box.append(
+    el('p', {
+      class: 'empty-note',
+      text: 'Sans ce collage, le CV reste utilisable tel quel : expériences choisies, tirets réordonnés, CV nommé et enregistré — seules les lignes gardent leur formulation d’origine.',
+    })
+  );
+  return box;
+}
+
 // Bloc final : le CV est prêt, nommé et déjà enregistré. Le nom reste
 // modifiable — c'est la seule chose que l'app a inventée et qui se corrige en
 // un mot.
@@ -3048,7 +3276,7 @@ function readyBox() {
       })
     )
   );
-  if (proposalSaved) {
+  if (generatedVersionExists()) {
     box.append(el('p', { class: 'apply-note', text: 'Enregistré ✓ — disponible dans l’onglet « CV de base ».' }));
   }
   box.append(el('button', { type: 'button', id: 'discardProposalBtn', class: 'ghost', text: 'Repartir du CV de base' }));
@@ -3082,10 +3310,54 @@ function renderSuggestions() {
 
   const decisions = decisionBox();
   if (decisions) resultsEl.append(decisions);
+  resultsEl.append(rewriteBox());
   resultsEl.append(readyBox());
+
+  // Le champ de collage prend le premier plan dès son apparition : la réponse
+  // se colle alors sans même cliquer dedans.
+  const paste = $('#llmPaste');
+  if (paste && !pasteZoneFocused) {
+    pasteZoneFocused = true;
+    paste.focus();
+  }
 }
 
+// Le collage de la réponse applique tout : c'est le seul geste demandé sur ce
+// chemin, il ne doit pas en appeler un second (pas de bouton « Valider »).
+function ingestRewrite(raw) {
+  const lines = parseRewriteResponse(raw);
+  const applied = applyRewrite(lines, 'clipboard');
+  if (!applied) {
+    setGenStatus('Réponse non exploitable : attendu le JSON demandé par le prompt.', 'warn');
+    return;
+  }
+  syncGeneratedVersion();
+  setGenStatus(`${applied} ligne${applied > 1 ? 's' : ''} recalibrée${applied > 1 ? 's' : ''} — CV enregistré à jour.`, 'done');
+  rerender();
+}
+
+resultsEl.addEventListener('paste', (e) => {
+  if (e.target.id !== 'llmPaste') return;
+  e.preventDefault();
+  ingestRewrite(e.clipboardData.getData('text/plain'));
+});
+
 resultsEl.addEventListener('click', async (e) => {
+  if (e.target.closest('#copyPromptBtn')) {
+    // Ce clic-ci porte l'autorisation d'écrire dans le presse-papiers, que la
+    // copie automatique n'avait pas forcément.
+    const btn = e.target.closest('#copyPromptBtn');
+    const ok = await copyPromptToClipboard();
+    if (ok) {
+      promptCopied = true;
+      renderSuggestions();
+    } else {
+      const field = $('#llmPrompt');
+      if (field) field.select();
+      btn.textContent = 'Copiez le texte sélectionné';
+    }
+    return;
+  }
   if (e.target.closest('#discardProposalBtn')) {
     // Le CV de base n'a jamais été modifié : abandonner la génération se
     // limite à l'oublier. Le CV enregistré, lui, reste dans la liste.
@@ -3094,7 +3366,8 @@ resultsEl.addEventListener('click', async (e) => {
       { confirmLabel: 'Repartir' }
     ))) return;
     state.proposal = null;
-    proposalSaved = false;
+    promptCopied = false;
+    pasteZoneFocused = false;
     setGenStatus('');
     rerender();
   }
@@ -3168,7 +3441,19 @@ async function generateCv() {
       return;
     }
     syncGeneratedVersion();
-    setGenStatus(`CV « ${proposal.name} » généré et enregistré.`, 'done');
+
+    // Recalibrage des lignes : le prompt part seul dans le presse-papiers, il
+    // ne reste qu'un collage à faire. (Le chemin serveur, quand une clé d'API
+    // est configurée, s'insère ici et supprime même ce collage.)
+    setGenStatus('Préparation du recalibrage des lignes…');
+    pasteZoneFocused = false;
+    promptCopied = await copyPromptToClipboard();
+
+    setGenStatus(
+      `CV « ${proposal.name} » généré et enregistré.` +
+        (promptCopied ? ' Prompt de recalibrage copié : collez la réponse de votre IA ci-dessous.' : ''),
+      'done'
+    );
     rerender();
   } catch (err) {
     setGenStatus(`Offre non récupérée : ${err.message}`, 'warn');
@@ -3182,8 +3467,9 @@ $('#generateBtn').addEventListener('click', generateCv);
 $('#clearAnalysisBtn').addEventListener('click', async () => {
   if (state.proposal && !(await customConfirm('Effacer l’offre et la proposition en cours ? Le CV de base n’est pas affecté.', { confirmLabel: 'Effacer' }))) return;
   state.proposal = null;
-  proposalSaved = false;
   offerMeta = null;
+  promptCopied = false;
+  pasteZoneFocused = false;
   jobTextEl.value = '';
   state.jobText = '';
   setGenStatus('');

@@ -1855,6 +1855,59 @@ main.tab-create #createLeft {
 
 .chip.small { font-size: 11px; padding: 1px 7px; }
 
+/* Encadré de recalibrage : l'unique aller-retour vers le LLM de l'utilisateur.
+   Un champ de collage, et le prompt consultable si on veut le relire. */
+
+.rewrite-box {
+  border: 1px solid var(--accent);
+  background: #f6f9ff;
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+}
+
+.rewrite-box h3 { margin: 0 0 6px; font-size: 14px; }
+
+.rewrite-box .hint { margin-bottom: 10px; }
+
+.rewrite-box textarea {
+  width: 100%;
+  font: inherit;
+  font-size: 13px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 9px;
+  resize: vertical;
+  background: #fff;
+}
+
+.rewrite-box textarea:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+
+.rewrite-box #copyPromptBtn { margin: 6px 0 8px; font-size: 13px; padding: 5px 12px; }
+
+.rewrite-box .empty-note { margin: 8px 0 0; }
+
+.rewrite-peek { margin-top: 8px; }
+
+.rewrite-peek summary {
+  font-size: 12.5px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.rewrite-peek pre {
+  max-height: 180px;
+  overflow: auto;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin: 6px 0 0;
+  font-size: 11.5px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 /* Encadré « Ce que l'app a décidé seule » : la contrepartie du tout-automatique.
    Chaque expérience y dit si elle a été retenue, avec quel score et sur quels
    mots de l'offre. Une expérience écartée reste affichée, en grisé. */
