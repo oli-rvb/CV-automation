@@ -353,7 +353,24 @@ function normalizeState(data) {
     for (const [expId, ids] of Object.entries(p.orders)) {
       if (Array.isArray(ids)) orders[expId] = ids.map(String);
     }
-    if (Object.keys(orders).length > 0) s.proposal = { orders };
+    if (Object.keys(orders).length > 0) {
+      // Surcouche « CV généré » : textes recalibrés, sélection et ordre des
+      // expériences, nom auto et rapport de décision. Tout est optionnel —
+      // une sauvegarde antérieure n'a qu'un ordre de tirets.
+      const texts = {};
+      const srcTexts = p.texts && typeof p.texts === 'object' ? p.texts : {};
+      for (const [bulletId, text] of Object.entries(srcTexts)) {
+        if (typeof text === 'string') texts[bulletId] = text;
+      }
+      s.proposal = {
+        orders,
+        texts,
+        expOrder: Array.isArray(p.expOrder) ? p.expOrder.map(String) : null,
+        dropped: Array.isArray(p.dropped) ? p.dropped.map(String) : [],
+        name: typeof p.name === 'string' ? p.name : '',
+        report: p.report && typeof p.report === 'object' ? p.report : null,
+      };
+    }
   }
   s.activeTab = data.activeTab === 'base' ? 'base' : 'create';
   // Dernières couleurs libres utilisées (pipette), de la plus récente à la
@@ -774,12 +791,28 @@ function proposalOrderFor(ownerId) {
   return (state.proposal && state.proposal.orders[ownerId]) || null;
 }
 
+// Textes recalibrés de la proposition, par identifiant de tiret : eux non
+// plus ne touchent pas au CV de base, ce n'est qu'une surcouche d'affichage.
+function proposalTexts() {
+  return (state.proposal && state.proposal.texts) || null;
+}
+
+// Le tiret tel qu'il s'affiche : recalibré si la génération l'a réécrit,
+// intact sinon. Le tiret d'origine n'est cloné que dans le premier cas, pour
+// que la comparaison d'identité avec le CV de base reste possible ailleurs.
+function displayedBullet(b, overrides) {
+  return overrides && typeof overrides[b.id] === 'string' && overrides[b.id] !== b.text
+    ? { ...b, text: overrides[b.id] }
+    : b;
+}
+
 // Tirets d'une expérience dans l'ordre AFFICHÉ : l'ordre proposé dans
 // l'onglet « Nouveau CV » (tirets ajoutés depuis l'analyse en fin de liste),
 // l'ordre du CV de base partout ailleurs.
 function displayBullets(exp) {
+  const overrides = inCreateTab() ? proposalTexts() : null;
   const order = inCreateTab() ? proposalOrderFor(exp.id) : null;
-  if (!order) return exp.bullets;
+  if (!order) return overrides ? exp.bullets.map((b) => displayedBullet(b, overrides)) : exp.bullets;
   const byId = new Map(exp.bullets.map((b) => [b.id, b]));
   const out = [];
   for (const id of order) {
@@ -790,6 +823,29 @@ function displayBullets(exp) {
     }
   }
   out.push(...byId.values());
+  return overrides ? out.map((b) => displayedBullet(b, overrides)) : out;
+}
+
+// Expériences dans l'ordre AFFICHÉ : celles que la génération a retenues, dans
+// son ordre, quand une proposition est en cours dans l'onglet « Nouveau CV » ;
+// le CV de base au complet partout ailleurs.
+function displayExperiences() {
+  const p = inCreateTab() ? state.proposal : null;
+  if (!p || !p.expOrder) return state.experiences;
+  const byId = new Map(state.experiences.map((e) => [e.id, e]));
+  const out = [];
+  for (const id of p.expOrder) {
+    const e = byId.get(id);
+    if (e) {
+      out.push(e);
+      byId.delete(id);
+    }
+  }
+  // Une expérience ajoutée depuis la génération suit à la fin ; celles qui ont
+  // été écartées restent dehors.
+  for (const e of byId.values()) {
+    if (!p.dropped.includes(e.id)) out.push(e);
+  }
   return out;
 }
 
@@ -844,13 +900,21 @@ function experiencesBlock() {
   // expérience » au survol (voir la règle de scoping par section dans styles.css).
   const frag = el('section', { class: 'cv-block' });
   frag.append(sectionTitle('Expériences professionnelles'));
-  state.experiences.forEach((exp, i) => {
+  const shown = displayExperiences();
+  shown.forEach((exp, i) => {
     const controls = el(
       'div',
       { class: 'exp-controls' },
       i > 0 && iconBtn('↑', 'exp-up', 'Monter l’expérience'),
-      i < state.experiences.length - 1 && iconBtn('↓', 'exp-down', 'Descendre l’expérience'),
-      iconBtn('✕', 'exp-del', 'Supprimer l’expérience', 'del')
+      i < shown.length - 1 && iconBtn('↓', 'exp-down', 'Descendre l’expérience'),
+      iconBtn(
+        '✕',
+        'exp-del',
+        inCreateTab() && state.proposal && state.proposal.expOrder
+          ? 'Écarter l’expérience de ce CV'
+          : 'Supprimer l’expérience',
+        'del'
+      )
     );
 
     const head = el(
@@ -1601,9 +1665,16 @@ cvEl.addEventListener('input', (e) => {
     const item = row && state.profile.contact.find((x) => x.id === row.dataset.contactId);
     if (item) item[t.dataset.cfield] = text;
   } else if (t.classList.contains('bullet-text')) {
-    const owner = ownerFromSection(t.closest('section.exp'));
+    const section = t.closest('section.exp');
+    const owner = ownerFromSection(section);
     const b = owner && owner.bullets.find((x) => x.id === t.dataset.bulletId);
-    if (b) b.text = text;
+    if (b) {
+      // Pendant une génération, corriger une ligne dans l'onglet « Nouveau CV »
+      // corrige la surcouche, jamais le CV de base (invariant du dépôt).
+      const overrides = section && section.dataset.expId && inCreateTab() ? proposalTexts() : null;
+      if (overrides) overrides[b.id] = text;
+      else b.text = text;
+    }
     scheduleSuggestions();
   } else if (t.dataset.field) {
     const owner = ownerFromSection(t.closest('section.exp'));
@@ -1707,10 +1778,21 @@ cvEl.addEventListener('click', async (e) => {
           'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt.',
         bullets: [{ id: uid(), text: 'Décrivez une réalisation…' }],
       });
+      const gen = inCreateTab() && state.proposal && state.proposal.expOrder ? state.proposal : null;
+      if (gen) gen.expOrder.push(state.experiences[state.experiences.length - 1].id);
       break;
     }
     case 'exp-del': {
       if (!exp) return;
+      // Pendant une génération, la croix écarte l'expérience du CV généré ;
+      // elle reste intacte dans le CV de base.
+      const gen = inCreateTab() && state.proposal && state.proposal.expOrder ? state.proposal : null;
+      if (gen) {
+        if (!(await customConfirm('Écarter cette expérience de ce CV ? Elle reste dans le CV de base.', { confirmLabel: 'Écarter' }))) return;
+        gen.expOrder = gen.expOrder.filter((id) => id !== exp.id);
+        if (!gen.dropped.includes(exp.id)) gen.dropped.push(exp.id);
+        break;
+      }
       if (!(await customConfirm('Supprimer cette expérience et tous ses tirets ?', { confirmLabel: 'Supprimer', danger: true }))) return;
       state.experiences = state.experiences.filter((x) => x.id !== exp.id);
       if (state.proposal) delete state.proposal.orders[exp.id];
@@ -1719,8 +1801,16 @@ cvEl.addEventListener('click', async (e) => {
     case 'exp-up':
     case 'exp-down': {
       if (!exp) return;
-      const idx = state.experiences.indexOf(exp);
-      move(state.experiences, idx, action === 'exp-up' ? idx - 1 : idx + 1);
+      // Comme pour les tirets : pendant une génération, les flèches réordonnent
+      // le CV généré ; sinon, le CV de base.
+      const ord = inCreateTab() && state.proposal ? state.proposal.expOrder : null;
+      if (ord) {
+        const idx = ord.indexOf(exp.id);
+        move(ord, idx, action === 'exp-up' ? idx - 1 : idx + 1);
+      } else {
+        const idx = state.experiences.indexOf(exp);
+        move(state.experiences, idx, action === 'exp-up' ? idx - 1 : idx + 1);
+      }
       break;
     }
     case 'edu-add': {
@@ -2629,6 +2719,12 @@ function effectiveJobText() {
 let newCvNameDraft = '';
 let proposalSaved = false;
 
+// Forme complète d'une proposition. `orders` seul suffisait avant la
+// génération ; les autres champs portent la surcouche « CV généré ».
+function emptyProposal() {
+  return { orders: {}, texts: {}, expOrder: null, dropped: [], name: '', report: null };
+}
+
 // Construit la proposition : l'ordre suggéré par l'analyse, par expérience.
 // Le CV de base n'est PAS modifié — la proposition n'est qu'une surcouche
 // d'ordre, affichée dans l'onglet « Nouveau CV ».
@@ -2647,7 +2743,7 @@ function buildProposal() {
     orders[exp.id] = suggested;
     if (suggested.some((id, i) => exp.bullets[i].id !== id)) changed = true;
   }
-  state.proposal = changed ? { orders } : null;
+  state.proposal = changed ? { ...emptyProposal(), orders } : null;
 }
 
 // Nom proposé pour le CV enregistré : la date de l'analyse.
@@ -2655,23 +2751,48 @@ function defaultVersionName() {
   return `Offre du ${new Date().toLocaleDateString('fr-FR')}`;
 }
 
-// Le CV de base, avec les tirets de chaque expérience dans l'ordre proposé :
-// c'est ce qui est enregistré comme nouveau CV.
+// Le CV de base, aplati avec toute la surcouche de la proposition : seules
+// les expériences retenues, dans leur ordre, tirets réordonnés et textes
+// recalibrés. C'est ce qui est enregistré comme nouveau CV — le CV de base,
+// lui, n'a pas bougé d'un octet.
 function snapshotProposalCV() {
   const snap = snapshotCV();
-  for (const exp of snap.experiences) {
-    const ord = proposalOrderFor(exp.id);
-    if (!ord) continue;
-    const byId = new Map(exp.bullets.map((b) => [b.id, b]));
-    const out = [];
-    for (const id of ord) {
-      const b = byId.get(id);
-      if (b) {
-        out.push(b);
-        byId.delete(id);
+  const p = state.proposal;
+  if (!p) return snap;
+
+  if (p.expOrder) {
+    const expById = new Map(snap.experiences.map((e) => [e.id, e]));
+    const kept = [];
+    for (const id of p.expOrder) {
+      const e = expById.get(id);
+      if (e) {
+        kept.push(e);
+        expById.delete(id);
       }
     }
-    exp.bullets = [...out, ...byId.values()];
+    for (const e of expById.values()) {
+      if (!p.dropped.includes(e.id)) kept.push(e);
+    }
+    snap.experiences = kept;
+  }
+
+  for (const exp of snap.experiences) {
+    const ord = p.orders[exp.id];
+    if (ord) {
+      const byId = new Map(exp.bullets.map((b) => [b.id, b]));
+      const out = [];
+      for (const id of ord) {
+        const b = byId.get(id);
+        if (b) {
+          out.push(b);
+          byId.delete(id);
+        }
+      }
+      exp.bullets = [...out, ...byId.values()];
+    }
+    for (const b of exp.bullets) {
+      if (typeof p.texts[b.id] === 'string') b.text = p.texts[b.id];
+    }
   }
   return snap;
 }
@@ -2924,7 +3045,7 @@ $('#pdfBtn').addEventListener('click', async () => {
       // proposition dans l'onglet « Nouveau CV », celui du CV de base sinon.
       blob = await generateCvPdf({
         ...state,
-        experiences: state.experiences.map((e) => ({ ...e, bullets: displayBullets(e) })),
+        experiences: displayExperiences().map((e) => ({ ...e, bullets: displayBullets(e) })),
       });
     }
     const name = (state.profile.name || 'CV').trim().replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ');
