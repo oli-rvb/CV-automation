@@ -3349,6 +3349,13 @@ function numberSuffixMultiplier(mult) {
   return m === 'k' ? 1000 : m === 'm' ? 1000000 : 1;
 }
 
+// Chiffres pleine chasse (unicode０-９, saisie possible depuis un IME) →
+// chiffres ASCII, avant toute extraction : sans ça NUMBER_RE (\d ASCII
+// uniquement) ne les voit jamais et un chiffre inventé passe inaperçu.
+function normalizeDigits(text) {
+  return String(text ?? '').replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xff10 + 48));
+}
+
 // Toutes les valeurs numériques d'un texte, canonicalisées : « 100 000 »,
 // « 100,000 », « 100k » et « 1e5 » donnent la même valeur, comparable entre
 // deux textes sans se soucier du format d'origine.
@@ -3356,7 +3363,7 @@ function extractNumbers(text) {
   const out = new Set();
   const re = new RegExp(NUMBER_RE.source, 'g');
   let m;
-  while ((m = re.exec(String(text ?? '')))) {
+  while ((m = re.exec(normalizeDigits(text)))) {
     let n;
     if (m[1]) {
       n = parseFloat(m[1]);
@@ -3370,11 +3377,29 @@ function extractNumbers(text) {
   return out;
 }
 
-// Pool « CV source » du repli : les mêmes nombres que ceux réellement envoyés
-// au LLM (rewriteCareerBrief() est le texte du prompt), calculé une seule
-// fois par rendu plutôt que par ligne.
+// Pool « CV source » du repli : construit à partir des champs bruts (jamais
+// du texte formaté pour le LLM) pour ne pas hériter de la numérotation
+// d'affichage de rewriteCareerBrief() (« [EXP 1] », « Lignes actuelles (3) »,
+// préfixes « 1. »/« 2. ») — sinon ces artefacts de mise en forme sont pris
+// pour des chiffres réels du CV et blanchissent n'importe quel petit entier
+// inventé. Calculé une seule fois par rendu plutôt que par ligne.
 function rewriteSourceNumberPool() {
-  return extractNumbers(rewriteCareerBrief());
+  const parts = [];
+  state.experiences.forEach((exp) => {
+    parts.push(exp.role, exp.company, exp.period, exp.companyDescription);
+    exp.bullets.forEach((b) => parts.push(b.text));
+  });
+  state.education.forEach((e) => {
+    parts.push(e.title, e.detail);
+    (e.bullets || []).forEach((b) => parts.push(b.text));
+  });
+  state.projects.forEach((p) => {
+    parts.push(p.title, p.detail);
+    (p.bullets || []).forEach((b) => parts.push(b.text));
+  });
+  state.skillGroups.forEach((g) => parts.push(g.label, g.text));
+  parts.push(state.skills, state.profile.summary);
+  return extractNumbers(parts.filter(Boolean).join('\n'));
 }
 
 // Valeurs numériques de la ligne recalibrée introuvables dans le tiret
