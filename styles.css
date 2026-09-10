@@ -1933,6 +1933,188 @@ main.tab-create #createLeft {
 
 .empty-note { font-size: 13px; color: var(--muted); }
 
+/* ---------- Assistant « lignes calibrées » ----------
+   Panneau de la colonne de gauche (onglet « Nouveau CV »), en trois étapes
+   numérotées : copier le prompt, coller la réponse, arbitrer ligne par ligne. */
+
+.assist-step + .assist-step {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.assist-step h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+
+.assist-step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* Étape désactivée tant que la précédente n'a rien produit : lisible, mais
+   visiblement pas encore d'actualité. */
+.assist-step.is-waiting { opacity: 0.55; }
+.assist-step.is-waiting .assist-step-num { background: var(--muted); }
+
+#promptPreview,
+#llmReply {
+  width: 100%;
+  margin-top: 8px;
+  font: inherit;
+  font-size: 12.5px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  resize: vertical;
+}
+
+#promptPreview { background: #f9fafb; color: var(--muted); }
+
+#promptPreview:focus,
+#llmReply:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+
+.assist-note {
+  font-size: 12.5px;
+  margin: 8px 0 0;
+}
+
+.assist-note-ok { color: var(--ok); font-weight: 600; }
+.assist-note-warn { color: #b45309; }
+.assist-note-muted { color: var(--muted); }
+
+/* ---------- Arbitrage : une carte par ligne proposée ----------
+   Chaque carte porte le rattachement de la ligne (expérience, puce
+   remplacée), la puce du CV de base en vis-à-vis, le texte proposé —
+   modifiable — et les deux décisions possibles. */
+
+#candidateList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.candidate {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #fff;
+}
+
+.candidate.is-accepted { border-left-color: var(--ok); background: #f6fdf8; }
+.candidate.is-rejected { border-left-color: var(--line); background: #fafafa; opacity: 0.7; }
+
+.candidate-head {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.candidate-select {
+  flex: 1 1 45%;
+  min-width: 0;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px 6px;
+}
+
+.candidate-select:disabled { color: var(--muted); background: #f3f4f6; }
+
+/* La puce d'origine : présente pour l'arbitrage, visiblement en retrait. */
+.candidate-origin {
+  border-left: 2px solid var(--line);
+  padding-left: 9px;
+  margin-bottom: 8px;
+}
+
+.candidate-origin-label,
+.candidate-proposed-label {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+
+.candidate-origin-text {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--muted);
+  text-decoration: line-through;
+  text-decoration-color: var(--line);
+}
+
+.candidate-text {
+  width: 100%;
+  margin-top: 3px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.4;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 7px 8px;
+  resize: vertical;
+}
+
+.candidate-text:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+
+.candidate-text-static {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.candidate-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 9px;
+}
+
+.candidate-actions button { font-size: 12.5px; padding: 4px 10px; }
+
+.candidate-actions button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Ligne encore orpheline : son rattachement est le premier geste à faire. */
+.candidate.is-orphan { border-left-color: var(--danger-soft); }
+
+.candidate-state {
+  flex: 1;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.candidate-state-ok { color: var(--ok); font-weight: 600; }
+
+/* Badge des lignes acceptées, dans le CV : même mécanique que « était n°X »
+   (visible au survol seulement, donc jamais imprimé), teinte distincte. */
+.diff-badge-new {
+  background: #dcfce7;
+  color: #15803d;
+}
+
 /* ---------- Impression : page A4 identique au rendu écran ---------- */
 
 /* Marges de page A4 (haut/bas/gauche/droite) : chaque page exportée les porte,

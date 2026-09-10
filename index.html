@@ -142,6 +142,60 @@
       <div id="results"></div>
     </section>
 
+    <!-- Assistant « lignes calibrées » : l'app fabrique un prompt à partir du
+         parcours connu et de l'offre collée ci-dessus ; l'utilisateur le fait
+         tourner dans son propre assistant IA, recolle la réponse, puis arbitre
+         chaque ligne proposée UNE PAR UNE. Rien n'entre dans le CV sans un
+         geste explicite : accepter une ligne l'ajoute à la proposition, pas au
+         CV de base. -->
+    <section class="panel-box" id="assistPanel" hidden>
+      <h2>Lignes calibrées sur l'offre</h2>
+      <p class="hint">
+        Copiez le prompt, faites-le tourner dans votre assistant IA, recollez sa
+        réponse&nbsp;: vous validerez ensuite chaque ligne une par une.
+      </p>
+
+      <!-- Étape 1 : le prompt -->
+      <div class="assist-step">
+        <h3><span class="assist-step-num">1</span> Copier le prompt</h3>
+        <p class="hint" id="assistPromptHint"></p>
+        <div class="panel-actions">
+          <button id="copyPromptBtn" type="button">Copier le prompt</button>
+          <button id="togglePromptBtn" class="ghost" type="button"
+                  aria-expanded="false" aria-controls="promptPreview">Voir le prompt</button>
+        </div>
+        <textarea id="promptPreview" rows="10" readonly hidden
+                  aria-label="Prompt généré" spellcheck="false"></textarea>
+        <p class="assist-note" id="copyPromptNote" role="status" hidden></p>
+      </div>
+
+      <!-- Étape 2 : la réponse de l'assistant, relue par l'app -->
+      <div class="assist-step" id="assistStep2">
+        <h3><span class="assist-step-num">2</span> Coller la réponse</h3>
+        <p class="hint">
+          Collez la réponse telle quelle&nbsp;: markdown, tirets, numérotation
+          et titres sont tolérés.
+        </p>
+        <textarea id="llmReply" rows="6" spellcheck="false"
+                  placeholder="Réponse de votre assistant IA"
+                  aria-label="Réponse de l'assistant IA"></textarea>
+        <div class="panel-actions">
+          <button id="parseReplyBtn" type="button">Relire la réponse</button>
+          <button id="clearReplyBtn" class="ghost" type="button">Effacer</button>
+        </div>
+        <p class="assist-note" id="parseNote" role="status" hidden></p>
+      </div>
+
+      <!-- Étape 3 : l'arbitrage. Une carte par ligne proposée ; rien ne rejoint
+           le CV proposé sans un clic sur « Accepter », et rien n'y reste sans
+           que « Annuler » puisse l'en retirer. -->
+      <div class="assist-step" id="assistStep3">
+        <h3><span class="assist-step-num">3</span> Valider ligne par ligne</h3>
+        <p class="hint" id="candidateSummary"></p>
+        <div id="candidateList"></div>
+      </div>
+    </section>
+
     <!-- Import/export JSON : sauvegarde/transfert de l'état complet, placé
          sous l'offre dans l'onglet « Nouveau CV ». -->
     <section class="panel-box" id="jsonBox">
