@@ -1540,6 +1540,58 @@ main.tab-create #createLeft {
 
 .panel-box .hint { font-size: 13px; color: var(--muted); margin: 0 0 10px; }
 
+/* Première étape : un encadré distinct, mais volontairement calme pour ne
+   pas concurrencer le CV. Son liseré gauche en fait le point d'entrée du
+   parcours sans ajouter une nouvelle fenêtre modale. */
+.ai-onboarding {
+  border-color: #bfdbfe;
+  border-left: 4px solid var(--accent);
+  background: #f8fbff;
+}
+
+.ai-onboarding-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ai-onboarding-heading h2 { margin-bottom: 5px; }
+
+.ai-onboarding-badge {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: #1d4ed8;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.ai-onboarding-step,
+.ai-onboarding-privacy {
+  margin: 10px 0 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.ai-onboarding-privacy { margin: 8px 0 0; font-size: 11px; }
+
+#aiResponseText {
+  width: 100%;
+  font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  padding: 9px;
+  resize: vertical;
+}
+
+#aiResponseText:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+
+.ai-onboarding-actions { align-items: center; margin-bottom: 0; }
+.ai-onboarding-status { font-size: 12px; color: var(--ok); font-weight: 600; }
+.ai-onboarding-status.error { color: var(--danger); }
+
 #jobText {
   width: 100%;
   font: inherit;

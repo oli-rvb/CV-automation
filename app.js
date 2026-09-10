@@ -5,6 +5,7 @@
    ============================================================ */
 
 const LS_KEY = 'cv-editor-data-v1';
+const AI_ONBOARDING_SEEN_KEY = 'cv-editor-ai-onboarding-seen-v1';
 
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 
@@ -423,6 +424,9 @@ const cvEl = $('#cv');
 const cvScaleEl = $('#cvScale');
 const resultsEl = $('#results');
 const jobTextEl = $('#jobText');
+const aiOnboardingEl = $('#aiOnboarding');
+const aiResponseTextEl = $('#aiResponseText');
+const aiOnboardingStatusEl = $('#aiOnboardingStatus');
 const versionListEl = $('#versionList');
 const versionNameEl = $('#versionName');
 const overflowNoticeEl = $('#overflowNotice');
@@ -430,6 +434,102 @@ const pageCountEl = $('#pageCount');
 const photoFileEl = $('#photoFile');
 
 let pendingFocusBulletId = null;
+
+/* ---------- Pré-remplissage par chatbot ---------- */
+
+// Le chatbot n'a besoin ni des identifiants internes, ni des réglages visuels :
+// normalizeState() les ajoute au collage avant d'afficher le CV.
+const AI_PREFILL_PROMPT = `Je vais te transmettre le contenu d'un ancien CV, d'un profil LinkedIn ou de notes. Transforme uniquement les informations réellement présentes en un CV français, clair et concis.
+
+Réponds uniquement avec un JSON valide, sans markdown, sans texte avant ou après. N'invente aucune expérience, date, diplôme, chiffre, outil ou niveau de langue. Si une information manque, utilise une chaîne vide ou une liste vide.
+
+Respecte exactement cette structure (sans ajouter de clés) :
+{
+  "profile": {
+    "name": "",
+    "title": "",
+    "contact": [{ "label": "Email", "value": "" }],
+    "summary": "",
+    "links": [{ "label": "LinkedIn", "url": "" }]
+  },
+  "experiences": [{
+    "role": "",
+    "company": "",
+    "period": "",
+    "companyDescription": "",
+    "bullets": [{ "text": "" }]
+  }],
+  "education": [{ "title": "", "detail": "", "bullets": [{ "text": "" }] }],
+  "projects": [{ "title": "", "detail": "", "bullets": [{ "text": "" }] }],
+  "skills": "",
+  "skillGroups": [{ "label": "", "text": "" }],
+  "interests": [{ "text": "" }]
+}
+
+Pour les expériences, privilégie des réalisations courtes et précises. Voici mes informations :
+
+[COLLEZ ICI VOTRE ANCIEN CV OU VOS NOTES — OU JOIGNEZ-LES À CE CHAT AU FORMAT PDF OU WORD]`;
+
+function setAiOnboardingStatus(message, isError = false) {
+  aiOnboardingStatusEl.textContent = message;
+  aiOnboardingStatusEl.classList.toggle('error', isError);
+}
+
+function markAiOnboardingSeen() {
+  try { localStorage.setItem(AI_ONBOARDING_SEEN_KEY, '1'); } catch { /* stockage indisponible */ }
+}
+
+async function copyAiPrompt() {
+  try {
+    if (!navigator.clipboard || !navigator.clipboard.writeText) throw new Error('clipboard indisponible');
+    await navigator.clipboard.writeText(AI_PREFILL_PROMPT);
+  } catch {
+    // Repli pour les navigateurs qui bloquent l'API Clipboard hors HTTPS.
+    const helper = el('textarea', { 'aria-hidden': 'true' });
+    helper.value = AI_PREFILL_PROMPT;
+    helper.style.cssText = 'position:fixed;left:-9999px;top:0';
+    document.body.append(helper);
+    helper.select();
+    const copied = document.execCommand('copy');
+    helper.remove();
+    if (!copied) {
+      setAiOnboardingStatus('Copie impossible : sélectionnez le prompt dans votre navigateur.', true);
+      return;
+    }
+  }
+  setAiOnboardingStatus('Prompt copié. Ajoutez vos informations dans le chatbot.', false);
+  $('#copyAiPromptBtn').textContent = 'Prompt copié';
+}
+
+function parseAiResponse(text) {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const parsed = JSON.parse((fenced ? fenced[1] : text).trim());
+  if (!parsed || typeof parsed !== 'object' || !parsed.profile || !Array.isArray(parsed.experiences)) {
+    throw new Error('format');
+  }
+  return parsed;
+}
+
+function applyAiResponse() {
+  try {
+    const aiData = parseAiResponse(aiResponseTextEl.value);
+    // Préserve les versions et les choix visuels déjà présents, et repart sur
+    // l'onglet de création pour que le CV pré-rempli soit immédiatement visible.
+    state = normalizeState({ ...state, ...aiData, proposal: null, activeTab: 'create' });
+    jobTextEl.value = state.jobText;
+    markAiOnboardingSeen();
+    aiOnboardingEl.hidden = true;
+    rerender();
+  } catch {
+    setAiOnboardingStatus('Réponse non reconnue : collez uniquement le JSON fourni par le chatbot.', true);
+  }
+}
+
+aiOnboardingEl.hidden = (() => {
+  try { return localStorage.getItem(AI_ONBOARDING_SEEN_KEY) === '1'; } catch { return false; }
+})();
+$('#copyAiPromptBtn').addEventListener('click', copyAiPrompt);
+$('#applyAiResponseBtn').addEventListener('click', applyAiResponse);
 
 /* ---------- Mise à l'échelle du CV (onglet « Nouveau CV ») ----------
 

@@ -107,6 +107,27 @@
     <!-- Onglet « Nouveau CV », colonne de gauche : l'offre d'emploi, puis
          l'import/export JSON juste en dessous. -->
     <div id="createLeft">
+    <!-- Première prise en main : l'utilisateur peut confier l'extraction de
+         son ancien CV à son chatbot, puis recoller ici le JSON obtenu. -->
+    <section class="panel-box ai-onboarding" id="aiOnboarding" hidden aria-labelledby="aiOnboardingTitle">
+      <div class="ai-onboarding-heading">
+        <div>
+          <h2 id="aiOnboardingTitle">Partir de votre CV existant</h2>
+          <p class="hint">Copiez ce prompt dans votre chatbot avec votre ancien CV ou vos notes. Il préparera un CV déjà rempli pour cet éditeur.</p>
+        </div>
+        <span class="ai-onboarding-badge">Nouveau</span>
+      </div>
+      <button id="copyAiPromptBtn" class="ghost" type="button">Copier le prompt</button>
+      <p class="ai-onboarding-step">Puis collez uniquement la réponse JSON du chatbot ci-dessous.</p>
+      <textarea id="aiResponseText" rows="5" spellcheck="false"
+        placeholder='Collez ici la réponse JSON de votre chatbot'></textarea>
+      <div class="panel-actions ai-onboarding-actions">
+        <button id="applyAiResponseBtn" type="button">Remplir mon CV</button>
+        <span id="aiOnboardingStatus" class="ai-onboarding-status" role="status" aria-live="polite"></span>
+      </div>
+      <p class="ai-onboarding-privacy">Ne partagez avec un chatbot que les informations que vous acceptez de lui confier.</p>
+    </section>
+
     <section class="panel-box" id="offerPanel">
       <h2>Offre d'emploi</h2>
       <p class="hint">
