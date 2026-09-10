@@ -1222,6 +1222,12 @@ li.bullet:hover .bullet-controls { display: flex; }
 .rw-badge-edit { background: #fef3c7; color: #92400e; }
 .rw-badge-add { background: #dcfce7; color: #166534; }
 
+/* Provenance des chiffres : prioritaire sur les deux badges ci-dessus (un
+   chiffre non vérifié se voit avant de savoir si la ligne est une réécriture
+   ou un ajout). Même rouge que les mots retirés du diff (.rw-before .w plus
+   bas), pour trancher visuellement d'un simple mot modifié. */
+.rw-badge-numalert { background: #fee2e2; color: #991b1b; }
+
 #cv:is(:hover, :focus-within) .bullet-badges {
   display: inline-flex;
   opacity: 1;
@@ -1248,6 +1254,12 @@ li.bullet:hover .bullet-controls { display: flex; }
 
 #cv:is(:hover, :focus-within) li.bullet.rw-add {
   background: color-mix(in srgb, #dcfce7 55%, #fff);
+}
+
+/* Prioritaire sur les deux teintes ci-dessus : un tiret à chiffre non vérifié
+   se distingue même au survol. */
+#cv:is(:hover, :focus-within) li.bullet.rw-numalert {
+  background: color-mix(in srgb, #fee2e2 55%, #fff);
 }
 
 .icon-btn {
@@ -2037,6 +2049,9 @@ main.tab-create #createLeft {
 .rw-line.add { border-left-color: var(--ok); }
 .rw-line.same { border-left-color: var(--line); }
 .rw-line.off { border-left-color: var(--muted); background: var(--bg); }
+/* Chiffre non vérifié : prioritaire sur add/same (le bord tranche d'un coup
+   d'œil dans la colonne, avant même de lire le badge). */
+.rw-line.num-flag { border-left-color: var(--danger); }
 
 .rw-line-top {
   display: flex;
@@ -2062,6 +2077,23 @@ main.tab-create #createLeft {
   flex: none;
   font-size: 11.5px;
   padding: 2px 9px;
+  /* Reste ancré à droite même quand le badge .rw-num-badge s'intercale avant
+     lui (trois éléments dans .rw-line-top au lieu de deux). */
+  margin-left: auto;
+}
+
+/* Badge « N chiffres à vérifier » : entre le libellé et le bouton Annuler,
+   même famille visuelle que .rw-badge-numalert (CV) mais en pilule inline.
+   Nom distinct de .rw-numalert (classe d'état posée sur le <li> du CV) pour
+   ne pas fuir sur lui via un sélecteur non scopé. */
+.rw-num-badge {
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  border-radius: 20px;
+  padding: 1px 8px;
+  background: #fee2e2;
+  color: #991b1b;
 }
 
 /* Les deux versions du texte. Au repos, « après » est ce qu'affiche le CV ;
@@ -2096,6 +2128,17 @@ main.tab-create #createLeft {
   padding: 0 1px;
 }
 
+/* Chiffre non vérifié : un mot modifié ordinaire (vert) devient une alerte
+   (rouge, soulignement ondulé) — se distingue au premier coup d'œil d'une
+   simple reformulation. */
+.rw-after .w.num-alert {
+  background: #fecaca;
+  color: #7f1d1d;
+  font-weight: 700;
+  text-decoration: underline wavy #dc2626;
+  text-underline-offset: 2px;
+}
+
 .rw-line.off .rw-before { color: var(--ink); }
 .rw-line.off .rw-before .w { background: none; text-decoration: none; }
 .rw-line.off .rw-after { color: var(--muted); text-decoration: line-through; }
@@ -2108,6 +2151,20 @@ main.tab-create #createLeft {
   font-size: 12px;
   color: var(--muted);
   margin: 6px 0 0;
+}
+
+/* Bannière globale : le panneau applique tout d'un coup sans relecture
+   préalable, donc rien ne garantit que l'utilisateur fasse défiler jusqu'à la
+   ligne fautive — ce compteur est la première chose vue après le résumé. */
+.rw-numbanner {
+  font-size: 13px;
+  font-weight: 600;
+  color: #7f1d1d;
+  background: #fee2e2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin: 8px 0 0;
 }
 
 /* ---------- Impression : page A4 identique au rendu écran ---------- */
@@ -2152,7 +2209,7 @@ main.tab-create #createLeft {
   .bullet-controls, .exp-controls, .photo-controls,
   .bullet-badges, .diff-badge, .rw-badge { display: none !important; }
 
-  li.bullet.moved, li.bullet.rw-edit, li.bullet.rw-add { background: none !important; }
+  li.bullet.moved, li.bullet.rw-edit, li.bullet.rw-add, li.bullet.rw-numalert { background: none !important; }
   .exp:hover { background: none; }
   [contenteditable]:hover, [contenteditable]:focus { background: none; }
 

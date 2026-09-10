@@ -869,10 +869,19 @@ function diffBadge(bulletId, index, ownerId) {
 // pas via un attribut sur le <ul> lui-même). `ownerId` n'est fourni que pour
 // les expériences : il sert au diff avec le CV de base pendant une proposition.
 // Badge de relecture : dit d'un coup d'œil qu'un tiret a été recalibré (avec
-// le texte du CV de base en infobulle) ou qu'il a été ajouté. Même vie que le
-// badge d'ordre : visible au survol du CV seulement, donc jamais imprimé.
+// le texte du CV de base en infobulle) ou qu'il a été ajouté — ou, prioritaire
+// sur les deux, qu'il contient un chiffre introuvable dans le CV de base.
+// Même vie que le badge d'ordre : visible au survol du CV seulement, donc
+// jamais imprimé.
 function rewriteBadge(b) {
   if (!b.rw) return null;
+  if (b.rwNumAlert) {
+    return el('span', {
+      class: 'rw-badge rw-badge-numalert',
+      title: 'Chiffre introuvable dans le CV de base — à vérifier avant d’exporter.',
+      text: `⚠ ${b.rwNumAlert > 1 ? b.rwNumAlert + ' chiffres' : '1 chiffre'} à vérifier`,
+    });
+  }
   return el('span', {
     class: 'rw-badge rw-badge-' + b.rw,
     title: b.rw === 'add' ? 'Ligne ajoutée par la relecture' : `Texte du CV de base : ${b.rwBefore}`,
@@ -895,7 +904,7 @@ function bulletsUl(bullets, ownerId) {
     ul.append(
       el(
         'li',
-        { class: 'bullet' + (badge ? ' moved' : '') + (b.rw ? ' rw-' + b.rw : ''), 'data-bullet-id': b.id },
+        { class: 'bullet' + (badge ? ' moved' : '') + (b.rw ? ' rw-' + b.rw : '') + (b.rwNumAlert ? ' rw-numalert' : ''), 'data-bullet-id': b.id },
         !added && el('span', { class: 'drag-handle', title: 'Glisser pour réordonner', text: '⠿' }),
         el('span', { class: 'bullet-dot', text: '•' }),
         el('div', { class: 'bullet-text', contenteditable: 'true', 'data-bullet-id': b.id }, b.text),
@@ -2891,7 +2900,9 @@ function buildRewritePrompt() {
     'Règles :',
     '- une seule phrase par ligne, sans « je », sans sous-liste ;',
     "- aucun adjectif d'auto-évaluation (« excellent », « passionné », « rigoureux ») ;",
-    '- les chiffres priment : reprends ceux du parcours, ne fabrique aucun chiffre absent ;',
+    '- les chiffres priment, mais n’en invente aucun : n’utilise que des nombres déjà présents ' +
+      'dans les lignes d’origine fournies ci-dessus ; si aucun chiffre n’est disponible pour une ' +
+      'réalisation, écris la ligne sans chiffre plutôt que d’en estimer un ;',
     "- reprends le vocabulaire de l'offre uniquement quand il décrit vraiment le travail fait ;",
     lang === 'en'
       ? "- the posting is written in English: write every line in English."
@@ -3186,14 +3197,16 @@ function rewriteEntryForBullet(expId, bulletId) {
 function applyRewriteLayer(exp, bullets) {
   const list = inCreateTab() ? rewriteEntriesFor(exp.id) : null;
   if (!list) return bullets;
+  const sourcePool = rewriteSourceNumberPool();
+  const numAlert = (e) => unverifiedNumbers(exp.id, e, sourcePool).length;
   const edits = new Map();
   for (const e of list) if (e.kind === 'edit' && e.active) edits.set(e.bulletId, e);
   const out = bullets.map((b) => {
     const e = edits.get(b.id);
-    return e ? { id: b.id, text: e.after, rw: 'edit', rwBefore: e.before, rwEntryId: e.id } : b;
+    return e ? { id: b.id, text: e.after, rw: 'edit', rwBefore: e.before, rwEntryId: e.id, rwNumAlert: numAlert(e) } : b;
   });
   for (const e of list) {
-    if (e.kind === 'add' && e.active) out.push({ id: e.id, text: e.after, rw: 'add', rwBefore: '', rwEntryId: e.id });
+    if (e.kind === 'add' && e.active) out.push({ id: e.id, text: e.after, rw: 'add', rwBefore: '', rwEntryId: e.id, rwNumAlert: numAlert(e) });
   }
   return out;
 }
@@ -3284,9 +3297,107 @@ function diffLineEl(tokens, cls) {
   const node = el('div', { class: cls });
   tokens.forEach((tk, i) => {
     if (i) node.append(' ');
-    node.append(tk.on ? el('span', { class: 'w', text: tk.t }) : tk.t);
+    if (!tk.on) {
+      node.append(tk.t);
+      return;
+    }
+    node.append(
+      el('span', {
+        class: 'w' + (tk.numAlert ? ' num-alert' : ''),
+        title: tk.numAlert
+          ? 'Chiffre introuvable dans le CV de base — vérifiez-le avant d’exporter.'
+          : undefined,
+        text: tk.t,
+      })
+    );
   });
   return node;
+}
+
+/* ---------- Provenance des chiffres ----------
+   Le LLM peut inventer un chiffre : toute la valeur d'une ligne recalibrée
+   tient à ses nombres, donc un chiffre halluciné part directement chez un
+   recruteur. On extrait les nombres de chaque ligne appliquée et on les
+   compare à ceux du tiret d'origine puis, à défaut, à l'ensemble du CV
+   source — jamais stocké, recalculé au rendu comme rewriteStats(). */
+
+// Cœur numérique + multiplicateur (k/K/M) + unité (%/€/$), ou notation
+// scientifique (1e5) : couvre les formats vus dans ce dépôt (« 600 k€ »,
+// « 80 % », l'exemple du prompt « 100,000 » / « 100 000 ») et les variantes
+// qu'une réponse de LLM peut employer (espace insécable, « 100k », « 2,4 M »).
+const NUMBER_RE = /(\d+(?:\.\d+)?[eE][+-]?\d+)|(\d(?:[\d\s .,]*\d)?)(?:\s?(k|K|M))?(?:\s?(%|€|\$))?/g;
+
+// Cœur de chiffres → valeur : les espaces (dont insécables) sont toujours des
+// séparateurs de milliers ; une virgule ou un point suivi d'exactement 3
+// chiffres (répétable) aussi ; le dernier séparateur restant, suivi de 1 ou 2
+// chiffres, est la décimale. Couvre à la fois « 100 000 » et « 100,000 ».
+function parseNumberCore(raw) {
+  const s = raw.replace(/[\s ]/g, '');
+  const m = s.match(/^(\d+(?:[.,]\d{3})*)([.,](\d{1,2}))?$/);
+  if (!m) {
+    const n = parseFloat(s.replace(/[.,]/g, '.'));
+    return Number.isFinite(n) ? n : null;
+  }
+  const intPart = m[1].replace(/[.,]/g, '');
+  const n = parseFloat(m[3] ? `${intPart}.${m[3]}` : intPart);
+  return Number.isFinite(n) ? n : null;
+}
+
+function numberSuffixMultiplier(mult) {
+  if (!mult) return 1;
+  const m = mult.toLowerCase();
+  return m === 'k' ? 1000 : m === 'm' ? 1000000 : 1;
+}
+
+// Toutes les valeurs numériques d'un texte, canonicalisées : « 100 000 »,
+// « 100,000 », « 100k » et « 1e5 » donnent la même valeur, comparable entre
+// deux textes sans se soucier du format d'origine.
+function extractNumbers(text) {
+  const out = new Set();
+  const re = new RegExp(NUMBER_RE.source, 'g');
+  let m;
+  while ((m = re.exec(String(text ?? '')))) {
+    let n;
+    if (m[1]) {
+      n = parseFloat(m[1]);
+    } else {
+      const core = parseNumberCore(m[2]);
+      if (core === null) continue;
+      n = core * numberSuffixMultiplier(m[3]);
+    }
+    if (Number.isFinite(n)) out.add(Math.round(n * 100) / 100);
+  }
+  return out;
+}
+
+// Pool « CV source » du repli : les mêmes nombres que ceux réellement envoyés
+// au LLM (rewriteCareerBrief() est le texte du prompt), calculé une seule
+// fois par rendu plutôt que par ligne.
+function rewriteSourceNumberPool() {
+  return extractNumbers(rewriteCareerBrief());
+}
+
+// Valeurs numériques de la ligne recalibrée introuvables dans le tiret
+// d'origine ni, à défaut, dans le reste du CV. Repli volontairement plus
+// faible que la comparaison au tiret (cf. limites dans le README) : un
+// chiffre présent ailleurs dans le CV mais attaché à la mauvaise réalisation
+// passera pour vérifié.
+function unverifiedNumbers(expId, entry, sourcePool) {
+  const bulletPool = entry.kind === 'add' ? new Set() : extractNumbers(baseTextFor(expId, entry));
+  const pool = sourcePool || rewriteSourceNumberPool();
+  const after = extractNumbers(entry.after);
+  return [...after].filter((n) => !bulletPool.has(n) && !pool.has(n));
+}
+
+// Marque, parmi des jetons déjà diffés (wordDiff), ceux qui portent un
+// chiffre non vérifié — pour les distinguer d'un simple mot modifié.
+function markUnverifiedTokens(tokens, unverifiedSet) {
+  if (!unverifiedSet.size) return tokens;
+  return tokens.map((tk) => {
+    if (!tk.on) return tk;
+    for (const n of extractNumbers(tk.t)) if (unverifiedSet.has(n)) return { ...tk, numAlert: true };
+    return tk;
+  });
 }
 
 /* ---------- Rendu du rapport ---------- */
@@ -3300,12 +3411,21 @@ function baseTextFor(expId, entry) {
   return b ? b.text : entry.before;
 }
 
-function rewriteLineItem(expId, entry) {
+// Accord simple : "1 ligne réécrite" / "3 lignes réécrites". Partagé entre le
+// rapport et chaque ligne (badge de chiffres à vérifier).
+const plural = (n, one, many) => `${n} ${n > 1 ? many : one}`;
+
+function rewriteLineItem(expId, entry, sourcePool) {
   const base = baseTextFor(expId, entry);
   const isAdd = entry.kind === 'add';
   const same = !isAdd && base === entry.after;
+  // Chiffres de la ligne appliquée introuvables dans le tiret d'origine ni le
+  // reste du CV — non pertinent pour une ligne inchangée (base === after, donc
+  // trivialement vérifiée) ni pour une ligne désactivée (le texte affiché
+  // redevient celui du CV de base).
+  const unverified = !same && entry.active ? unverifiedNumbers(expId, entry, sourcePool) : [];
   const li = el('li', {
-    class: 'rw-line' + (entry.active ? '' : ' off') + (isAdd ? ' add' : '') + (same ? ' same' : ''),
+    class: 'rw-line' + (entry.active ? '' : ' off') + (isAdd ? ' add' : '') + (same ? ' same' : '') + (unverified.length ? ' num-flag' : ''),
     'data-entry': entry.id,
   });
 
@@ -3315,6 +3435,12 @@ function rewriteLineItem(expId, entry) {
       'div',
       { class: 'rw-line-top' },
       el('span', { class: 'rw-tag', text: tag }),
+      unverified.length &&
+        el('span', {
+          class: 'rw-num-badge',
+          title: 'Chiffre(s) introuvable(s) dans le CV de base — à vérifier avant d’exporter.',
+          text: `⚠ ${plural(unverified.length, 'chiffre à vérifier', 'chiffres à vérifier')}`,
+        }),
       el('button', {
         type: 'button',
         class: 'ghost rw-toggle',
@@ -3327,13 +3453,15 @@ function rewriteLineItem(expId, entry) {
     )
   );
 
+  const unverifiedSet = new Set(unverified);
   if (isAdd) {
-    li.append(diffLineEl([{ t: entry.after, on: true }], 'rw-after'));
+    const tokens = (entry.after.match(/\S+/g) || []).map((t) => ({ t, on: true }));
+    li.append(diffLineEl(markUnverifiedTokens(tokens, unverifiedSet), 'rw-after'));
   } else if (same) {
     li.append(diffLineEl([{ t: entry.after }], 'rw-after'));
   } else {
     const { a, b } = wordDiff(base, entry.after);
-    li.append(diffLineEl(a, 'rw-before'), diffLineEl(b, 'rw-after'));
+    li.append(diffLineEl(a, 'rw-before'), diffLineEl(markUnverifiedTokens(b, unverifiedSet), 'rw-after'));
   }
   return li;
 }
@@ -3344,7 +3472,6 @@ function renderRewritePanel() {
   if (!rw) return;
 
   const s = rewriteStats();
-  const plural = (n, one, many) => `${n} ${n > 1 ? many : one}`;
   const parts = [plural(s.rewritten, 'ligne réécrite', 'lignes réécrites')];
   if (s.unchanged) parts.push(plural(s.unchanged, 'inchangée', 'inchangées'));
   if (s.added) parts.push(plural(s.added, 'ajoutée', 'ajoutées'));
@@ -3352,6 +3479,18 @@ function renderRewritePanel() {
 
   const all = Object.values(rw.entries).flat();
   const off = all.filter((e) => !e.active).length;
+
+  // Pool « CV source » calculé une seule fois pour tout le rapport, pas par
+  // ligne — rewriteCareerBrief() reconstruit une chaîne à chaque appel.
+  const sourcePool = rewriteSourceNumberPool();
+  let numAlertCount = 0;
+  for (const [expId, list] of Object.entries(rw.entries)) {
+    for (const e of list) {
+      if (!e.active) continue;
+      if (e.kind !== 'add' && baseTextFor(expId, e) === e.after) continue; // inchangée : trivialement vérifiée
+      numAlertCount += unverifiedNumbers(expId, e, sourcePool).length;
+    }
+  }
 
   const box = el('div', { class: 'rw-report' });
   box.append(
@@ -3363,6 +3502,16 @@ function renderRewritePanel() {
         : 'Tout est appliqué. Relisez ligne à ligne : le texte barré est celui du CV de base, qui n’a pas bougé.',
     })
   );
+
+  if (numAlertCount > 0) {
+    box.append(
+      el('p', {
+        class: 'rw-numbanner',
+        role: 'alert',
+        text: `⚠ ${plural(numAlertCount, 'chiffre à vérifier', 'chiffres à vérifier')} — introuvable${numAlertCount > 1 ? 's' : ''} dans le CV de base, repérez-le${numAlertCount > 1 ? 's' : ''} dans le détail ci-dessous avant d’exporter.`,
+      })
+    );
+  }
 
   const v = rewriteVersion();
   box.append(
@@ -3399,7 +3548,7 @@ function renderRewritePanel() {
     const kept = Math.max(0, exp.bullets.length - (list ? list.filter((e) => e.kind === 'edit').length : 0));
     if (!list && !kept) continue;
     const block = el('div', { class: 'rw-exp' }, el('h4', { text: exp.role || 'Expérience' }));
-    if (list) block.append(el('ol', { class: 'rw-lines' }, ...list.map((e) => rewriteLineItem(exp.id, e))));
+    if (list) block.append(el('ol', { class: 'rw-lines' }, ...list.map((e) => rewriteLineItem(exp.id, e, sourcePool))));
     if (kept > 0) {
       block.append(
         el('p', {
