@@ -23,6 +23,12 @@ Rien n'est irréversible : **« Annuler »** sur une ligne la ramène au texte d
 
 Si l'assistant rend **moins** de lignes qu'il n'y a de tirets, les tirets restants sont conservés tels quels et le rapport le dit ; s'il en rend **plus**, le surplus est ajouté en fin d'expérience et reste supprimable d'un ✕.
 
+##### Provenance des chiffres
+
+Un chiffre halluciné par l'assistant part directement chez un recruteur : chaque ligne appliquée est passée au crible avant de compter comme validée. Les nombres qu'elle contient sont comparés à ceux du tiret d'origine puis, à défaut, à l'ensemble du CV source (« 100 000 », « 100,000 », « 100k » et « 1e5 » sont reconnus comme la même valeur, quel que soit le format). Tout chiffre introuvable est signalé à trois endroits, jamais imprimés : le mot lui-même dans le diff (souligné en rouge), un badge « ⚠ N chiffre(s) à vérifier » sur la ligne concernée et au survol du tiret dans le CV, et une bannière globale en tête du rapport — pour qu'un chiffre fautif ne se perde pas dans un panneau qu'il faut faire défiler.
+
+Ce contrôle compare des **valeurs**, pas du **sens** : un total légitimement dérivé de deux chiffres présents (« 5 développeurs et 2 designers » → « 7 personnes ») est signalé comme les autres, faute de savoir faire une addition ; et un chiffre réel du CV mais rattaché à la mauvaise réalisation ne sera pas détecté par le repli « CV entier ». Les nombres écrits en toutes lettres (« cent mille clients ») échappent aussi à la détection. Le signal reste une aide à la relecture, pas une garantie.
+
 ### « CV de base » — le CV de référence et les CV sauvegardés
 
 Le CV de base s'édite ici (textes, tirets, sections, photo, liens…) ; c'est lui qui sert de matrice à chaque nouvelle analyse. À côté, la liste des **CV sauvegardés** : ceux enregistrés depuis l'onglet « Nouveau CV » et ceux que vous sauvegardez manuellement. Chacun peut être chargé (il devient le CV de base), écrasé, renommé ou supprimé.
