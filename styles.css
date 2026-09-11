@@ -1213,7 +1213,12 @@ li.bullet:hover .bullet-controls { display: flex; }
   transition: opacity 120ms ease, display 120ms allow-discrete;
 }
 
-#cv:is(:hover, :focus-within) .diff-badge {
+/* #cv.just-analyzed : classe transitoire (app.js), posée juste après une
+   analyse et retirée 5s plus tard (ou à la fin de l'animation de tri, voir
+   plus bas), pour rendre les badges visibles sans survol le temps que
+   l'utilisateur remarque le réordonnancement. */
+#cv:is(:hover, :focus-within) .diff-badge,
+#cv.just-analyzed .diff-badge {
   display: inline-block;
   opacity: 1;
 }
@@ -1229,8 +1234,25 @@ li.bullet:hover .bullet-controls { display: flex; }
   opacity: 0;
 }
 
-#cv:is(:hover, :focus-within) li.bullet.moved {
+#cv:is(:hover, :focus-within) li.bullet.moved,
+#cv.just-analyzed li.bullet.moved {
   background: color-mix(in srgb, var(--accent-soft) 45%, #fff);
+}
+
+/* Petite animation d'entrée, une seule fois, sur les tirets déplacés par
+   l'analyse (pas au drag & drop manuel : #cv.just-analyzed n'est posée que
+   par le clic sur « Analyser l'offre »). */
+@keyframes proposal-moved-in {
+  from { transform: translateX(-8px); background: color-mix(in srgb, var(--accent-soft) 80%, #fff); }
+  to { transform: translateX(0); }
+}
+
+#cv.just-analyzed li.bullet.moved {
+  animation: proposal-moved-in 300ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #cv.just-analyzed li.bullet.moved { animation: none; }
 }
 
 .icon-btn {
@@ -1907,15 +1929,29 @@ main.tab-create #createLeft {
 
 .proposal-exp-line strong { color: var(--ink); font-weight: 600; }
 
-/* CTA : nom + enregistrement du nouveau CV */
-
+/* CTA : nom + enregistrement du nouveau CV, plus l'action secondaire
+   « Ignorer ». Collée en bas du panneau qui défile (#createLeft) : l'action
+   principale reste toujours atteignable sans avoir à faire défiler après une
+   analyse. La couleur de fond reprend celle de .proposal-box (et non celle,
+   blanche, du panneau) pour lire comme un prolongement de l'encadré, pas un
+   élément flottant indépendant. */
 .proposal-save {
+  position: sticky;
+  bottom: 0;
   display: flex;
+  flex-direction: column;
   gap: 6px;
-  margin: 10px 0 8px;
+  margin: 10px -14px -12px;
+  padding: 10px 14px 12px;
+  background: #f6f9ff;
+  border-top: 1px solid var(--accent-soft);
+  border-radius: 0 0 8px 8px;
+  box-shadow: 0 -6px 10px -8px rgba(0, 0, 0, 0.15);
 }
 
-.proposal-save input {
+.proposal-save-row { display: flex; gap: 6px; }
+
+.proposal-save-row input {
   flex: 1;
   min-width: 0;
   font: inherit;
@@ -1925,9 +1961,27 @@ main.tab-create #createLeft {
   padding: 7px 9px;
 }
 
-.proposal-save input:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+.proposal-save-row input:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
 
-.proposal-save button { white-space: nowrap; }
+.proposal-save-row button { white-space: nowrap; }
+
+/* « Ignorer la proposition » : action destructrice mais secondaire — un
+   simple lien texte pour ne pas concurrencer visuellement l'enregistrement,
+   tout en restant un vrai <button> (focus visible, clavier). */
+.link-btn {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  padding: 2px 1px;
+  font-size: 12.5px;
+  color: var(--muted);
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  cursor: pointer;
+}
+
+.link-btn:hover { color: var(--ink); text-decoration-color: currentColor; }
+.link-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
 
 .apply-note { color: var(--ok); font-size: 13px; font-weight: 600; }
 

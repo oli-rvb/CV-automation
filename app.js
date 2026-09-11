@@ -1499,6 +1499,7 @@ function renderFontControls() {
     }
     fontControlsEl.append(group);
   }
+  refreshUndoButtonState();
 }
 
 /* ---------- Retour arrière (Cmd/Ctrl+Z) sur les tailles de texte ---------- */
@@ -1519,9 +1520,16 @@ function snapshotFontSize(tpl) {
   return { tpl, prev: JSON.parse(JSON.stringify(state.fontSizes[tpl])) };
 }
 
+// Reflète l'état de la pile sur le bouton « Annuler » visible : grisé dès
+// qu'il n'y a plus rien à annuler.
+function refreshUndoButtonState() {
+  $('#fontUndoBtn').disabled = fontSizeHistory.length === 0;
+}
+
 function pushFontSizeHistory(entry) {
   fontSizeHistory.push(entry);
   if (fontSizeHistory.length > FONT_SIZE_HISTORY_MAX) fontSizeHistory.shift();
+  refreshUndoButtonState();
 }
 
 function undoFontSize() {
@@ -1533,6 +1541,7 @@ function undoFontSize() {
     renderFontControls();
   }
   save();
+  refreshUndoButtonState();
   return true;
 }
 
@@ -1607,6 +1616,8 @@ $('#fontResetBtn').addEventListener('click', () => {
   renderFontControls();
   save();
 });
+
+$('#fontUndoBtn').addEventListener('click', () => undoFontSize());
 
 /* ---------- Recherche dans l'état ---------- */
 
@@ -2705,20 +2716,27 @@ function renderSuggestions() {
         )
       );
     }
+    // Barre collée en bas du panneau (voir styles.css) : regroupe l'action
+    // principale (enregistrer) et l'action secondaire (ignorer) pour qu'elles
+    // défilent ensemble, sans jamais se chevaucher.
     box.append(
       el(
         'div',
         { class: 'proposal-save' },
-        el('input', {
-          id: 'newCvName',
-          type: 'text',
-          placeholder: 'Nom du nouveau CV',
-          value: newCvNameDraft || defaultVersionName(),
-          'aria-label': 'Nom du nouveau CV',
-        }),
-        el('button', { type: 'button', id: 'saveProposalBtn', text: 'Enregistrer ce nouveau CV' })
-      ),
-      el('button', { type: 'button', id: 'discardProposalBtn', class: 'ghost', text: 'Ignorer la proposition' })
+        el(
+          'div',
+          { class: 'proposal-save-row' },
+          el('input', {
+            id: 'newCvName',
+            type: 'text',
+            placeholder: 'Nom du nouveau CV',
+            value: newCvNameDraft || defaultVersionName(),
+            'aria-label': 'Nom du nouveau CV',
+          }),
+          el('button', { type: 'button', id: 'saveProposalBtn', text: 'Enregistrer ce nouveau CV' })
+        ),
+        el('button', { type: 'button', id: 'discardProposalBtn', class: 'link-btn', text: 'Ignorer la proposition' })
+      )
     );
     if (proposalSaved) {
       box.append(el('p', { class: 'apply-note', text: 'Nouveau CV enregistré ✓ — retrouvez-le dans l’onglet « CV de base ».' }));
@@ -2745,6 +2763,8 @@ resultsEl.addEventListener('click', (e) => {
     // à l'oublier (ré-analyser l'offre la reconstruit à l'identique).
     state.proposal = null;
     proposalSaved = false;
+    clearTimeout(analysisHighlightTimer);
+    cvEl.classList.remove('just-analyzed');
     rerender();
   }
 });
@@ -2759,10 +2779,24 @@ resultsEl.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && e.target.id === 'newCvName') saveProposalVersion();
 });
 
+// Minuteur de la mise en avant post-analyse (animation + badges visibles
+// sans survol) : voir styles.css (.just-analyzed). Annulé/relancé à chaque
+// nouvelle analyse pour ne jamais empiler plusieurs retraits différés.
+let analysisHighlightTimer = null;
+
 $('#analyzeBtn').addEventListener('click', () => {
   state.jobText = jobTextEl.value;
   buildProposal();
   rerender();
+  clearTimeout(analysisHighlightTimer);
+  if (state.proposal) {
+    cvEl.classList.remove('just-analyzed');
+    // Force un reflow pour que l'animation rejoue même si la classe était
+    // déjà présente (analyses successives rapprochées).
+    void cvEl.offsetWidth;
+    cvEl.classList.add('just-analyzed');
+    analysisHighlightTimer = setTimeout(() => cvEl.classList.remove('just-analyzed'), 5000);
+  }
 });
 
 $('#clearAnalysisBtn').addEventListener('click', async () => {
@@ -2772,6 +2806,8 @@ $('#clearAnalysisBtn').addEventListener('click', async () => {
   newCvNameDraft = '';
   jobTextEl.value = '';
   state.jobText = '';
+  clearTimeout(analysisHighlightTimer);
+  cvEl.classList.remove('just-analyzed');
   rerender();
 });
 
