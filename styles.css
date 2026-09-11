@@ -1233,6 +1233,86 @@ li.bullet:hover .bullet-controls { display: flex; }
   background: color-mix(in srgb, var(--accent-soft) 45%, #fff);
 }
 
+/* ---------- Mots-clés matchés par tiret ----------
+   Comme .diff-badge : superposé (jamais de place prise dans le flux), visible
+   uniquement au survol du CV, donc absent au repos et du PDF. Décalé sous
+   .diff-badge (top: 18px) pour ne pas se superposer quand un tiret est à la
+   fois déplacé et matché ; un ton neutre (gris) le distingue du badge de
+   position (bleu), pour ne pas laisser croire que ce sont deux infos liées. */
+.match-badge {
+  position: absolute;
+  right: 0;
+  top: 18px;
+  z-index: 2;
+  display: none;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+  border-radius: 5px;
+  padding: 1px 7px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  opacity: 0;
+  transition: opacity 120ms ease, display 120ms allow-discrete;
+}
+
+#cv:is(:hover, :focus-within) .match-badge {
+  display: inline-block;
+  opacity: 1;
+}
+
+@starting-style {
+  #cv:is(:hover, :focus-within) .match-badge { opacity: 0; }
+}
+
+/* Même logique que pour .diff-badge : au survol d'un tiret précis, les
+   contrôles ✕ / ↑ / ↓ reprennent la place en fin de ligne. */
+#cv li.bullet:hover .match-badge {
+  display: none;
+  opacity: 0;
+}
+
+/* ---------- Tirets reformulés par le chatbot ----------
+   Même logique de superposition que .diff-badge / .match-badge (rien dans le
+   flux, visible uniquement au survol du CV, donc absent du PDF/impression) ;
+   une troisième ligne (top: 36px) pour ne pas chevaucher les deux badges
+   précédents quand un tiret est à la fois déplacé, matché et reformulé. */
+.rewrite-badge {
+  position: absolute;
+  right: 0;
+  top: 36px;
+  z-index: 2;
+  display: none;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+  border-radius: 5px;
+  padding: 1px 7px;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  color: #047857;
+  opacity: 0;
+  transition: opacity 120ms ease, display 120ms allow-discrete;
+}
+
+#cv:is(:hover, :focus-within) .rewrite-badge {
+  display: inline-block;
+  opacity: 1;
+}
+
+@starting-style {
+  #cv:is(:hover, :focus-within) .rewrite-badge { opacity: 0; }
+}
+
+#cv li.bullet:hover .rewrite-badge {
+  display: none;
+  opacity: 0;
+}
+
 .icon-btn {
   border: 1px solid var(--line);
   background: var(--btn-bg);
@@ -1577,7 +1657,8 @@ main.tab-create #createLeft {
 
 .ai-onboarding-privacy { margin: 8px 0 0; font-size: 11px; }
 
-#aiResponseText {
+#aiResponseText,
+#tailorResponseText {
   width: 100%;
   font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   border: 1px solid #bfdbfe;
@@ -1586,11 +1667,43 @@ main.tab-create #createLeft {
   resize: vertical;
 }
 
-#aiResponseText:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+#aiResponseText:focus,
+#tailorResponseText:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
 
 .ai-onboarding-actions { align-items: center; margin-bottom: 0; }
 .ai-onboarding-status { font-size: 12px; color: var(--ok); font-weight: 600; }
 .ai-onboarding-status.error { color: var(--danger); }
+
+/* ---------- Offre via URL ---------- */
+
+.job-url-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.job-url-row input {
+  flex: 1;
+  min-width: 100px;
+  font: inherit;
+  font-size: 13px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 10px;
+}
+
+.job-url-row input:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+
+.job-url-status {
+  display: block;
+  font-size: 12px;
+  color: var(--ok);
+  font-weight: 600;
+  min-height: 16px;
+  margin-bottom: 8px;
+}
+
+.job-url-status.error { color: var(--danger); }
 
 #jobText {
   width: 100%;
@@ -1619,7 +1732,9 @@ main.tab-create #createLeft {
 
 .version-new input {
   flex: 1;
-  min-width: 0;
+  /* Même raison que .proposal-save input ci-dessous : remplit la ligne,
+     ne s'écrase pas sous une largeur lisible. */
+  min-width: 100px;
   font: inherit;
   font-size: 13px;
   border: 1px solid var(--line);
@@ -1873,6 +1988,31 @@ main.tab-create #createLeft {
 
 .chip.small { font-size: 11px; padding: 1px 7px; }
 
+/* ---------- Couverture de l'offre ----------
+   Réordonner ne peut pas faire apparaître une compétence absente du CV :
+   cet encadré liste ce qu'il manque, pour que l'utilisateur sache quoi
+   AJOUTER (pas seulement réorganiser). */
+.coverage-box { margin-bottom: 14px; }
+
+.coverage-box .label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 6px;
+}
+
+.coverage-hint {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.chip.missing {
+  background: none;
+  border: 1px dashed var(--danger-soft);
+  color: var(--danger);
+}
+
 /* Encadré « Nouveau CV proposé » */
 
 .proposal-box {
@@ -1911,13 +2051,18 @@ main.tab-create #createLeft {
 
 .proposal-save {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   margin: 10px 0 8px;
 }
 
 .proposal-save input {
-  flex: 1;
-  min-width: 0;
+  /* Le champ prend toute la ligne, le bouton passe en dessous : les noms
+     proposés sont désormais longs (ex. « Swan — Product Manager Growth »)
+     et le bouton « Enregistrer ce nouveau CV » mange à lui seul les deux
+     tiers du panneau — partager la ligne tronquerait le nom à ~107px. */
+  flex: 1 1 100%;
+  min-width: 100px;
   font: inherit;
   font-size: 13px;
   border: 1px solid var(--line);
@@ -1932,6 +2077,53 @@ main.tab-create #createLeft {
 .apply-note { color: var(--ok); font-size: 13px; font-weight: 600; }
 
 .empty-note { font-size: 13px; color: var(--muted); }
+
+/* ---------- Mobile / fenêtre étroite (≤ 780px) ----------
+   Sous 780px, la feuille CV (.sheet, 210mm ≈ 794px de large FIXE — voir plus
+   haut, jamais modifiée pour garder des retours à la ligne identiques au
+   PDF) dépasse la largeur de l'écran et fait défiler toute la page
+   horizontalement. Dans l'onglet « Nouveau CV », #cvScale (voir plus haut)
+   règle déjà ce problème via app.js (updateCvScale calcule --cv-scale selon
+   la largeur réelle du cadre). Dans l'onglet « CV de base », app.js
+   désactive volontairement ce mécanisme (--cv-scale reste à 1, aucune
+   largeur à mesurer côté colonne offre/CV). On reproduit donc ici, en CSS
+   pur le cadrage, et app.js calcule le facteur exact : le cadre
+   #cvScale garde sa hauteur cohérente via aspect-ratio (comme à l'écran
+   normal), et seul le rendu visuel de .sheet (#cv) est réduit par
+   transform: scale(), jamais sa largeur interne de 210mm. */
+@media (max-width: 780px) {
+  /* Empile les panneaux (offre, CV, CV sauvegardés) en une seule colonne
+     même dans l'onglet « CV de base » (main sans .tab-create), qui n'était
+     pas couvert par le palier existant à 980px ci-dessus (celui-ci ne cible
+     que « main, main.tab-create » pour la grille, ce qui suffit, mais les
+     éléments de grille refusent par défaut de rétrécir sous la largeur de
+     leur contenu : min-width supprime ce plancher pour #cvColumn). */
+  #cvColumn, #versionsPanel, #createLeft { min-width: 0; }
+
+  /* Barre d'outils : autorise le retour à la ligne des boutons plutôt que
+     de les laisser déborder (le titre + les onglets + les actions ne
+     tiennent pas sur une seule ligne à 375px). */
+  #toolbar { flex-wrap: wrap; }
+
+  /* Onglet « CV de base » uniquement : cadre de mise à l'échelle du CV,
+     même principe que #cvScale en onglet « Nouveau CV » (aspect-ratio fige
+     la hauteur du cadre indépendamment du facteur d'échelle choisi). */
+  main.tab-base #cvScale {
+    width: 100%;
+    aspect-ratio: 210 / 297;
+    overflow: hidden;
+  }
+  /* Même facteur --cv-scale que l'onglet « Nouveau CV », calculé par app.js
+     (updateCvScale) à partir de la largeur réelle du cadre : le CV remplit
+     exactement la place disponible, alors que des paliers fixes le
+     laisseraient trop petit sur la plupart des largeurs d'écran. */
+  main.tab-base #cvScale #cv {
+    width: 210mm;
+    min-height: 297mm;
+    transform: scale(var(--cv-scale, 1));
+    transform-origin: top left;
+  }
+}
 
 /* ---------- Impression : page A4 identique au rendu écran ---------- */
 
@@ -1972,7 +2164,7 @@ main.tab-create #createLeft {
      déjà hors du flux au repos et ne reviennent que sur :hover / :focus-within,
      qui ne s'appliquent pas sans souris : le PDF reprend la feuille au repos.
      Filet de sécurité pour les contrôles flottants ✕ / ↑ / ↓ : */
-  .bullet-controls, .exp-controls, .photo-controls, .diff-badge { display: none !important; }
+  .bullet-controls, .exp-controls, .photo-controls, .diff-badge, .match-badge, .rewrite-badge { display: none !important; }
 
   li.bullet.moved { background: none !important; }
   .exp:hover { background: none; }
