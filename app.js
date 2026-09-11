@@ -2594,6 +2594,10 @@ const STOPWORDS = new Set(
     // Verbes d'action passe-partout : listés comme « absents du CV », ils
     // conseilleraient d'ajouter « améliorer » à ses compétences.
     'reduire ameliorer piloter gerer assurer participer contribuer developper accompagner ' +
+    // Titres de rubrique d'une annonce : structurent l'offre, ne décrivent
+    // aucune compétence — listés comme « absents », ils n'aident en rien.
+    'responsabilites responsabilite taches activites description contexte avantages ' +
+    'remuneration salaire processus recrutement rejoignez postuler localisation ' +
     'garantir favoriser optimiser realiser mener definir suivre animer proposer ' +
     'entreprise societe equipe equipes annee annees ans mois experience experiences niveau bac cdi cdd stage temps plein ' +
     'the a an and or of to in for with on at by is are was were be been being as this that these those you we they it ' +
@@ -2865,7 +2869,10 @@ function extractCompanyName(lines) {
     const m = line.match(labelRe);
     if (m) return m[1].split(/[,.]/)[0].trim();
   }
-  const inlineRe = /\b(?:chez|@)\s+([A-Z][\w&.\-]*(?:\s+[A-Z][\w&.\-]*){0,3})/;
+  // « chez » seul est insensible à la casse : une offre commence souvent par
+  // « Chez X, nous... ». Le nom, lui, reste exigé en capitale — c'est ce qui
+  // le distingue d'un mot ordinaire qui suivrait « chez ».
+  const inlineRe = /\b(?:[Cc]hez|@)\s+([A-Z][\w&.\-]*(?:\s+[A-Z][\w&.\-]*){0,3})/;
   for (const line of lines) {
     const m = line.match(inlineRe);
     if (m) return m[1].split(/[,.]/)[0].trim();
@@ -3103,9 +3110,31 @@ function setJobUrlStatus(message, isError = false) {
 
 // Supprime les balises HTML d'un fragment (ex. le champ « description » du
 // JSON-LD, qui est lui-même du HTML) pour n'en garder que le texte.
+// textContent colle bout à bout le contenu des blocs : la fin d'un <li> se
+// retrouve soudée au début du suivant (« ...discovery continueIndicateurs... »),
+// ce qui fabrique un faux mot-clé ET détruit les deux vrais. Or les exigences
+// d'une offre sont presque toujours dans une liste : sans ces sauts de ligne,
+// l'analyse perd justement les mots-clés les plus utiles.
+function insertBlockBreaks(root) {
+  root.querySelectorAll('br').forEach((n) => n.replaceWith('\n'));
+  root.querySelectorAll('p, div, li, tr, h1, h2, h3, h4, h5, h6').forEach((n) => n.append('\n'));
+}
+
+// Normalise un texte extrait du HTML : une ligne non vide par bloc.
+function tidyExtractedText(text) {
+  return (text || '')
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .join('\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+}
+
 function stripHtml(fragment) {
   const doc = new DOMParser().parseFromString(fragment, 'text/html');
-  return (doc.body.textContent || '').trim();
+  insertBlockBreaks(doc.body);
+  return tidyExtractedText(doc.body.textContent || '');
 }
 
 // Cherche un objet JobPosting dans les blocs JSON-LD de la page : c'est la
@@ -3162,13 +3191,8 @@ function extractFromBody(doc) {
     doc.querySelector('[class*="description"]') ||
     doc.querySelector('main') ||
     doc.body;
-  const text = (container && (container.innerText || container.textContent)) || '';
-  return text
-    .split('\n')
-    .map((l) => l.trim())
-    .filter(Boolean)
-    .join('\n')
-    .replace(/[ \t]{2,}/g, ' ');
+  if (container) insertBlockBreaks(container);
+  return tidyExtractedText((container && container.textContent) || '');
 }
 
 // Transforme le HTML brut d'une page d'offre en texte exploitable, en
