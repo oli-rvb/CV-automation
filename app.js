@@ -343,10 +343,11 @@ function normalizeState(data) {
     data: normalizeCV(v && v.data),
   }));
   s.activeVersionId = typeof data.activeVersionId === 'string' ? data.activeVersionId : null;
-  // Proposition en cours : l'ordre PROPOSÉ des tirets, par expérience. Le CV
-  // de base (s.experiences) n'est jamais réordonné par l'analyse : la
-  // proposition n'est qu'une surcouche d'ordre, affichée dans l'onglet
-  // « Nouveau CV » et enregistrable comme CV sauvegardé.
+  // Proposition en cours : l'ordre PROPOSÉ des tirets, par expérience, et
+  // (optionnel) les tirets reformulés par le chatbot. Le CV de base
+  // (s.experiences) n'est jamais réordonné ni réécrit par l'analyse : la
+  // proposition n'est qu'une surcouche d'ordre + de texte, affichée dans
+  // l'onglet « Nouveau CV » et enregistrable comme CV sauvegardé.
   s.proposal = null;
   const p = data.proposal;
   if (p && typeof p === 'object' && p.orders && typeof p.orders === 'object') {
@@ -354,7 +355,16 @@ function normalizeState(data) {
     for (const [expId, ids] of Object.entries(p.orders)) {
       if (Array.isArray(ids)) orders[expId] = ids.map(String);
     }
-    if (Object.keys(orders).length > 0) s.proposal = { orders };
+    const texts = {};
+    if (p.texts && typeof p.texts === 'object') {
+      for (const [bulletId, text] of Object.entries(p.texts)) {
+        if (typeof text === 'string') texts[bulletId] = text;
+      }
+    }
+    if (Object.keys(orders).length > 0 || Object.keys(texts).length > 0) {
+      s.proposal = { orders };
+      if (Object.keys(texts).length > 0) s.proposal.texts = texts;
+    }
   }
   s.activeTab = data.activeTab === 'base' ? 'base' : 'create';
   // Dernières couleurs libres utilisées (pipette), de la plus récente à la
@@ -424,9 +434,14 @@ const cvEl = $('#cv');
 const cvScaleEl = $('#cvScale');
 const resultsEl = $('#results');
 const jobTextEl = $('#jobText');
+const jobUrlEl = $('#jobUrl');
+const jobUrlStatusEl = $('#jobUrlStatus');
 const aiOnboardingEl = $('#aiOnboarding');
 const aiResponseTextEl = $('#aiResponseText');
 const aiOnboardingStatusEl = $('#aiOnboardingStatus');
+const tailorPanelEl = $('#tailorPanel');
+const tailorResponseTextEl = $('#tailorResponseText');
+const tailorStatusEl = $('#tailorStatus');
 const versionListEl = $('#versionList');
 const versionNameEl = $('#versionName');
 const overflowNoticeEl = $('#overflowNotice');
@@ -545,13 +560,19 @@ $('#applyAiResponseBtn').addEventListener('click', applyAiResponse);
 const CV_MM_PX = (210 * 96) / 25.4;
 
 function updateCvScale() {
-  if (!cvScaleEl || !inCreateTab()) {
-    if (cvScaleEl) cvScaleEl.style.setProperty('--cv-scale', '1');
-    return;
-  }
+  if (!cvScaleEl) return;
+  // Calculé dans les DEUX onglets : le cadre ne se rétrécit sous 210mm que
+  // lorsque la place manque (onglet « Nouveau CV », ou fenêtre étroite dans
+  // l'onglet « CV de base » — voir le palier 780px de styles.css). Partout
+  // ailleurs le rapport vaut 1 et le CV garde sa taille réelle : inutile de
+  // distinguer les onglets ici, la largeur mesurée suffit.
   const w = cvScaleEl.getBoundingClientRect().width;
   if (w <= 0) return; // cadre pas encore mis en page (ex. onglet masqué)
-  cvScaleEl.style.setProperty('--cv-scale', String(Math.min(1, w / CV_MM_PX)));
+  // Sous 1/1000e près, on fige à 1 : appliquer un scale(0.9999) pour rien
+  // ferait passer le CV par une couche de composition et rendrait le texte
+  // légèrement flou à la taille réelle, cas de loin le plus courant.
+  const ratio = w / CV_MM_PX;
+  cvScaleEl.style.setProperty('--cv-scale', String(ratio > 0.999 ? 1 : ratio));
 }
 
 /* ---------- Dépassement d'une page (modèle « design ») ----------
@@ -879,17 +900,28 @@ function proposalOrderFor(ownerId) {
 // l'ordre du CV de base partout ailleurs.
 function displayBullets(exp) {
   const order = inCreateTab() ? proposalOrderFor(exp.id) : null;
-  if (!order) return exp.bullets;
-  const byId = new Map(exp.bullets.map((b) => [b.id, b]));
-  const out = [];
-  for (const id of order) {
-    const b = byId.get(id);
-    if (b) {
-      out.push(b);
-      byId.delete(id);
+  let out;
+  if (!order) {
+    out = exp.bullets;
+  } else {
+    const byId = new Map(exp.bullets.map((b) => [b.id, b]));
+    out = [];
+    for (const id of order) {
+      const b = byId.get(id);
+      if (b) {
+        out.push(b);
+        byId.delete(id);
+      }
     }
+    out.push(...byId.values());
   }
-  out.push(...byId.values());
+  // Surcouche de reformulation (voir state.proposal.texts) : on renvoie des
+  // COPIES superficielles des tirets réécrits, jamais les objets du CV de
+  // base — sinon la reformulation muterait silencieusement le CV de base.
+  const texts = inCreateTab() && state.proposal && state.proposal.texts;
+  if (texts) {
+    out = out.map((b) => (Object.prototype.hasOwnProperty.call(texts, b.id) ? { ...b, text: texts[b.id] } : b));
+  }
   return out;
 }
 
@@ -909,6 +941,43 @@ function diffBadge(bulletId, index, ownerId) {
   });
 }
 
+// Modèle de l'offre pour le rendu du CV en cours, reconstruit une seule fois
+// par appel à renderCV() (voir plus bas) plutôt qu'une fois par tiret : le
+// panneau de suggestions rebâtit le sien séparément, mais ce cache-ci évite
+// de retokeniser l'offre pour chaque tiret de chaque expérience.
+let renderJobModel = null;
+
+// Badge listant les mots-clés de l'offre trouvés dans un tiret d'expérience
+// (ownerId n'est fourni que pour les expériences, voir bulletsUl). Élément
+// SÉPARÉ du .bullet-text (jamais dans son innerHTML) pour ne jamais
+// corrompre le texte édité par l'utilisateur. Comme diffBadge : uniquement
+// au survol (voir styles.css), jamais dans le PDF.
+function matchBadge(text, ownerId) {
+  if (!ownerId || !renderJobModel) return null;
+  const { matched } = scoreBullet(text, renderJobModel);
+  if (!matched.length) return null;
+  const shown = matched.slice(0, 4);
+  const extra = matched.length - shown.length;
+  return el('span', {
+    class: 'match-badge',
+    title: 'Mots-clés de l’offre trouvés dans ce tiret',
+    text: shown.join(', ') + (extra > 0 ? ` +${extra}` : ''),
+  });
+}
+
+// Badge signalant un tiret reformulé par le chatbot (voir state.proposal.texts
+// et applyTailorResponse). Même logique que diffBadge/matchBadge : uniquement
+// au survol du CV, jamais dans le PDF ni l'impression.
+function rewriteBadge(bulletId, ownerId) {
+  if (!ownerId || !inCreateTab() || !state.proposal || !state.proposal.texts) return null;
+  if (!Object.prototype.hasOwnProperty.call(state.proposal.texts, bulletId)) return null;
+  return el('span', {
+    class: 'rewrite-badge',
+    title: 'Tiret reformulé pour cette offre par votre chatbot',
+    text: 'reformulé',
+  });
+}
+
 // Liste de points réordonnable, partagée par les expériences, la formation
 // et les projets (l'identité du propriétaire se retrouve via ownerFromSection,
 // pas via un attribut sur le <ul> lui-même). `ownerId` n'est fourni que pour
@@ -925,6 +994,8 @@ function bulletsUl(bullets, ownerId) {
         el('span', { class: 'bullet-dot', text: '•' }),
         el('div', { class: 'bullet-text', contenteditable: 'true', 'data-bullet-id': b.id }, b.text),
         badge,
+        matchBadge(b.text, ownerId),
+        rewriteBadge(b.id, ownerId),
         el(
           'div',
           { class: 'bullet-controls' },
@@ -1143,6 +1214,11 @@ function applyFontSizes() {
 function renderCV() {
   cvEl.textContent = '';
   cvEl.classList.toggle('design', state.template === 'design');
+  // Modèle de l'offre construit UNE fois pour tout le rendu (voir matchBadge),
+  // pas une fois par tiret : la tokenisation de l'offre est le coût évité.
+  const jobText = inCreateTab() ? effectiveJobText() : '';
+  const model = jobText ? buildJobModel(jobText) : null;
+  renderJobModel = model && !model.empty ? model : null;
   applySideColor();
   applyTitleColor();
   applyFontSizes();
@@ -1667,6 +1743,7 @@ function updateTabs() {
 function rerender() {
   renderCV();
   renderSuggestions();
+  updateTailorPanel();
   renderVersions();
   updateTemplateToggle();
   updateSideColorControl();
@@ -1712,9 +1789,17 @@ cvEl.addEventListener('input', (e) => {
     const item = row && state.profile.contact.find((x) => x.id === row.dataset.contactId);
     if (item) item[t.dataset.cfield] = text;
   } else if (t.classList.contains('bullet-text')) {
-    const owner = ownerFromSection(t.closest('section.exp'));
-    const b = owner && owner.bullets.find((x) => x.id === t.dataset.bulletId);
-    if (b) b.text = text;
+    const bulletId = t.dataset.bulletId;
+    const texts = state.proposal && state.proposal.texts;
+    if (inCreateTab() && texts && Object.prototype.hasOwnProperty.call(texts, bulletId)) {
+      // Ce tiret porte une reformulation : on édite la surcouche, jamais le
+      // CV de base (voir state.proposal.texts / l'invariant du CV de base).
+      texts[bulletId] = text;
+    } else {
+      const owner = ownerFromSection(t.closest('section.exp'));
+      const b = owner && owner.bullets.find((x) => x.id === bulletId);
+      if (b) b.text = text;
+    }
     scheduleSuggestions();
   } else if (t.dataset.field) {
     const owner = ownerFromSection(t.closest('section.exp'));
@@ -2516,6 +2601,15 @@ const STOPWORDS = new Set(
     'autre autres comme aussi afin ainsi alors chez entre vers deja encore apres avant pendant depuis lors selon ' +
     'meme peut peuvent pouvez devra devrez sera serez seront avez avons ont nous vous etes suis notamment idealement ' +
     'poste mission missions profil recherche recherchons recherchee recherchez candidat candidate candidature offre emploi ' +
+    'scale up scaleup startup licorne filiale groupe leader acteur pionnier ' +
+    // Verbes d'action passe-partout : listés comme « absents du CV », ils
+    // conseilleraient d'ajouter « améliorer » à ses compétences.
+    'reduire ameliorer piloter gerer assurer participer contribuer developper accompagner ' +
+    // Titres de rubrique d'une annonce : structurent l'offre, ne décrivent
+    // aucune compétence — listés comme « absents », ils n'aident en rien.
+    'responsabilites responsabilite taches activites description contexte avantages ' +
+    'remuneration salaire processus recrutement rejoignez postuler localisation ' +
+    'garantir favoriser optimiser realiser mener definir suivre animer proposer ' +
     'entreprise societe equipe equipes annee annees ans mois experience experiences niveau bac cdi cdd stage temps plein ' +
     'the a an and or of to in for with on at by is are was were be been being as this that these those you we they it ' +
     'your our their will would can could should must have has had do does not from about into over under more most other ' +
@@ -2634,28 +2728,195 @@ function buildProposal() {
   state.proposal = changed ? { orders } : null;
 }
 
-// Nom proposé pour le CV enregistré : la date de l'analyse.
+/* ---------- Reformulation des tirets par chatbot ----------
+
+   Même round-trip que le pré-remplissage (#aiOnboarding) : on génère un
+   prompt embarquant l'offre ET les tirets d'expérience avec leur id stable,
+   l'utilisateur le colle dans son chatbot puis recolle la réponse JSON. Les
+   reformulations rejoignent state.proposal.texts (surcouche de TEXTE, jamais
+   écrite dans state.experiences) — voir displayBullets et l'invariant du CV
+   de base en tête de CLAUDE.md. */
+
+function buildTailorPrompt() {
+  const lines = [];
+  for (const exp of state.experiences) {
+    for (const b of exp.bullets) {
+      if (b.text.trim()) lines.push(`- id ${b.id} : ${b.text.trim()}`);
+    }
+  }
+  return `Voici l'offre d'emploi visée, puis les tirets d'expérience de mon CV actuel (chacun précédé de son identifiant).
+
+Reformule UNIQUEMENT les tirets qui gagnent à être rapprochés du vocabulaire de l'offre. N'invente aucun chiffre, outil, client, résultat ou responsabilité qui ne figure pas déjà dans le tiret d'origine : reformule seulement ce qui existe déjà, avec le vocabulaire de l'offre, de façon courte et factuelle. Ne renvoie que les tirets qui valent vraiment la peine d'être reformulés (pas tous), et ne modifie jamais un identifiant.
+
+Réponds uniquement avec un JSON valide, sans markdown, sans texte avant ou après, avec exactement cette structure :
+{"bullets":[{"id":"<identifiant inchangé>","text":"<tiret reformulé>"}]}
+
+Offre d'emploi :
+${effectiveJobText()}
+
+Tirets de mon CV :
+${lines.join('\n')}`;
+}
+
+function setTailorStatus(message, isError = false) {
+  tailorStatusEl.textContent = message;
+  tailorStatusEl.classList.toggle('error', isError);
+}
+
+async function copyTailorPrompt() {
+  const prompt = buildTailorPrompt();
+  try {
+    if (!navigator.clipboard || !navigator.clipboard.writeText) throw new Error('clipboard indisponible');
+    await navigator.clipboard.writeText(prompt);
+  } catch {
+    // Repli pour les navigateurs qui bloquent l'API Clipboard hors HTTPS.
+    const helper = el('textarea', { 'aria-hidden': 'true' });
+    helper.value = prompt;
+    helper.style.cssText = 'position:fixed;left:-9999px;top:0';
+    document.body.append(helper);
+    helper.select();
+    const copied = document.execCommand('copy');
+    helper.remove();
+    if (!copied) {
+      setTailorStatus('Copie impossible : sélectionnez le prompt dans votre navigateur.', true);
+      return;
+    }
+  }
+  setTailorStatus('Prompt copié. Collez-le dans votre chatbot, puis recollez sa réponse ci-dessous.', false);
+  $('#copyTailorPromptBtn').textContent = 'Prompt copié';
+}
+
+function parseTailorResponse(text) {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const parsed = JSON.parse((fenced ? fenced[1] : text).trim());
+  if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.bullets)) throw new Error('format');
+  return parsed;
+}
+
+function findExperienceBulletById(id) {
+  for (const exp of state.experiences) {
+    const b = exp.bullets.find((x) => x.id === id);
+    if (b) return b;
+  }
+  return null;
+}
+
+function applyTailorResponse() {
+  let data;
+  try {
+    data = parseTailorResponse(tailorResponseTextEl.value);
+  } catch {
+    setTailorStatus('Réponse non reconnue : collez uniquement le JSON fourni par le chatbot.', true);
+    return;
+  }
+  // S'assure qu'une proposition existe pour porter la surcouche de texte,
+  // même si aucun réordonnancement n'a eu lieu (offre déjà dans l'ordre).
+  if (!state.proposal) state.proposal = { orders: {} };
+  if (!state.proposal.texts) state.proposal.texts = {};
+  let applied = 0;
+  for (const item of data.bullets) {
+    if (!item || typeof item.id !== 'string' || typeof item.text !== 'string') continue;
+    const text = item.text.trim();
+    // Identifiant inconnu (tiret supprimé, id modifié…) : ignoré en silence,
+    // le reste du lot s'applique quand même.
+    if (!text || !findExperienceBulletById(item.id)) continue;
+    state.proposal.texts[item.id] = text;
+    applied += 1;
+  }
+  if (applied === 0) {
+    setTailorStatus('Aucun identifiant reconnu dans la réponse : rien n’a été appliqué.', true);
+    return;
+  }
+  tailorResponseTextEl.value = '';
+  setTailorStatus(`${applied} tiret${applied > 1 ? 's' : ''} reformulé${applied > 1 ? 's' : ''} ✓`, false);
+  rerender();
+}
+
+// Visible uniquement dans l'onglet « Nouveau CV », une fois une offre
+// analysée (mêmes mots-clés exploitables que le panneau de suggestions).
+function updateTailorPanel() {
+  tailorPanelEl.hidden = !(inCreateTab() && !buildJobModel(effectiveJobText()).empty);
+}
+
+$('#copyTailorPromptBtn').addEventListener('click', copyTailorPrompt);
+$('#applyTailorResponseBtn').addEventListener('click', applyTailorResponse);
+
+// Nom proposé pour le CV enregistré : dérivé de l'offre analysée
+// ("Entreprise — Poste"), pour repérer un CV dans la liste sans le rouvrir.
+// Repli sur la date si l'offre est vide ou n'a rien d'exploitable.
 function defaultVersionName() {
-  return `Offre du ${new Date().toLocaleDateString('fr-FR')}`;
+  const fallback = `Offre du ${new Date().toLocaleDateString('fr-FR')}`;
+  const lines = effectiveJobText().split('\n').map((l) => l.trim()).filter(Boolean);
+  if (!lines.length) return fallback;
+
+  const title = extractJobTitle(lines[0]);
+  const company = extractCompanyName(lines.slice(0, 10));
+  const name = company && title ? `${company} — ${title}` : title || fallback;
+  return name.length > 60 ? name.slice(0, 60).trim() : name;
+}
+
+// Titre de poste : première ligne de l'offre, débarrassée des mentions de
+// genre (H/F, F/H...) puis coupée au premier séparateur (tiret, virgule...)
+// car ce qui suit est en général la localisation ou l'équipe, pas le titre.
+function extractJobTitle(firstLine) {
+  let title = firstLine
+    .replace(/[\s(]*[hHfFmM]\s*\/\s*[hHfFmM][\s)]*/g, ' ')
+    .trim()
+    .replace(/[\s\-–—:,.]+$/, '');
+  const sep = title.match(/ — | - |,|\/|\|/);
+  if (sep) {
+    title = title.slice(0, sep.index).trim();
+  } else if (title.length > 60) {
+    title = title.slice(0, 60).trim();
+  }
+  return title;
+}
+
+// Entreprise : cherche une ligne "Entreprise :" / "Société :" / "Company:",
+// sinon un motif "chez X" / "@ X" dans le début de l'offre.
+function extractCompanyName(lines) {
+  const labelRe = /^(?:entreprise|soci[ée]t[ée]|company)\s*:\s*(.+)$/i;
+  for (const line of lines) {
+    const m = line.match(labelRe);
+    if (m) return m[1].split(/[,.]/)[0].trim();
+  }
+  // « chez » seul est insensible à la casse : une offre commence souvent par
+  // « Chez X, nous... ». Le nom, lui, reste exigé en capitale — c'est ce qui
+  // le distingue d'un mot ordinaire qui suivrait « chez ».
+  const inlineRe = /\b(?:[Cc]hez|@)\s+([A-Z][\w&.\-]*(?:\s+[A-Z][\w&.\-]*){0,3})/;
+  for (const line of lines) {
+    const m = line.match(inlineRe);
+    if (m) return m[1].split(/[,.]/)[0].trim();
+  }
+  return '';
 }
 
 // Le CV de base, avec les tirets de chaque expérience dans l'ordre proposé :
 // c'est ce qui est enregistré comme nouveau CV.
 function snapshotProposalCV() {
   const snap = snapshotCV();
+  const texts = state.proposal && state.proposal.texts;
   for (const exp of snap.experiences) {
     const ord = proposalOrderFor(exp.id);
-    if (!ord) continue;
-    const byId = new Map(exp.bullets.map((b) => [b.id, b]));
-    const out = [];
-    for (const id of ord) {
-      const b = byId.get(id);
-      if (b) {
-        out.push(b);
-        byId.delete(id);
+    if (ord) {
+      const byId = new Map(exp.bullets.map((b) => [b.id, b]));
+      const out = [];
+      for (const id of ord) {
+        const b = byId.get(id);
+        if (b) {
+          out.push(b);
+          byId.delete(id);
+        }
+      }
+      exp.bullets = [...out, ...byId.values()];
+    }
+    // snap est un clone indépendant (snapshotCV fait un JSON.parse/stringify) :
+    // écrire le texte reformulé ici ne touche jamais state.experiences.
+    if (texts) {
+      for (const b of exp.bullets) {
+        if (Object.prototype.hasOwnProperty.call(texts, b.id)) b.text = texts[b.id];
       }
     }
-    exp.bullets = [...out, ...byId.values()];
   }
   return snap;
 }
@@ -2668,6 +2929,24 @@ function saveProposalVersion() {
   state.activeVersionId = v.id;
   proposalSaved = true;
   rerender();
+}
+
+// Tout le texte du CV affiché (hors métadonnées de mise en forme), pour
+// savoir quels mots-clés de l'offre y figurent déjà. Réutilisé par la
+// couverture de l'offre ci-dessous, jamais affiché tel quel.
+function cvFullText() {
+  const parts = [state.profile.title, state.profile.summary, state.skills];
+  for (const exp of state.experiences) {
+    parts.push(exp.role, exp.company);
+    for (const b of exp.bullets) parts.push(b.text);
+  }
+  for (const sub of [...state.education, ...state.projects]) {
+    parts.push(sub.title, sub.detail);
+    for (const b of sub.bullets) parts.push(b.text);
+  }
+  for (const g of state.skillGroups) parts.push(g.label, g.text);
+  for (const it of state.interests) parts.push(it.text);
+  return parts.filter(Boolean).join(' ');
 }
 
 function renderSuggestions() {
@@ -2686,8 +2965,31 @@ function renderSuggestions() {
 
   // Mots-clés principaux de l'offre
   const kwBox = el('div', { class: 'keywords-box' }, el('div', { class: 'label', text: 'Mots-clés principaux de l’offre' }));
-  topKeywords(model, 12).forEach((w) => kwBox.append(el('span', { class: 'chip', text: w })));
+  // Le nom de l'employeur ressort comme mot-clé (il est répété dans l'offre)
+  // alors qu'il n'a rien à faire dans un CV : on l'écarte, sinon la liste des
+  // mots-clés « absents » conseille d'ajouter « Swan » à ses compétences.
+  const employer = new Set(tokenize(extractCompanyName(jobText.split('\n').slice(0, 10))));
+  const top = topKeywords(model, 12 + employer.size).filter((w) => !employer.has(w)).slice(0, 12);
+  top.forEach((w) => kwBox.append(el('span', { class: 'chip', text: w })));
   resultsEl.append(kwBox);
+
+  // Couverture de l'offre par le CV actuel : réordonner les tirets ne fait
+  // apparaître aucune compétence manquante, d'où cet encadré séparé qui
+  // pointe ce qu'il faudrait plutôt AJOUTER au CV.
+  const cvTokens = new Set(tokenize(cvFullText()));
+  const missing = top.filter((w) => !cvTokens.has(w));
+  const coverageBox = el(
+    'div',
+    { class: 'coverage-box' },
+    el('div', { class: 'label', text: `Votre CV couvre ${top.length - missing.length} des ${top.length} mots-clés de l’offre` })
+  );
+  if (missing.length) {
+    coverageBox.append(el('div', { class: 'coverage-hint', text: 'Absents de votre CV :' }));
+    missing.forEach((w) => coverageBox.append(el('span', { class: 'chip missing', text: w })));
+  } else {
+    coverageBox.append(el('p', { class: 'apply-note', text: 'Tous les mots-clés principaux de l’offre figurent déjà dans votre CV ✓' }));
+  }
+  resultsEl.append(coverageBox);
 
   if (state.proposal) {
     const box = el(
@@ -2696,16 +2998,20 @@ function renderSuggestions() {
       el('h3', { text: 'Nouveau CV proposé' }),
       el('p', {
         class: 'hint',
-        text: 'Le CV ci-dessous est réordonné pour cette offre — le CV de base n’est pas modifié. ' +
-          'Survolez le CV pour voir les tirets déplacés (badge « était n°X »), ' +
-          'puis enregistrez ce nouveau CV pour le retrouver dans l’onglet « CV de base ».',
+        text: 'Le CV ci-dessous est réordonné (et, le cas échéant, reformulé) pour cette offre — le CV de base n’est pas modifié. ' +
+          'Survolez le CV pour voir les tirets déplacés (badge « était n°X ») ou reformulés (badge « reformulé »), ' +
+          'puis enregistrez ce nouveau CV pour le retrouver dans l’onglet « CV de base ». ' +
+          'Ré-analyser l’offre reconstruit la proposition et efface les reformulations non enregistrées.',
       })
     );
     for (const exp of state.experiences) {
       if (!proposalOrderFor(exp.id)) continue;
       let moved = 0;
       displayBullets(exp).forEach((b, i) => {
-        if (exp.bullets[i] !== b) moved += 1;
+        // Comparaison par id : displayBullets renvoie des COPIES pour les
+        // tirets reformulés (voir plus haut), donc comparer les références
+        // compterait à tort chaque reformulation comme un déplacement.
+        if (exp.bullets[i].id !== b.id) moved += 1;
       });
       box.append(
         el(
@@ -2784,7 +3090,11 @@ resultsEl.addEventListener('keydown', (e) => {
 // nouvelle analyse pour ne jamais empiler plusieurs retraits différés.
 let analysisHighlightTimer = null;
 
-$('#analyzeBtn').addEventListener('click', () => {
+// Analyse partagée entre le clic sur « Analyser l'offre » et la récupération
+// automatique du texte via une URL (voir fetchJobBtn plus bas) : la mise en
+// avant doit jouer dans les deux cas, l'offre récupérée par lien méritant le
+// même repère visuel que celle collée à la main.
+function runAnalysis() {
   state.jobText = jobTextEl.value;
   buildProposal();
   rerender();
@@ -2797,7 +3107,9 @@ $('#analyzeBtn').addEventListener('click', () => {
     cvEl.classList.add('just-analyzed');
     analysisHighlightTimer = setTimeout(() => cvEl.classList.remove('just-analyzed'), 5000);
   }
-});
+}
+
+$('#analyzeBtn').addEventListener('click', runAnalysis);
 
 $('#clearAnalysisBtn').addEventListener('click', async () => {
   if (state.proposal && !(await customConfirm('Effacer l’offre et la proposition en cours ? Le CV de base n’est pas affecté.', { confirmLabel: 'Effacer' }))) return;
@@ -2816,6 +3128,175 @@ jobTextEl.addEventListener('input', () => {
   state.jobText = jobTextEl.value;
   save();
 });
+
+/* ---------- Récupération de l'offre depuis une URL ----------
+   Le geste naturel est de coller le lien de l'offre (LinkedIn, WTTJ...)
+   plutôt que de recopier le texte à la main. server.js expose /fetch-job
+   pour contourner le CORS (le navigateur ne peut pas lire ces pages en
+   direct) ; ce module transforme le HTML brut renvoyé en texte exploitable,
+   puis relance l'analyse existante — sans jamais injecter ce HTML tiers dans
+   le document (DOMParser produit un document inerte, jamais affiché). */
+
+// Même repli file:// que PDF_ENDPOINT ci-dessus : le backend écoute sur un
+// port fixe hors serveur statique.
+const FETCH_JOB_ENDPOINT = location.protocol === 'file:' ? 'http://localhost:3333/fetch-job' : '/fetch-job';
+
+function setJobUrlStatus(message, isError = false) {
+  jobUrlStatusEl.textContent = message;
+  jobUrlStatusEl.classList.toggle('error', isError);
+}
+
+// Supprime les balises HTML d'un fragment (ex. le champ « description » du
+// JSON-LD, qui est lui-même du HTML) pour n'en garder que le texte.
+// textContent colle bout à bout le contenu des blocs : la fin d'un <li> se
+// retrouve soudée au début du suivant (« ...discovery continueIndicateurs... »),
+// ce qui fabrique un faux mot-clé ET détruit les deux vrais. Or les exigences
+// d'une offre sont presque toujours dans une liste : sans ces sauts de ligne,
+// l'analyse perd justement les mots-clés les plus utiles.
+function insertBlockBreaks(root) {
+  root.querySelectorAll('br').forEach((n) => n.replaceWith('\n'));
+  root.querySelectorAll('p, div, li, tr, h1, h2, h3, h4, h5, h6').forEach((n) => n.append('\n'));
+}
+
+// Normalise un texte extrait du HTML : une ligne non vide par bloc.
+function tidyExtractedText(text) {
+  return (text || '')
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .join('\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+}
+
+function stripHtml(fragment) {
+  const doc = new DOMParser().parseFromString(fragment, 'text/html');
+  insertBlockBreaks(doc.body);
+  return tidyExtractedText(doc.body.textContent || '');
+}
+
+// Cherche un objet JobPosting dans les blocs JSON-LD de la page : c'est la
+// source la plus fiable, la plupart des sites d'offres l'émettent pour leur
+// référencement. On explore aussi les tableaux et les @graph, où l'objet
+// peut être imbriqué.
+function findJobPosting(value) {
+  if (!value || typeof value !== 'object') return null;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = findJobPosting(item);
+      if (found) return found;
+    }
+    return null;
+  }
+  const type = value['@type'];
+  const types = Array.isArray(type) ? type : [type];
+  if (types.includes('JobPosting')) return value;
+  if (Array.isArray(value['@graph'])) return findJobPosting(value['@graph']);
+  return null;
+}
+
+function extractFromJsonLd(doc) {
+  const scripts = doc.querySelectorAll('script[type="application/ld+json"]');
+  for (const script of scripts) {
+    let data;
+    try {
+      data = JSON.parse(script.textContent);
+    } catch {
+      continue; // JSON-LD malformé : on passe au bloc suivant
+    }
+    const posting = findJobPosting(data);
+    if (!posting) continue;
+    const lines = [];
+    // Titre en première ligne, entreprise juste après au format attendu par
+    // defaultVersionName() / extractJobTitle() / extractCompanyName().
+    if (posting.title) lines.push(String(posting.title).trim());
+    const orgName = posting.hiringOrganization && posting.hiringOrganization.name;
+    if (orgName) lines.push(`Entreprise : ${String(orgName).trim()}`);
+    if (posting.description) lines.push(stripHtml(String(posting.description)));
+    const text = lines.filter(Boolean).join('\n\n').trim();
+    if (text) return text;
+  }
+  return '';
+}
+
+// Repli quand la page n'a pas de JSON-LD exploitable : on nettoie le HTML
+// (scripts, styles, navigation...) puis on prend le texte du conteneur le
+// plus probable pour une fiche de poste.
+function extractFromBody(doc) {
+  doc.querySelectorAll('script, style, nav, header, footer, noscript').forEach((n) => n.remove());
+  const container =
+    doc.querySelector('article') ||
+    doc.querySelector('[class*="description"]') ||
+    doc.querySelector('main') ||
+    doc.body;
+  if (container) insertBlockBreaks(container);
+  return tidyExtractedText((container && container.textContent) || '');
+}
+
+// Transforme le HTML brut d'une page d'offre en texte exploitable, en
+// document inerte (jamais inséré dans la page réelle).
+function extractJobTextFromHtml(html) {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  return extractFromJsonLd(doc) || extractFromBody(doc);
+}
+
+async function fetchJobFromUrl() {
+  let url = jobUrlEl.value.trim();
+  if (!url) {
+    setJobUrlStatus('Collez d’abord un lien vers l’offre.', true);
+    return;
+  }
+  if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
+
+  const btn = $('#fetchJobBtn');
+  btn.disabled = true;
+  const label = btn.textContent;
+  btn.textContent = 'Récupération…';
+  setJobUrlStatus('Récupération de l’offre…', false);
+  try {
+    let res;
+    try {
+      res = await fetch(FETCH_JOB_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      });
+    } catch {
+      // Backend injoignable : pas de serveur (mode file://) ou réseau coupé.
+      throw new Error('BACKEND_UNAVAILABLE');
+    }
+    let payload = {};
+    try {
+      payload = await res.json();
+    } catch {
+      payload = {};
+    }
+    if (!res.ok) {
+      const reason = typeof payload.error === 'string' && payload.error ? payload.error : `HTTP ${res.status}`;
+      throw new Error(`BACKEND_ERROR:${reason}`);
+    }
+    const text = extractJobTextFromHtml(payload.html || '');
+    if (!text) throw new Error('NO_TEXT');
+
+    jobTextEl.value = text;
+    runAnalysis();
+    setJobUrlStatus('Offre récupérée et analysée ✓', false);
+  } catch (err) {
+    const message = err && err.message === 'BACKEND_UNAVAILABLE'
+      ? 'Impossible de joindre le serveur (êtes-vous sur file:// ou le serveur est-il arrêté ?). Copiez-collez le texte de l’offre ci-dessous.'
+      : err && err.message === 'NO_TEXT'
+        ? 'Cette page ne contient pas de texte d’offre exploitable. Copiez-collez le texte de l’offre ci-dessous.'
+        : err && err.message.startsWith('BACKEND_ERROR:')
+          ? `Impossible de récupérer cette page (${err.message.slice('BACKEND_ERROR:'.length)}). Copiez-collez le texte de l’offre ci-dessous.`
+          : 'Impossible de récupérer cette page. Copiez-collez le texte de l’offre ci-dessous.';
+    setJobUrlStatus(message, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+}
+
+$('#fetchJobBtn').addEventListener('click', fetchJobFromUrl);
 
 /* ============================================================
    Barre d'outils

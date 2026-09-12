@@ -134,12 +134,42 @@
         Collez le <strong>texte</strong> de l'offre, puis analysez-la&nbsp;:
         le CV ci-contre se réordonne pour elle, sans toucher au CV de base.
       </p>
+      <p class="hint">
+        Deux façons de faire&nbsp;: collez le <strong>lien</strong> de l'offre ci-dessous, ou collez directement son texte plus bas.
+      </p>
+      <div class="job-url-row">
+        <input type="url" id="jobUrl" placeholder="Lien de l'offre (LinkedIn, Welcome to the Jungle…)">
+        <button id="fetchJobBtn" type="button">Récupérer</button>
+      </div>
+      <span id="jobUrlStatus" class="job-url-status" role="status" aria-live="polite"></span>
       <textarea id="jobText" rows="5" placeholder="Texte de l'offre d'emploi"></textarea>
       <div class="panel-actions">
         <button id="analyzeBtn" type="button">Analyser l'offre</button>
         <button id="clearAnalysisBtn" class="ghost" type="button">Effacer</button>
       </div>
       <div id="results"></div>
+    </section>
+
+    <!-- Reformulation des tirets par chatbot : même round-trip que
+         #aiOnboarding, appliqué au vocabulaire de l'offre plutôt qu'au
+         pré-remplissage. Visible uniquement une fois l'offre analysée
+         (voir updateTailorPanel() dans app.js). -->
+    <section class="panel-box ai-onboarding" id="tailorPanel" hidden aria-labelledby="tailorPanelTitle">
+      <div class="ai-onboarding-heading">
+        <div>
+          <h2 id="tailorPanelTitle">Reformuler les tirets pour cette offre</h2>
+          <p class="hint">Copiez ce prompt (il contient déjà l'offre et vos tirets) dans votre chatbot, puis recollez sa réponse JSON ci-dessous.</p>
+        </div>
+      </div>
+      <button id="copyTailorPromptBtn" class="ghost" type="button">Copier le prompt</button>
+      <p class="ai-onboarding-step">Puis collez uniquement la réponse JSON du chatbot ci-dessous.</p>
+      <textarea id="tailorResponseText" rows="5" spellcheck="false"
+        placeholder='Collez ici la réponse JSON de votre chatbot'></textarea>
+      <div class="panel-actions ai-onboarding-actions">
+        <button id="applyTailorResponseBtn" type="button">Appliquer les reformulations</button>
+        <span id="tailorStatus" class="ai-onboarding-status" role="status" aria-live="polite"></span>
+      </div>
+      <p class="ai-onboarding-privacy">Ne partagez avec un chatbot que les informations que vous acceptez de lui confier.</p>
     </section>
 
     <!-- Import/export JSON : sauvegarde/transfert de l'état complet, placé
