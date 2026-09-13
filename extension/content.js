@@ -44,7 +44,9 @@ if (!window.__wttjScraper) {
   // « page actuelle + 1 », sinon un bouton « Suivant ».
   function next() {
     const controls = [...document.querySelectorAll('nav a, nav button, [class*="agination"] a, [class*="agination"] button')];
-    const current = controls.find((n) => n.getAttribute('aria-current') === 'page');
+    // WTTJ marque le lien actif avec aria-current="page" sur certaines pages,
+    // "true" sur d'autres (vérifié en direct) : on accepte les deux.
+    const current = controls.find((n) => ['page', 'true'].includes(n.getAttribute('aria-current')));
     const currentNum = Number((current && current.innerText.trim()) || new URL(location.href).searchParams.get('page') || 1);
     const target =
       controls.find((n) => n.innerText.trim() === String(currentNum + 1) && !isDisabled(n)) ||
@@ -72,26 +74,41 @@ if (!window.__wttjScraper) {
 
   // Lit la fiche complète d'une offre. La page expose un bloc JSON-LD
   // « JobPosting » (fait pour Google) : titre, entreprise, description.
+  // Vérifié sur des pages WTTJ réelles : le JSON-LD contient la description complète ;
+  // il n'y a pas de second JSON embarqué à côté (__INITIAL_STATE__ ne
+  // contient que l'état de routage, pas l'offre). On extrait les blocs JSON-LD
+  // par regex sur le HTML brut (évite de parser toute la page) et on ne parse le DOM complet qu'en repli,
+  // si aucun JobPosting avec description n'a été trouvé.
+  const LD_JSON_RE = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+
   async function fetchJob(url) {
     const res = await fetch(url, { credentials: 'include' });
+    if (res.status === 202) throw new Error('HTTP 202'); // 202 = page anti-bot WTTJ, corps vide (sinon lu comme "Annonce vide")
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
-    for (const s of doc.querySelectorAll('script[type="application/ld+json"]')) {
+    const html = await res.text();
+    // matchAll repart du début à chaque appel (exec garderait la position de l'offre précédente)
+    for (const match of html.matchAll(LD_JSON_RE)) {
       let posting;
-      try { posting = findJobPosting(JSON.parse(s.textContent)); } catch { continue; }
+      try { posting = findJobPosting(JSON.parse(match[1])); } catch { continue; }
       if (!posting) continue;
+      const description = htmlToText(String(posting.description || ''));
+      if (!description) continue; // bloc JobPosting sans description : on tente le suivant
       const loc = [].concat(posting.jobLocation || [])[0];
       return {
         title: String(posting.title || '').trim(),
         company: String((posting.hiringOrganization && posting.hiringOrganization.name) || '').trim(),
         location: String((loc && loc.address && loc.address.addressLocality) || '').trim(),
-        description: htmlToText(String(posting.description || '')),
+        description,
       };
     }
-    // Repli sans JSON-LD : le texte principal de la page.
+    // Repli sans JSON-LD (ou JSON-LD sans description) : le texte principal de la page,
+    // via un parse complet du DOM (plus coûteux, mais rare).
+    const doc = new DOMParser().parseFromString(html, 'text/html');
     doc.querySelectorAll('script, style, nav, header, footer').forEach((n) => n.remove());
     const main = doc.querySelector('main') || doc.body;
-    return { description: htmlToText(main.innerHTML) };
+    const description = htmlToText(main.innerHTML);
+    if (!description) throw new Error('Annonce vide : impossible de lire le contenu de cette page.');
+    return { description };
   }
 
   chrome.runtime.onMessage.addListener((msg, _sender, reply) => {

@@ -3458,6 +3458,20 @@ function scoreJob(job, cvTokens, wanted, avoid) {
   return { score, coverage: Math.round(coverage * 100), hits, avoided };
 }
 
+// Traduit l'erreur de lecture d'une offre (extension) en libellé français court
+function inboxErrorLabel(error) {
+  if (!error) return '';
+  let m = error.match(/^HTTP (404|410)/);
+  if (m) return `offre introuvable ou expirée (HTTP ${m[1]})`;
+  m = error.match(/^HTTP (403|429|202)/);
+  if (m) return `bloquée par Welcome to the Jungle (HTTP ${m[1]})`;
+  m = error.match(/^HTTP (\d+)/);
+  if (m) return `erreur du site (HTTP ${m[1]})`;
+  if (/Annonce vide/.test(error)) return 'page sans texte lisible';
+  if (/Receiving end|establish connection|ne répond pas/.test(error)) return "l'onglet WTTJ a été fermé ou rechargé pendant la lecture";
+  return error;
+}
+
 function renderInbox() {
   inboxListEl.textContent = '';
   const cvTokens = new Set(tokenize(cvFullText()));
@@ -3477,7 +3491,10 @@ function renderInbox() {
     const details = [`CV : ${coverage} %`];
     if (hits.length) details.push(`✓ ${hits.join(', ')}`);
     if (avoided.length) details.push(`✗ ${avoided.join(', ')}`);
-    if (!job.description) details.push('annonce non lue');
+    if (!job.description) {
+      const reason = inboxErrorLabel(job.error);
+      details.push(reason ? `annonce non lue (${reason})` : 'annonce non lue');
+    }
     const link = el('a', { href: /^https?:\/\//.test(job.url || '') ? job.url : '#', target: '_blank', rel: 'noopener', text: job.title || job.url });
     inboxListEl.append(
       el('li', { class: `inbox-item${avoided.length ? ' avoided' : ''}` },
@@ -3491,9 +3508,11 @@ function renderInbox() {
   }
 }
 
-async function loadInbox() {
-  inboxStatusEl.classList.remove('error');
-  inboxStatusEl.textContent = 'Chargement…';
+async function loadInbox(silent = false) {
+  if (!silent) {
+    inboxStatusEl.classList.remove('error');
+    inboxStatusEl.textContent = 'Chargement…';
+  }
   try {
     const res = await fetch(JOBS_ENDPOINT);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -3505,6 +3524,7 @@ async function loadInbox() {
       : 'Aucune offre reçue : lancez la collecte depuis l’extension.';
     renderInbox();
   } catch {
+    if (silent) return; // chargement silencieux au démarrage : pas d'erreur affichée
     inboxStatusEl.classList.add('error');
     inboxStatusEl.textContent = 'Impossible de joindre le serveur : lancez « node server.js ».';
   }
@@ -4505,3 +4525,15 @@ $('#importFile').addEventListener('change', (e) => {
 
 jobTextEl.value = state.jobText;
 rerender();
+
+// Servi par server.js (pas file://) : la boîte de réception de l'extension
+// Chrome (extension/) est joignable, on la charge sans bloquer ni alerter.
+if (location.protocol !== 'file:') loadInbox(true);
+
+// L'extension ouvre l'app sur #offres après un envoi : bascule sur l'onglet
+// « Nouveau CV » et amène le panneau des offres collectées à l'écran.
+if (location.hash === '#offres') {
+  state.activeTab = 'create';
+  rerender();
+  $('#inboxPanel').scrollIntoView({ behavior: 'smooth' });
+}

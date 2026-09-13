@@ -302,7 +302,8 @@ const ALLOWED_ORIGINS = new Set(['null', `http://localhost:${PORT}`, `http://127
 
 function cors(req, res) {
   const origin = req.headers.origin;
-  if (origin && ALLOWED_ORIGINS.has(origin)) {
+  // L'extension Chrome (extension/) envoie ses offres depuis chrome-extension://
+  if (origin && (ALLOWED_ORIGINS.has(origin) || origin.startsWith('chrome-extension://'))) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
