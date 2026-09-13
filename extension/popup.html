@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { width: 300px; margin: 0; padding: 14px; font: 13px system-ui, sans-serif; color: #1d1d1f; }
+    h1 { font-size: 15px; margin: 0 0 8px; }
+    p { margin: 8px 0; line-height: 1.4; }
+    .row { display: flex; gap: 8px; }
+    button { flex: 1; padding: 8px; border: 0; border-radius: 6px; background: #0a7a5a; color: #fff; font-weight: 600; cursor: pointer; }
+    button.ghost { background: #eee; color: #1d1d1f; }
+    button:disabled { opacity: .45; cursor: default; }
+    #status { background: #f5f5f7; border-radius: 6px; padding: 8px; min-height: 18px; }
+    a { color: #0a7a5a; }
+  </style>
+</head>
+<body>
+  <h1>Offres Welcome to the Jungle</h1>
+  <p id="hint">Ouvrez une liste d'offres WTTJ, puis lancez la collecte : toutes les pages seront parcourues.</p>
+  <div class="row">
+    <button id="start" type="button">Lancer la collecte</button>
+    <button id="stop" class="ghost" type="button" disabled>Arrêter</button>
+  </div>
+  <p id="status">Prêt.</p>
+  <p><a href="http://localhost:3333" target="_blank">Ouvrir l'Éditeur de CV</a></p>
+  <script src="popup.js"></script>
+</body>
+</html>

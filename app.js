@@ -3422,6 +3422,110 @@ async function fetchJobFromUrl() {
 
 $('#fetchJobBtn').addEventListener('click', fetchJobFromUrl);
 
+/* ---------- Offres collectées par l'extension Chrome ----------
+   extension/ parcourt les résultats Welcome to the Jungle et POSTe les
+   annonces sur /jobs (server.js). Ici on les classe par pertinence :
+   - couverture : part des mots-clés principaux de l'annonce présents dans le CV ;
+   - mots-clés recherchés : trouvés dans le titre (2 pts) ou le texte (1 pt) ;
+   - mots-clés à éviter : présents dans le titre → offre reléguée en bas.
+   Choisir une offre la place dans le panneau « Offre d'emploi » et l'analyse. */
+
+const JOBS_ENDPOINT = location.protocol === 'file:' ? 'http://localhost:3333/jobs' : '/jobs';
+const INBOX_KEYWORDS_KEY = 'cvEditor.inboxKeywords';
+const inboxWantedEl = $('#inboxWanted');
+const inboxAvoidEl = $('#inboxAvoid');
+const inboxStatusEl = $('#inboxStatus');
+const inboxListEl = $('#inboxList');
+let inboxJobs = [];
+
+const splitKeywords = (value) => value.split(',').map((k) => normalizeText(k.trim())).filter(Boolean);
+
+function hasPhrase(normalizedText, phrase) {
+  const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|[^a-z0-9])${escaped}($|[^a-z0-9])`).test(normalizedText);
+}
+
+function scoreJob(job, cvTokens, wanted, avoid) {
+  const title = normalizeText(job.title || '');
+  const body = normalizeText(`${job.location || ''}\n${job.description || ''}`);
+  const top = topKeywords(buildJobModel(`${job.title || ''}\n${job.description || ''}`), 15);
+  const coverage = top.length ? top.filter((w) => cvTokens.has(w)).length / top.length : 0;
+  const hits = wanted.filter((k) => hasPhrase(title, k) || hasPhrase(body, k));
+  const points = wanted.reduce((sum, k) => sum + (hasPhrase(title, k) ? 2 : hasPhrase(body, k) ? 1 : 0), 0);
+  const kwRatio = wanted.length ? points / (2 * wanted.length) : 0;
+  const score = Math.round(wanted.length ? 50 * coverage + 50 * kwRatio : 100 * coverage);
+  const avoided = avoid.filter((k) => hasPhrase(title, k));
+  return { score, coverage: Math.round(coverage * 100), hits, avoided };
+}
+
+function renderInbox() {
+  inboxListEl.textContent = '';
+  const cvTokens = new Set(tokenize(cvFullText()));
+  const wanted = splitKeywords(inboxWantedEl.value);
+  const avoid = splitKeywords(inboxAvoidEl.value);
+  const ranked = inboxJobs
+    .map((job) => ({ job, ...scoreJob(job, cvTokens, wanted, avoid) }))
+    .sort((a, b) => (a.avoided.length > 0) - (b.avoided.length > 0) || b.score - a.score);
+
+  for (const { job, score, coverage, hits, avoided } of ranked) {
+    const useBtn = el('button', { type: 'button', class: 'ghost', text: 'Utiliser cette offre' });
+    useBtn.addEventListener('click', () => {
+      jobTextEl.value = [job.title, job.company && `Entreprise : ${job.company}`, job.description].filter(Boolean).join('\n\n');
+      runAnalysis();
+      $('#offerPanel').scrollIntoView({ behavior: 'smooth' });
+    });
+    const details = [`CV : ${coverage} %`];
+    if (hits.length) details.push(`✓ ${hits.join(', ')}`);
+    if (avoided.length) details.push(`✗ ${avoided.join(', ')}`);
+    if (!job.description) details.push('annonce non lue');
+    const link = el('a', { href: /^https?:\/\//.test(job.url || '') ? job.url : '#', target: '_blank', rel: 'noopener', text: job.title || job.url });
+    inboxListEl.append(
+      el('li', { class: `inbox-item${avoided.length ? ' avoided' : ''}` },
+        el('span', { class: 'inbox-score', text: String(score) }),
+        el('div', { class: 'inbox-body' },
+          link,
+          el('div', { class: 'inbox-meta', text: [job.company, job.location].filter(Boolean).join(' · ') }),
+          el('div', { class: 'inbox-meta', text: details.join(' — ') }),
+          useBtn))
+    );
+  }
+}
+
+async function loadInbox() {
+  inboxStatusEl.classList.remove('error');
+  inboxStatusEl.textContent = 'Chargement…';
+  try {
+    const res = await fetch(JOBS_ENDPOINT);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    inboxJobs = Array.isArray(data.jobs) ? data.jobs : [];
+    const when = data.receivedAt ? ` (reçues le ${new Date(data.receivedAt).toLocaleString('fr-FR')})` : '';
+    inboxStatusEl.textContent = inboxJobs.length
+      ? `${inboxJobs.length} offres${when}.`
+      : 'Aucune offre reçue : lancez la collecte depuis l’extension.';
+    renderInbox();
+  } catch {
+    inboxStatusEl.classList.add('error');
+    inboxStatusEl.textContent = 'Impossible de joindre le serveur : lancez « node server.js ».';
+  }
+}
+
+try {
+  const saved = JSON.parse(localStorage.getItem(INBOX_KEYWORDS_KEY) || '{}');
+  inboxWantedEl.value = saved.wanted || '';
+  inboxAvoidEl.value = saved.avoid || '';
+} catch { /* stockage indisponible */ }
+
+let inboxKeywordsTimer = null;
+[inboxWantedEl, inboxAvoidEl].forEach((input) => input.addEventListener('input', () => {
+  try {
+    localStorage.setItem(INBOX_KEYWORDS_KEY, JSON.stringify({ wanted: inboxWantedEl.value, avoid: inboxAvoidEl.value }));
+  } catch { /* stockage indisponible */ }
+  clearTimeout(inboxKeywordsTimer);
+  inboxKeywordsTimer = setTimeout(renderInbox, 300);
+}));
+$('#inboxLoadBtn').addEventListener('click', loadInbox);
+
 /* ============================================================
    Relecture : lignes d'expérience recalibrées sur l'offre
    ============================================================

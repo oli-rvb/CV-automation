@@ -32,6 +32,7 @@ const { spawn } = require('child_process');
 const PORT = Number(process.env.PORT) || 3333;
 const ROOT = __dirname;
 const MAX_BODY = 15 * 1024 * 1024; // photo en data-URL incluse
+const JOBS_INBOX = path.join(ROOT, 'jobs-inbox.json'); // offres reçues de l'extension
 
 /* ---------- Détection du navigateur Chromium ---------- */
 
@@ -311,6 +312,16 @@ function cors(req, res) {
 const server = http.createServer((req, res) => {
   cors(req, res);
 
+  // Anti-CSRF : un POST « simple » (text/plain) envoyé depuis un site tiers
+  // contourne le CORS ci-dessus car le navigateur ne le bloque qu'après coup.
+  // On rejette donc toute Origin présente qui n'est ni autorisée ni l'extension.
+  const origin = req.headers.origin;
+  if (req.method === 'POST' && origin && !ALLOWED_ORIGINS.has(origin) && !origin.startsWith('chrome-extension://')) {
+    res.writeHead(403, { 'Content-Type': 'text/plain' });
+    res.end('Origine refusée');
+    return;
+  }
+
   if (req.method === 'OPTIONS') {
     res.writeHead(204);
     res.end();
@@ -372,6 +383,45 @@ const server = http.createServer((req, res) => {
         res.end(JSON.stringify({ error: err.message }));
       }
     });
+    return;
+  }
+
+  // Boîte de réception des offres envoyées par l'extension Chrome
+  // (extension/) : elle écrase la liste précédente, l'app la relit via GET.
+  if (req.method === 'POST' && req.url === '/jobs') {
+    let body = '';
+    let size = 0;
+    req.on('data', (chunk) => {
+      size += chunk.length;
+      if (size > MAX_BODY) {
+        res.writeHead(413);
+        res.end('Corps trop volumineux');
+        req.destroy();
+        return;
+      }
+      body += chunk;
+    });
+    req.on('end', () => {
+      try {
+        const { jobs } = JSON.parse(body);
+        if (!Array.isArray(jobs)) throw new Error('jobs manquant');
+        const inbox = { receivedAt: new Date().toISOString(), jobs };
+        fs.writeFileSync(JOBS_INBOX, JSON.stringify(inbox));
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, count: jobs.length }));
+      } catch (err) {
+        console.error('[jobs]', err.message);
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      }
+    });
+    return;
+  }
+
+  if (req.method === 'GET' && req.url === '/jobs') {
+    const inbox = fs.existsSync(JOBS_INBOX) ? fs.readFileSync(JOBS_INBOX, 'utf8') : '{"jobs":[]}';
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(inbox);
     return;
   }
 
