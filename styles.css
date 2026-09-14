@@ -1207,8 +1207,7 @@ li.bullet:hover .bullet-controls { display: flex; }
   transition: opacity 120ms ease, display 120ms allow-discrete;
 }
 
-.diff-badge,
-.rw-badge {
+.diff-badge {
   font-size: 11px;
   font-weight: 700;
   white-space: nowrap;
@@ -1217,16 +1216,6 @@ li.bullet:hover .bullet-controls { display: flex; }
   background: var(--accent-soft);
   color: #1e40af;
 }
-
-/* Relecture : un tiret recalibré, ou une ligne ajoutée par la relecture. */
-.rw-badge-edit { background: #fef3c7; color: #92400e; }
-.rw-badge-add { background: #dcfce7; color: #166534; }
-
-/* Provenance des chiffres : prioritaire sur les deux badges ci-dessus (un
-   chiffre non vérifié se voit avant de savoir si la ligne est une réécriture
-   ou un ajout). Même rouge que les mots retirés du diff (.rw-before .w plus
-   bas), pour trancher visuellement d'un simple mot modifié. */
-.rw-badge-numalert { background: #fee2e2; color: #991b1b; }
 
 /* #cv.just-analyzed : classe transitoire (app.js), posée juste après une
    analyse et retirée 5s plus tard (ou à la fin de l'animation de tri, voir
@@ -1254,25 +1243,11 @@ li.bullet:hover .bullet-controls { display: flex; }
   background: color-mix(in srgb, var(--accent-soft) 45%, #fff);
 }
 
-#cv:is(:hover, :focus-within) li.bullet.rw-edit {
-  background: color-mix(in srgb, #fef3c7 55%, #fff);
-}
-
-#cv:is(:hover, :focus-within) li.bullet.rw-add {
-  background: color-mix(in srgb, #dcfce7 55%, #fff);
-}
-
-/* Prioritaire sur les deux teintes ci-dessus : un tiret à chiffre non vérifié
-   se distingue même au survol. */
-#cv:is(:hover, :focus-within) li.bullet.rw-numalert {
-  background: color-mix(in srgb, #fee2e2 55%, #fff);
-}
-
 /* ---------- Mots-clés matchés par tiret ----------
    Comme .bullet-badges : superposé (jamais de place prise dans le flux),
    visible uniquement au survol du CV, donc absent au repos et du PDF. Décalé
    sous .bullet-badges (top: 18px) pour ne pas se superposer quand un tiret
-   est à la fois déplacé/relu et matché ; un ton neutre (gris) le distingue du
+   est à la fois déplacé et matché ; un ton neutre (gris) le distingue du
    badge de position (bleu), pour ne pas laisser croire que ce sont deux
    infos liées. */
 .match-badge {
@@ -1308,43 +1283,6 @@ li.bullet:hover .bullet-controls { display: flex; }
 /* Même logique que pour .diff-badge : au survol d'un tiret précis, les
    contrôles ✕ / ↑ / ↓ reprennent la place en fin de ligne. */
 #cv li.bullet:hover .match-badge {
-  display: none;
-  opacity: 0;
-}
-
-/* ---------- Tirets reformulés par le chatbot ----------
-   Même logique de superposition que .bullet-badges / .match-badge (rien dans le
-   flux, visible uniquement au survol du CV, donc absent du PDF/impression) ;
-   une troisième ligne (top: 36px) pour ne pas chevaucher les deux badges
-   précédents quand un tiret est à la fois déplacé, matché et reformulé. */
-.rewrite-badge {
-  position: absolute;
-  right: 0;
-  top: 36px;
-  z-index: 2;
-  display: none;
-  font-size: 10px;
-  font-weight: 700;
-  white-space: nowrap;
-  border-radius: 5px;
-  padding: 1px 7px;
-  background: #ecfdf5;
-  border: 1px solid #a7f3d0;
-  color: #047857;
-  opacity: 0;
-  transition: opacity 120ms ease, display 120ms allow-discrete;
-}
-
-#cv:is(:hover, :focus-within) .rewrite-badge {
-  display: inline-block;
-  opacity: 1;
-}
-
-@starting-style {
-  #cv:is(:hover, :focus-within) .rewrite-badge { opacity: 0; }
-}
-
-#cv li.bullet:hover .rewrite-badge {
   display: none;
   opacity: 0;
 }
@@ -1709,8 +1647,7 @@ main.tab-create #createLeft {
 
 .ai-onboarding-privacy { margin: 8px 0 0; font-size: 11px; }
 
-#aiResponseText,
-#tailorResponseText {
+#aiResponseText {
   width: 100%;
   font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   border: 1px solid #bfdbfe;
@@ -1719,8 +1656,7 @@ main.tab-create #createLeft {
   resize: vertical;
 }
 
-#aiResponseText:focus,
-#tailorResponseText:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+#aiResponseText:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
 
 .ai-onboarding-actions { align-items: center; margin-bottom: 0; }
 .ai-onboarding-status { font-size: 12px; color: var(--ok); font-weight: 600; }
@@ -1757,9 +1693,7 @@ main.tab-create #createLeft {
 
 .job-url-status.error { color: var(--danger); }
 
-#jobText,
-#promptPreview,
-#llmAnswer {
+#jobText {
   width: 100%;
   font: inherit;
   font-size: 13px;
@@ -1769,9 +1703,7 @@ main.tab-create #createLeft {
   resize: vertical;
 }
 
-#jobText:focus,
-#promptPreview:focus,
-#llmAnswer:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+#jobText:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
 
 .panel-actions {
   display: flex;
@@ -2169,259 +2101,6 @@ main.tab-create #createLeft {
 
 .empty-note { font-size: 13px; color: var(--muted); }
 
-/* ---------- Recalibrage des lignes d'expérience ---------- */
-
-#rewritePanel .rw-label {
-  display: block;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin: 14px 0 6px;
-}
-
-#promptPreview {
-  margin-top: 8px;
-  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
-  font-size: 12px;
-  line-height: 1.4;
-}
-
-.rw-status {
-  font-size: 12.5px;
-  color: var(--ok);
-  margin: 4px 0 0;
-}
-
-.rw-status.ko { color: var(--danger); }
-
-.rw-error {
-  font-size: 12.5px;
-  color: var(--danger);
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  border-radius: 8px;
-  padding: 7px 9px;
-  margin: 6px 0 0;
-}
-
-/* Rapport de relecture : ce qui a été appliqué, et de quoi revenir en arrière */
-
-.rw-report {
-  border: 1px solid var(--accent);
-  background: #f6f9ff;
-  border-radius: 8px;
-  padding: 12px 14px;
-  margin-top: 12px;
-}
-
-.rw-summary {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--ink);
-}
-
-.rw-version {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.rw-version-label {
-  flex: none;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--ok);
-  white-space: nowrap;
-}
-
-.rw-version input {
-  flex: 1;
-  min-width: 0;
-  font: inherit;
-  font-size: 13px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 6px 9px;
-  background: #fff;
-}
-
-.rw-version input:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
-.rw-version input:disabled { color: var(--muted); background: var(--bg); }
-
-.rw-stale {
-  font-size: 12.5px;
-  color: #92400e;
-  background: #fffbeb;
-  border: 1px solid #fde68a;
-  border-radius: 8px;
-  padding: 6px 9px;
-  margin: 10px 0 0;
-}
-
-.rw-report .panel-actions { margin-bottom: 0; }
-.rw-report .panel-actions button { font-size: 13px; padding: 5px 12px; }
-
-/* Diff ligne à ligne : avant / après, et le bouton qui revient en arrière */
-
-.rw-hint { margin: 6px 0 0; }
-
-.rw-global { flex-wrap: wrap; margin-top: 12px; }
-.rw-global button:disabled { opacity: 0.45; cursor: default; }
-
-.rw-exp { margin-top: 14px; }
-
-.rw-exp h4 {
-  margin: 0 0 6px;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.rw-lines {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.rw-line {
-  background: #fff;
-  border: 1px solid var(--line);
-  border-left: 3px solid var(--accent);
-  border-radius: 6px;
-  padding: 6px 8px;
-  font-size: 12.5px;
-  line-height: 1.45;
-}
-
-.rw-line.add { border-left-color: var(--ok); }
-.rw-line.same { border-left-color: var(--line); }
-.rw-line.off { border-left-color: var(--muted); background: var(--bg); }
-/* Chiffre non vérifié : prioritaire sur add/same (le bord tranche d'un coup
-   d'œil dans la colonne, avant même de lire le badge). */
-.rw-line.num-flag { border-left-color: var(--danger); }
-
-.rw-line-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 4px;
-}
-
-.rw-tag {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--accent);
-}
-
-.rw-line.add .rw-tag { color: var(--ok); }
-.rw-line.same .rw-tag,
-.rw-line.off .rw-tag { color: var(--muted); }
-
-.rw-toggle {
-  flex: none;
-  font-size: 11.5px;
-  padding: 2px 9px;
-  /* Reste ancré à droite même quand le badge .rw-num-badge s'intercale avant
-     lui (trois éléments dans .rw-line-top au lieu de deux). */
-  margin-left: auto;
-}
-
-/* Badge « N chiffres à vérifier » : entre le libellé et le bouton Annuler,
-   même famille visuelle que .rw-badge-numalert (CV) mais en pilule inline.
-   Nom distinct de .rw-numalert (classe d'état posée sur le <li> du CV) pour
-   ne pas fuir sur lui via un sélecteur non scopé. */
-.rw-num-badge {
-  font-size: 11px;
-  font-weight: 700;
-  white-space: nowrap;
-  border-radius: 20px;
-  padding: 1px 8px;
-  background: #fee2e2;
-  color: #991b1b;
-}
-
-/* Les deux versions du texte. Au repos, « après » est ce qu'affiche le CV ;
-   une ligne annulée inverse les rôles (c'est « avant » qui redevient vrai). */
-.rw-before,
-.rw-after { padding-left: 14px; position: relative; }
-
-.rw-before { color: var(--muted); }
-.rw-after { color: var(--ink); }
-
-.rw-before::before,
-.rw-after::before {
-  position: absolute;
-  left: 0;
-  font-weight: 700;
-  color: var(--muted);
-}
-
-.rw-before::before { content: '−'; }
-.rw-after::before { content: '+'; }
-
-.rw-before .w {
-  background: #fee2e2;
-  text-decoration: line-through;
-  border-radius: 3px;
-  padding: 0 1px;
-}
-
-.rw-after .w {
-  background: #dcfce7;
-  border-radius: 3px;
-  padding: 0 1px;
-}
-
-/* Chiffre non vérifié : un mot modifié ordinaire (vert) devient une alerte
-   (rouge, soulignement ondulé) — se distingue au premier coup d'œil d'une
-   simple reformulation. */
-.rw-after .w.num-alert {
-  background: #fecaca;
-  color: #7f1d1d;
-  font-weight: 700;
-  text-decoration: underline wavy #dc2626;
-  text-underline-offset: 2px;
-}
-
-.rw-line.off .rw-before { color: var(--ink); }
-.rw-line.off .rw-before .w { background: none; text-decoration: none; }
-.rw-line.off .rw-after { color: var(--muted); text-decoration: line-through; }
-.rw-line.off .rw-after .w { background: none; }
-
-.rw-line.same .rw-after::before,
-.rw-line.add .rw-after::before { content: '+'; color: var(--ok); }
-
-.rw-kept {
-  font-size: 12px;
-  color: var(--muted);
-  margin: 6px 0 0;
-}
-
-/* Bannière globale : le panneau applique tout d'un coup sans relecture
-   préalable, donc rien ne garantit que l'utilisateur fasse défiler jusqu'à la
-   ligne fautive — ce compteur est la première chose vue après le résumé. */
-.rw-numbanner {
-  font-size: 13px;
-  font-weight: 600;
-  color: #7f1d1d;
-  background: #fee2e2;
-  border: 1px solid #fecaca;
-  border-radius: 8px;
-  padding: 8px 10px;
-  margin: 8px 0 0;
-}
-
 /* ---------- Mobile / fenêtre étroite (≤ 780px) ----------
    Sous 780px, la feuille CV (.sheet, 210mm ≈ 794px de large FIXE — voir plus
    haut, jamais modifiée pour garder des retours à la ligne identiques au
@@ -2509,9 +2188,9 @@ main.tab-create #createLeft {
      qui ne s'appliquent pas sans souris : le PDF reprend la feuille au repos.
      Filet de sécurité pour les contrôles flottants ✕ / ↑ / ↓ : */
   .bullet-controls, .exp-controls, .photo-controls,
-  .bullet-badges, .rw-badge, .match-badge, .rewrite-badge { display: none !important; }
+  .bullet-badges, .match-badge { display: none !important; }
 
-  li.bullet.moved, li.bullet.rw-edit, li.bullet.rw-add, li.bullet.rw-numalert { background: none !important; }
+  li.bullet.moved { background: none !important; }
   .exp:hover { background: none; }
   [contenteditable]:hover, [contenteditable]:focus { background: none; }
 
@@ -2521,3 +2200,4 @@ main.tab-create #createLeft {
   .cv-section-title, .side-title { break-after: avoid; }
   .cv-page-break { display: none; }
 }
+

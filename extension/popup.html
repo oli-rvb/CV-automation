@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { width: 340px; margin: 0; padding: 14px; font: 13px system-ui, sans-serif; color: #1d1d1f; }
+    h1 { font-size: 15px; margin: 0 0 8px; }
+    p { margin: 8px 0; line-height: 1.4; }
+    button { width: 100%; padding: 10px; border: 0; border-radius: 6px; background: #0a7a5a; color: #fff; font-weight: 600; cursor: pointer; font: inherit; }
+    button:disabled { opacity: .45; cursor: default; }
+    details { margin-top: 10px; }
+    summary { cursor: pointer; color: #0a7a5a; font-weight: 600; }
+    textarea#prompt { width: 100%; height: 220px; margin-top: 8px; box-sizing: border-box; font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; resize: vertical; }
+    #status { background: #f5f5f7; border-radius: 6px; padding: 8px; min-height: 18px; margin-top: 10px; }
+    #status.error { background: #fdecea; color: #a4262c; }
+    a { color: #0a7a5a; }
+  </style>
+</head>
+<body>
+  <h1>Offre Welcome to the Jungle</h1>
+  <p id="hint">Préparation du prompt d'adaptation pour cette offre.</p>
+  <button id="copyPromptBtn" type="button" disabled>Copier le prompt</button>
+  <details id="promptDetails">
+    <summary>Voir le prompt</summary>
+    <textarea id="prompt" readonly spellcheck="false"></textarea>
+  </details>
+  <p id="status">Préparation…</p>
+  <p><a id="appLink" href="http://localhost:3333" target="_blank">Ouvrir l'Éditeur de CV</a></p>
+  <script src="popup.js"></script>
+</body>
+</html>
