@@ -1,4 +1,4 @@
-/* Popup : prépare le prompt de recalibrage du CV pour l'offre WTTJ ouverte,
+/* Popup : prépare le prompt d'adaptation du CV pour l'offre WTTJ ouverte,
    puis le copie dans le presse-papiers. Pas d'arrière-plan : tout se passe
    pendant que la popup est ouverte. */
 
@@ -7,6 +7,11 @@ const APP_URL = 'http://localhost:4000';
 
 // Une offre WTTJ a toujours une URL de la forme /companies/<entreprise>/jobs/<offre>.
 const JOB_URL_RE = /^https:\/\/www\.welcometothejungle\.com\/.*\/companies\/[^/]+\/jobs\/[^/?#]+/;
+
+// À incrémenter en même temps que window.cvPromptVersion dans app.js : permet
+// de détecter un onglet app resté ouvert sur une ancienne version (le prompt
+// qu'elle renverrait serait alors périmé) et de le recharger avant usage.
+const PROMPT_VERSION = 2;
 
 const copyBtn = document.getElementById('copyPromptBtn');
 const statusEl = document.getElementById('status');
@@ -76,33 +81,63 @@ async function extractJobFromPage() {
   return { url: location.href, description };
 }
 
+// Injecté dans l'onglet de l'app (world MAIN) : lit uniquement la version du
+// prompt, sans effet de bord, pour décider s'il faut recharger l'onglet.
+function readCvPromptVersion() {
+  return window.cvPromptVersion;
+}
+
 // Injecté dans l'onglet de l'app (world MAIN) : appelle la fonction exposée
-// par app.js, ou renvoie null si elle n'existe pas (vieille version de l'app,
-// ou page pas encore chargée).
+// par app.js (ou renvoie result: null si elle n'existe pas encore — page pas
+// chargée) et renvoie sa version en même temps, pour vérifier pendant le
+// sondage qu'on parle toujours à la bonne version après un rechargement.
 function callCvPromptForJob(job) {
-  return window.cvPromptForJob ? window.cvPromptForJob(job) : null;
+  return {
+    version: window.cvPromptVersion,
+    result: window.cvPromptForJob ? window.cvPromptForJob(job) : null,
+  };
+}
+
+async function getTabPromptVersion(tabId) {
+  try {
+    const [{ result }] = await chrome.scripting.executeScript({
+      target: { tabId }, world: 'MAIN', func: readCvPromptVersion,
+    });
+    return result;
+  } catch {
+    return undefined;
+  }
 }
 
 // Trouve un onglet déjà ouvert sur l'app, ou en ouvre un (inactif, pour que
 // la popup ne se ferme pas), puis attend qu'il soit chargé.
 async function findOrOpenAppTab() {
   const tabs = await chrome.tabs.query({ url: `${APP_URL}/*` });
-  if (tabs.length) return tabs[0];
+  if (tabs.length) return { tab: tabs[0], isNew: false };
   const created = await chrome.tabs.create({ url: `${APP_URL}/`, active: false });
   for (let i = 0; i < 34; i += 1) { // ~10 s
     const t = await chrome.tabs.get(created.id);
-    if (t.status === 'complete') return t;
+    if (t.status === 'complete') return { tab: t, isNew: true };
     await new Promise((r) => setTimeout(r, 300));
   }
-  return created;
+  return { tab: created, isNew: true };
 }
 
 const APP_UNREACHABLE = `Éditeur de CV injoignable : lancez « PORT=4000 node server.js » depuis ce dossier.`;
+const APP_OUTDATED = `L'Éditeur de CV ouvert n'est pas à jour : relancez « PORT=4000 node server.js » depuis ce dossier et rechargez l'extension.`;
 
 async function prepareTargetPrompt(job) {
-  const tab = await findOrOpenAppTab();
+  const { tab, isNew } = await findOrOpenAppTab();
+  // Onglet déjà ouvert : il a pu être chargé avant un changement de prompt
+  // dans app.js. On le recharge seulement si sa version est périmée, pour ne
+  // pas perturber l'utilisateur inutilement (state persisté en localStorage,
+  // donc rien n'est perdu — voir save() dans app.js).
+  if (!isNew && (await getTabPromptVersion(tab.id)) !== PROMPT_VERSION) {
+    await chrome.tabs.reload(tab.id);
+  }
   let lastResult = null;
-  for (let i = 0; i < 34; i += 1) { // ~10 s, le temps qu'app.js s'exécute
+  let versionOk = false;
+  for (let i = 0; i < 34; i += 1) { // ~10 s, le temps qu'app.js s'exécute (ou se recharge)
     let execResult;
     try {
       [execResult] = await chrome.scripting.executeScript({
@@ -114,10 +149,13 @@ async function prepareTargetPrompt(job) {
     } catch {
       execResult = null;
     }
-    lastResult = execResult && execResult.result;
+    const payload = execResult && execResult.result;
+    versionOk = !!payload && payload.version === PROMPT_VERSION;
+    lastResult = versionOk ? payload.result : null;
     if (lastResult) break;
     await new Promise((r) => setTimeout(r, 300));
   }
+  if (!versionOk) throw new Error(APP_OUTDATED);
   if (!lastResult) throw new Error(APP_UNREACHABLE);
   if (lastResult.error) throw new Error(lastResult.error);
   return lastResult;
@@ -129,7 +167,7 @@ async function copyPrompt() {
     await navigator.clipboard.writeText(currentPrompt);
     const label = copyBtn.textContent;
     copyBtn.textContent = 'Prompt copié ✓';
-    setStatus('Collez-le dans votre assistant IA, puis recollez sa réponse dans l’Éditeur de CV.');
+    setStatus('Collez-le dans votre assistant IA, puis collez sa réponse JSON dans « Partir de votre CV existant » de l’Éditeur de CV.');
     setTimeout(() => { copyBtn.textContent = label; }, 2000);
   } catch {
     detailsEl.open = true;

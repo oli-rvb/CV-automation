@@ -507,12 +507,11 @@ let pendingFocusBulletId = null;
 
 // Le chatbot n'a besoin ni des identifiants internes, ni des réglages visuels :
 // normalizeState() les ajoute au collage avant d'afficher le CV.
-const AI_PREFILL_PROMPT = `Je vais te transmettre le contenu d'un ancien CV, d'un profil LinkedIn ou de notes. Transforme uniquement les informations réellement présentes en un CV français, clair et concis.
-
-Réponds uniquement avec un JSON valide, sans markdown, sans texte avant ou après. N'invente aucune expérience, date, diplôme, chiffre, outil ou niveau de langue. Si une information manque, utilise une chaîne vide ou une liste vide.
-
-Respecte exactement cette structure (sans ajouter de clés) :
-{
+// Structure JSON imposée au chatbot, partagée entre le prompt de
+// pré-remplissage (CV vide) et le prompt d'adaptation à une offre (CV
+// existant) : les deux doivent produire un CV collable tel quel dans
+// #aiResponseText.
+const AI_CV_JSON_SCHEMA = `{
   "profile": {
     "name": "",
     "title": "",
@@ -532,11 +531,70 @@ Respecte exactement cette structure (sans ajouter de clés) :
   "skills": "",
   "skillGroups": [{ "label": "", "text": "" }],
   "interests": [{ "text": "" }]
-}
+}`;
+
+const AI_PREFILL_PROMPT = `Je vais te transmettre le contenu d'un ancien CV, d'un profil LinkedIn ou de notes. Transforme uniquement les informations réellement présentes en un CV français, clair et concis.
+
+Réponds uniquement avec un JSON valide, sans markdown, sans texte avant ou après. N'invente aucune expérience, date, diplôme, chiffre, outil ou niveau de langue. Si une information manque, utilise une chaîne vide ou une liste vide.
+
+Respecte exactement cette structure (sans ajouter de clés) :
+${AI_CV_JSON_SCHEMA}
 
 Pour les expériences, privilégie des réalisations courtes et précises. Voici mes informations :
 
 [COLLEZ ICI VOTRE ANCIEN CV OU VOS NOTES — OU JOIGNEZ-LES À CE CHAT AU FORMAT PDF OU WORD]`;
+
+// CV actuel (state), réduit à la forme du schéma ci-dessus : pas d'ids, de
+// photo, de réglages visuels, de versions ni de proposition — juste la
+// matière que le chatbot doit reformuler pour l'offre.
+function buildJobCvData() {
+  return {
+    profile: {
+      name: state.profile.name,
+      title: state.profile.title,
+      contact: state.profile.contact.map((c) => ({ label: c.label, value: c.value })),
+      summary: state.profile.summary,
+      links: state.profile.links.map((l) => ({ label: l.label, url: l.url })),
+    },
+    experiences: state.experiences.map((e) => ({
+      role: e.role,
+      company: e.company,
+      period: e.period,
+      companyDescription: e.companyDescription,
+      bullets: e.bullets.map((b) => ({ text: b.text })),
+    })),
+    education: state.education.map((e) => ({ title: e.title, detail: e.detail, bullets: e.bullets.map((b) => ({ text: b.text })) })),
+    projects: state.projects.map((e) => ({ title: e.title, detail: e.detail, bullets: e.bullets.map((b) => ({ text: b.text })) })),
+    skills: state.skills,
+    skillGroups: state.skillGroups.map((g) => ({ label: g.label, text: g.text })),
+    interests: state.interests.map((it) => ({ text: it.text })),
+  };
+}
+
+// Prompt envoyé depuis l'extension (offre WTTJ) : contrairement à
+// AI_PREFILL_PROMPT (CV vide → à remplir), celui-ci transmet le CV déjà
+// rempli et demande de l'adapter à l'offre. La réponse se colle dans le même
+// panneau « Partir de votre CV existant » (#aiResponseText).
+function buildJobCvPrompt() {
+  return [
+    "Je vais te transmettre mon CV actuel (au format JSON) et une offre d'emploi. Adapte mon CV à cette offre, en français, clair et concis.",
+    '',
+    "Réponds uniquement avec un JSON valide, sans markdown, sans texte avant ou après. N'invente aucune expérience, date, diplôme, chiffre, outil ou niveau de langue : reformule, réordonne et sélectionne uniquement à partir des informations présentes dans mon CV. Reprends le vocabulaire de l'offre uniquement quand il décrit vraiment ce que j'ai fait. Si une information manque, utilise une chaîne vide ou une liste vide.",
+    '',
+    'Respecte exactement cette structure (sans ajouter de clés) :',
+    AI_CV_JSON_SCHEMA,
+    '',
+    'Pour les expériences, privilégie des réalisations courtes et précises. Voici mes informations :',
+    '',
+    '## Mon CV actuel',
+    JSON.stringify(buildJobCvData(), null, 2),
+    '',
+    "## Offre d'emploi",
+    '"""',
+    effectiveJobText(),
+    '"""',
+  ].join('\n');
+}
 
 function setAiOnboardingStatus(message, isError = false) {
   aiOnboardingStatusEl.textContent = message;
@@ -4449,10 +4507,14 @@ $('#importFile').addEventListener('change', (e) => {
 // Appelé par extension/popup.js via chrome.scripting.executeScript (world
 // MAIN) dans l'onglet de l'app : remplit le panneau « Offre d'emploi » avec
 // l'offre WTTJ lue par l'extension, bascule sur l'onglet « Nouveau CV » et
-// renvoie le même prompt que le bouton « Copier le prompt » — c'est la
-// popup qui le copie dans le presse-papiers, pas cette fonction. Aucune
-// analyse n'est lancée ici, comme si l'utilisateur avait collé l'offre à la
-// main puis cliqué sur « Copier le prompt ».
+// renvoie un prompt qui demande un CV JSON adapté à l'offre, à coller dans
+// « Partir de votre CV existant » — c'est la popup qui le copie dans le
+// presse-papiers, pas cette fonction. Aucune analyse n'est lancée ici.
+// À incrémenter à chaque changement du prompt renvoyé à l'extension : permet
+// à popup.js de détecter un onglet app resté ouvert sur une ancienne version
+// et de le recharger avant de demander le prompt.
+window.cvPromptVersion = 2;
+
 window.cvPromptForJob = (job) => {
   if (!job || typeof job !== 'object') return { error: 'Offre invalide.' };
   if (!state.experiences.length) return { error: 'CV vide : remplissez d’abord votre CV dans l’Éditeur.' };
@@ -4462,9 +4524,7 @@ window.cvPromptForJob = (job) => {
   save();
   state.activeTab = 'create';
   rerender();
-  const prompt = buildRewritePrompt();
-  promptPreviewEl.value = prompt;
-  return prompt;
+  return buildJobCvPrompt();
 };
 
 /* ---------- Démarrage ---------- */

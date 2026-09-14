@@ -1,12 +1,12 @@
 {
   "manifest_version": 3,
   "name": "WTTJ → Éditeur de CV",
-  "version": "2.1.0",
-  "description": "Prépare le prompt de recalibrage du CV pour l'offre Welcome to the Jungle ouverte.",
+  "version": "2.2.0",
+  "description": "Prépare le prompt d'adaptation du CV à l'offre Welcome to the Jungle ouverte.",
   "permissions": ["activeTab", "scripting", "clipboardWrite"],
   "host_permissions": [
     "https://www.welcometothejungle.com/*",
     "http://localhost/*"
   ],
-  "action": { "default_popup": "popup.html", "default_title": "Copier le prompt de recalibrage du CV" }
+  "action": { "default_popup": "popup.html", "default_title": "Copier le prompt d'adaptation du CV" }
 }
