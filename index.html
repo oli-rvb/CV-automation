@@ -97,6 +97,7 @@
         <span></span>
         <div class="app-modal-actions-right">
           <button type="button" id="confirmCancelBtn" class="cancel">Annuler</button>
+          <button type="button" id="confirmExtraBtn" hidden>Ne pas sauvegarder</button>
           <button type="button" id="confirmOkBtn">Confirmer</button>
         </div>
       </div>
@@ -109,13 +110,12 @@
     <div id="createLeft">
     <!-- Première prise en main : l'utilisateur peut confier l'extraction de
          son ancien CV à son chatbot, puis recoller ici le JSON obtenu. -->
-    <section class="panel-box ai-onboarding" id="aiOnboarding" hidden aria-labelledby="aiOnboardingTitle">
+    <section class="panel-box ai-onboarding" id="aiOnboarding" aria-labelledby="aiOnboardingTitle">
       <div class="ai-onboarding-heading">
         <div>
           <h2 id="aiOnboardingTitle">Partir de votre CV existant</h2>
           <p class="hint">Copiez ce prompt dans votre chatbot avec votre ancien CV ou vos notes. Il préparera un CV déjà rempli pour cet éditeur.</p>
         </div>
-        <span class="ai-onboarding-badge">Nouveau</span>
       </div>
       <button id="copyAiPromptBtn" class="ghost" type="button">Copier le prompt</button>
       <p class="ai-onboarding-step">Puis collez uniquement la réponse JSON du chatbot ci-dessous.</p>
@@ -210,15 +210,19 @@
       <p class="ai-onboarding-privacy">Ne partagez avec un chatbot que les informations que vous acceptez de lui confier.</p>
     </section>
 
-    <!-- Import/export JSON : sauvegarde/transfert de l'état complet, placé
-         sous l'offre dans l'onglet « Nouveau CV ». -->
+    <!-- Import/export JSON : sauvegarde/transfert du CV actuellement
+         affiché (page active), placé sous l'offre dans l'onglet
+         « Nouveau CV ». Les autres CV sauvegardés ne sont pas inclus, et la
+         photo (base64) est exclue du fichier : elle est conservée telle
+         quelle à l'import. -->
     <section class="panel-box" id="jsonBox">
       <h2>Import / export JSON</h2>
       <p class="hint">
-        Exportez l'état complet de vos CV (CV de base, CV sauvegardés, offre
-        en cours) dans un fichier à conserver ou à transférer vers un autre
-        navigateur&nbsp;; importez ensuite ce fichier pour tout restaurer à
-        l'identique.
+        Exportez le CV actuellement affiché dans un fichier à conserver ou à
+        transférer vers un autre navigateur&nbsp;; importez ensuite ce
+        fichier pour le restaurer à l'identique. Vos autres CV sauvegardés ne
+        sont pas concernés, et la photo n'est pas incluse dans le fichier
+        (elle reste celle déjà affichée après import).
       </p>
       <div class="panel-actions">
         <button id="importBtn" class="ghost" type="button">Importer JSON</button>
