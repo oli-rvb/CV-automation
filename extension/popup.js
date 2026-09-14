@@ -2,8 +2,7 @@
    puis le copie dans le presse-papiers. Pas d'arrière-plan : tout se passe
    pendant que la popup est ouverte. */
 
-// KEEP 4000 ici : le port passera à 3333 seulement au merge (voir mémoire du projet).
-const APP_URL = 'http://localhost:4000';
+const APP_URL = 'http://localhost:3333';
 
 // Une offre WTTJ a toujours une URL de la forme /companies/<entreprise>/jobs/<offre>.
 const JOB_URL_RE = /^https:\/\/www\.welcometothejungle\.com\/.*\/companies\/[^/]+\/jobs\/[^/?#]+/;
@@ -213,8 +212,8 @@ async function findOrOpenAppTab() {
   return { tab: created, isNew: true };
 }
 
-const APP_UNREACHABLE = `Éditeur de CV injoignable : lancez « PORT=4000 node server.js » depuis ce dossier.`;
-const APP_OUTDATED = `L'Éditeur de CV ouvert n'est pas à jour : relancez « PORT=4000 node server.js » depuis ce dossier et rechargez l'extension.`;
+const APP_UNREACHABLE = `Éditeur de CV injoignable : lancez « node server.js » depuis ce dossier.`;
+const APP_OUTDATED = `L'Éditeur de CV ouvert n'est pas à jour : relancez « node server.js » depuis ce dossier et rechargez l'extension.`;
 
 async function prepareTargetPrompt(job) {
   const { tab, isNew } = await findOrOpenAppTab();
