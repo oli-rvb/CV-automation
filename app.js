@@ -490,7 +490,6 @@ const resultsEl = $('#results');
 const jobTextEl = $('#jobText');
 const jobUrlEl = $('#jobUrl');
 const jobUrlStatusEl = $('#jobUrlStatus');
-const offerPanelEl = $('#offerPanel');
 const aiResponseTextEl = $('#aiResponseText');
 const aiOnboardingStatusEl = $('#aiOnboardingStatus');
 const tailorPanelEl = $('#tailorPanel');
