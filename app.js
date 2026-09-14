@@ -5,7 +5,6 @@
    ============================================================ */
 
 const LS_KEY = 'cv-editor-data-v1';
-const AI_ONBOARDING_SEEN_KEY = 'cv-editor-ai-onboarding-seen-v1';
 
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 
@@ -492,7 +491,6 @@ const jobTextEl = $('#jobText');
 const jobUrlEl = $('#jobUrl');
 const jobUrlStatusEl = $('#jobUrlStatus');
 const offerPanelEl = $('#offerPanel');
-const aiOnboardingEl = $('#aiOnboarding');
 const aiResponseTextEl = $('#aiResponseText');
 const aiOnboardingStatusEl = $('#aiOnboardingStatus');
 const tailorPanelEl = $('#tailorPanel');
@@ -546,10 +544,6 @@ function setAiOnboardingStatus(message, isError = false) {
   aiOnboardingStatusEl.classList.toggle('error', isError);
 }
 
-function markAiOnboardingSeen() {
-  try { localStorage.setItem(AI_ONBOARDING_SEEN_KEY, '1'); } catch { /* stockage indisponible */ }
-}
-
 async function copyAiPrompt() {
   try {
     if (!navigator.clipboard || !navigator.clipboard.writeText) throw new Error('clipboard indisponible');
@@ -586,19 +580,21 @@ function applyAiResponse() {
     const aiData = parseAiResponse(aiResponseTextEl.value);
     // Préserve les versions et les choix visuels déjà présents, et repart sur
     // l'onglet de création pour que le CV pré-rempli soit immédiatement visible.
+    // Le chatbot ne renvoie jamais de photo : on garde celle déjà affichée
+    // plutôt que de l'effacer.
+    const { photo, photoSrc, photoCrop } = state.profile;
     state = normalizeState({ ...state, ...aiData, proposal: null, activeTab: 'create' });
+    state.profile.photo = photo;
+    state.profile.photoSrc = photoSrc;
+    state.profile.photoCrop = photoCrop;
     jobTextEl.value = state.jobText;
-    markAiOnboardingSeen();
-    aiOnboardingEl.hidden = true;
+    aiResponseTextEl.value = '';
     rerender();
   } catch {
     setAiOnboardingStatus('Réponse non reconnue : collez uniquement le JSON fourni par le chatbot.', true);
   }
 }
 
-aiOnboardingEl.hidden = (() => {
-  try { return localStorage.getItem(AI_ONBOARDING_SEEN_KEY) === '1'; } catch { return false; }
-})();
 $('#copyAiPromptBtn').addEventListener('click', copyAiPrompt);
 $('#applyAiResponseBtn').addEventListener('click', applyAiResponse);
 
@@ -2381,6 +2377,7 @@ linkModalEl.addEventListener('mousedown', (e) => {
 const confirmModalEl = $('#confirmModal');
 const confirmModalMessageEl = $('#confirmModalMessage');
 const confirmCancelBtnEl = $('#confirmCancelBtn');
+const confirmExtraBtnEl = $('#confirmExtraBtn');
 const confirmOkBtnEl = $('#confirmOkBtn');
 
 // Résolveur de la confirmation actuellement affichée, le cas échéant.
@@ -2395,18 +2392,29 @@ function closeConfirmModal(result) {
 
 // `danger` : bouton de validation en rouge plein, pour les actions destructrices
 // (suppression) plutôt que les simples remplacements (sauvegarder, charger).
-function customConfirm(message, { confirmLabel = 'Confirmer', danger = false } = {}) {
+// `extraLabel` : 3ᵉ bouton optionnel (ex. « Ne pas sauvegarder ») entre Annuler
+// et le bouton principal ; résout la promesse avec la chaîne 'extra'.
+function customConfirm(message, { confirmLabel = 'Confirmer', danger = false, extraLabel = null } = {}) {
   return new Promise((resolve) => {
     resolveConfirm = resolve;
     confirmModalMessageEl.textContent = message;
     confirmOkBtnEl.textContent = confirmLabel;
     confirmOkBtnEl.classList.toggle('danger', danger);
+    confirmExtraBtnEl.hidden = !extraLabel;
+    if (extraLabel) confirmExtraBtnEl.textContent = extraLabel;
+    // Avec un 3ᵉ bouton, c'est lui qui abandonne les modifications : il prend
+    // le rouge doux habituellement porté par « Annuler », qui redevient un
+    // simple bouton bleu neutre (rien de destructif à annuler dans ce cas).
+    confirmCancelBtnEl.classList.toggle('cancel', !extraLabel);
+    confirmCancelBtnEl.classList.toggle('ghost', !!extraLabel);
+    confirmExtraBtnEl.classList.toggle('cancel', !!extraLabel);
     confirmModalEl.hidden = false;
     confirmOkBtnEl.focus();
   });
 }
 
 confirmOkBtnEl.addEventListener('click', () => closeConfirmModal(true));
+confirmExtraBtnEl.addEventListener('click', () => closeConfirmModal('extra'));
 confirmCancelBtnEl.addEventListener('click', () => closeConfirmModal(false));
 confirmModalEl.addEventListener('mousedown', (e) => {
   if (e.target === confirmModalEl) closeConfirmModal(false);
@@ -2543,6 +2551,23 @@ function updateSaveIndicator() {
   }
 }
 
+// Enregistre le CV actuellement affiché : écrase la version active si une
+// version est chargée, sinon crée une nouvelle version (mêmes règles de nom
+// par défaut que le bouton « Enregistrer »). Utilisé par la pop-up de
+// confirmation avant de charger une autre version (« Sauvegarder et charger »).
+function saveCurrentCvAsVersion() {
+  const active = state.activeVersionId && state.versions.find((v) => v.id === state.activeVersionId);
+  if (active) {
+    active.data = snapshotCV();
+    active.createdAt = Date.now();
+  } else {
+    const name = `Version du ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`;
+    const v = { id: uid(), name, createdAt: Date.now(), data: snapshotCV() };
+    state.versions.unshift(v);
+    state.activeVersionId = v.id;
+  }
+}
+
 function applyCV(data) {
   const cv = normalizeCV(JSON.parse(JSON.stringify(data)));
   state.profile = cv.profile;
@@ -2673,10 +2698,16 @@ versionListEl.addEventListener('click', async (e) => {
     case 'load': {
       // Rien à perdre si le CV affiché est déjà sauvegardé quelque part :
       // pas besoin de confirmation dans ce cas.
-      if (!isCurrentCvSaved() && !(await customConfirm(
-        `Charger « ${v.name} » comme CV de base ? Le CV de base actuel sera remplacé (sauvegardez-le d'abord si besoin).`,
-        { confirmLabel: 'Charger' }
-      ))) return;
+      if (!isCurrentCvSaved()) {
+        const choice = await customConfirm(
+          `Charger « ${v.name} » comme CV de base ? Le CV de base actuel a des modifications non enregistrées.`,
+          { confirmLabel: 'Sauvegarder et charger', extraLabel: 'Ne pas sauvegarder' }
+        );
+        if (choice === false) return;
+        if (choice === true) saveCurrentCvAsVersion();
+        // choice === 'extra' : on charge sans rien sauvegarder, les
+        // modifications en cours sont perdues.
+      }
       applyCV(v.data);
       // Proposition et relecture référençaient l'ancien CV : plus de sens.
       state.proposal = null;
@@ -4367,7 +4398,16 @@ $('#resetBtn').addEventListener('click', async () => {
 });
 
 $('#exportBtn').addEventListener('click', () => {
-  const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+  // On n'exporte que le CV actuellement affiché (page active), pas les
+  // autres CV sauvegardés ni l'offre en cours : voir snapshotCV().
+  // La photo (base64) est volontairement exclue : elle alourdirait énormément
+  // le fichier pour un usage de sauvegarde/transfert de texte. À l'import, la
+  // photo déjà affichée est conservée telle quelle (voir plus bas).
+  const data = snapshotCV();
+  delete data.profile.photo;
+  delete data.profile.photoSrc;
+  delete data.profile.photoCrop;
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const a = el('a', { href: URL.createObjectURL(blob), download: 'cv.json' });
   document.body.append(a);
   a.click();
@@ -4388,8 +4428,17 @@ $('#importFile').addEventListener('change', (e) => {
       if (!data || typeof data !== 'object' || !data.profile || !Array.isArray(data.experiences)) {
         throw new Error('format');
       }
-      state = normalizeState(data);
-      jobTextEl.value = state.jobText;
+      // Ne remplace que le CV affiché (comme « Charger » une version) : les
+      // autres CV sauvegardés restent intacts. La photo n'est jamais dans le
+      // JSON exporté : on garde celle déjà affichée plutôt que l'effacer.
+      const { photo, photoSrc, photoCrop } = state.profile;
+      applyCV(data);
+      state.profile.photo = photo;
+      state.profile.photoSrc = photoSrc;
+      state.profile.photoCrop = photoCrop;
+      state.proposal = null;
+      state.rewrite = null;
+      state.activeVersionId = null;
       rerender();
     } catch {
       alert('Fichier invalide : attendu un export JSON de cet éditeur.');
