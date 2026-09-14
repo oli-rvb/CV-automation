@@ -39,15 +39,98 @@ async function extractJobFromPage() {
     return value['@graph'] ? findJobPosting(value['@graph']) : null;
   }
 
-  function htmlToText(fragment) {
-    const doc = new DOMParser().parseFromString(fragment, 'text/html');
-    doc.querySelectorAll('br').forEach((n) => n.replaceWith('\n'));
-    doc.querySelectorAll('p, div, li, h1, h2, h3, h4').forEach((n) => n.append('\n'));
-    return (doc.body.textContent || '').split('\n').map((l) => l.trim()).filter(Boolean).join('\n');
+  // Convertit un noeud DOM déjà présent dans la page (on clone pour ne pas
+  // la modifier) en texte, une ligne par titre/paragraphe/item de liste.
+  function nodeToText(root) {
+    const clone = root.cloneNode(true);
+    clone.querySelectorAll('br').forEach((n) => n.replaceWith('\n'));
+    clone.querySelectorAll('p, div, li, h1, h2, h3, h4').forEach((n) => n.append('\n'));
+    return (clone.textContent || '').split('\n').map((l) => l.trim()).filter(Boolean).join('\n');
   }
 
-  // WTTJ est une SPA : le DOM affiché peut dater d'une navigation interne
-  // précédente. On recharge la page brute pour lire un JSON-LD à jour.
+  function htmlToText(fragment) {
+    const doc = new DOMParser().parseFromString(fragment, 'text/html');
+    return nodeToText(doc.body);
+  }
+
+  // Les 3 blocs de la fiche de poste WTTJ qu'on veut vraiment (le JSON-LD ne
+  // couvre que le premier). Identifiés par data-testid : plus stable que les
+  // classes styled-components hashées (elles changent à chaque redéploiement).
+  const SECTION_TESTIDS = ['job-section-description', 'job-section-experience', 'job-section-process'];
+  // Repli si WTTJ change ses data-testid : la div englobante observée manuellement.
+  const LEGACY_CLASS_SELECTOR = '.sc-ddHBHQ.iDagxD';
+
+  function extractFromDoc(root) {
+    const parts = SECTION_TESTIDS
+      .map((id) => root.querySelector(`[data-testid="${id}"]`))
+      .filter(Boolean)
+      .map(nodeToText)
+      .filter(Boolean);
+    if (parts.length) return parts.join('\n\n');
+    const legacy = root.querySelector(LEGACY_CLASS_SELECTOR);
+    return legacy ? nodeToText(legacy) : '';
+  }
+
+  function jobPostingFromLiveDoc() {
+    for (const s of document.querySelectorAll('script[type="application/ld+json"]')) {
+      let posting;
+      try { posting = findJobPosting(JSON.parse(s.textContent)); } catch { continue; }
+      if (posting) return posting;
+    }
+    return null;
+  }
+
+  function jobPostingFromHtml(html) {
+    for (const match of html.matchAll(LD_JSON_RE)) {
+      let posting;
+      try { posting = findJobPosting(JSON.parse(match[1])); } catch { continue; }
+      if (posting) return posting;
+    }
+    return null;
+  }
+
+  function postingFields(posting) {
+    const loc = [].concat(posting.jobLocation || [])[0];
+    return {
+      title: String(posting.title || '').trim(),
+      company: String((posting.hiringOrganization && posting.hiringOrganization.name) || '').trim(),
+      location: String((loc && loc.address && loc.address.addressLocality) || '').trim(),
+    };
+  }
+
+  // Le DOM vivant correspond-il bien à l'URL courante ? WTTJ est une SPA :
+  // après une navigation interne (changement d'offre sans rechargement), le
+  // DOM ou son JSON-LD peuvent encore décrire l'offre précédente le temps que
+  // React termine son re-render. Le <link rel="canonical"> est mis à jour par
+  // le routeur à chaque changement d'offre et se compare en une ligne : c'est
+  // le contrôle le plus simple et le moins coûteux. S'il est absent, on
+  // recoupe avec un titre visible (h1/h2) qui doit correspondre au titre JSON-LD.
+  function liveDomIsFresh(title) {
+    const canonical = document.querySelector('link[rel="canonical"]');
+    if (canonical) {
+      try { return new URL(canonical.href).pathname === location.pathname; } catch { /* URL invalide : on retombe sur le titre */ }
+    }
+    if (!title) return false;
+    return [...document.querySelectorAll('h1, h2')].some((h) => h.textContent.trim() === title);
+  }
+
+  // 1) Chemin rapide : tout depuis le DOM déjà chargé, sans requête réseau ni
+  // parsing HTML complet — c'est le cas courant (popup ouverte sur la page).
+  const livePosting = jobPostingFromLiveDoc();
+  const liveFields = livePosting ? postingFields(livePosting) : null;
+  const liveDescription = extractFromDoc(document);
+  if (liveDescription && liveDomIsFresh(liveFields && liveFields.title)) {
+    return {
+      url: location.href,
+      title: (liveFields && liveFields.title) || '',
+      company: (liveFields && liveFields.company) || '',
+      location: (liveFields && liveFields.location) || '',
+      description: liveDescription,
+    };
+  }
+
+  // 2) Repli : DOM vivant absent ou périmé. On recharge la page brute pour
+  // lire un contenu à jour.
   let res;
   try {
     res = await fetch(location.href, { credentials: 'include' });
@@ -58,27 +141,34 @@ async function extractJobFromPage() {
   if (!res.ok) return { error: `HTTP ${res.status}` };
   const html = await res.text();
 
-  for (const match of html.matchAll(LD_JSON_RE)) {
-    let posting;
-    try { posting = findJobPosting(JSON.parse(match[1])); } catch { continue; }
-    if (!posting) continue;
-    const description = htmlToText(String(posting.description || ''));
-    if (!description) continue; // bloc JobPosting sans description : on tente le suivant
-    const loc = [].concat(posting.jobLocation || [])[0];
-    return {
-      url: location.href,
-      title: String(posting.title || '').trim(),
-      company: String((posting.hiringOrganization && posting.hiringOrganization.name) || '').trim(),
-      location: String((loc && loc.address && loc.address.addressLocality) || '').trim(),
-      description,
-    };
+  // Titre/entreprise/lieu par regex d'abord (pas besoin de parser tout le
+  // HTML pour ça) ; le DOMParser ne sert plus qu'à retrouver les sections.
+  const fetchedPosting = jobPostingFromHtml(html);
+  const fetchedFields = fetchedPosting ? postingFields(fetchedPosting) : null;
+  const fetchedDoc = new DOMParser().parseFromString(html, 'text/html');
+
+  // Description : 1) sections stables dans le HTML rechargé, 2) description
+  // JSON-LD (peut manquer Profil recherché / entretiens), 3) texte brut de
+  // <main> en dernier repli.
+  let description = extractFromDoc(fetchedDoc);
+
+  if (!description && fetchedPosting) {
+    description = htmlToText(String(fetchedPosting.description || ''));
   }
 
-  // Repli sans JSON-LD exploitable : le texte principal du DOM vivant.
-  const main = document.querySelector('main') || document.body;
-  const description = (main.innerText || '').trim();
+  if (!description) {
+    const main = document.querySelector('main') || document.body;
+    description = (main.innerText || '').trim();
+  }
+
   if (!description) return { error: 'Annonce vide : impossible de lire le contenu de cette page.' };
-  return { url: location.href, description };
+  return {
+    url: location.href,
+    title: (fetchedFields && fetchedFields.title) || '',
+    company: (fetchedFields && fetchedFields.company) || '',
+    location: (fetchedFields && fetchedFields.location) || '',
+    description,
+  };
 }
 
 // Injecté dans l'onglet de l'app (world MAIN) : lit uniquement la version du
