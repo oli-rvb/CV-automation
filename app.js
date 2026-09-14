@@ -491,6 +491,7 @@ const resultsEl = $('#results');
 const jobTextEl = $('#jobText');
 const jobUrlEl = $('#jobUrl');
 const jobUrlStatusEl = $('#jobUrlStatus');
+const offerPanelEl = $('#offerPanel');
 const aiOnboardingEl = $('#aiOnboarding');
 const aiResponseTextEl = $('#aiResponseText');
 const aiOnboardingStatusEl = $('#aiOnboardingStatus');
@@ -3422,130 +3423,6 @@ async function fetchJobFromUrl() {
 
 $('#fetchJobBtn').addEventListener('click', fetchJobFromUrl);
 
-/* ---------- Offres collectées par l'extension Chrome ----------
-   extension/ parcourt les résultats Welcome to the Jungle et POSTe les
-   annonces sur /jobs (server.js). Ici on les classe par pertinence :
-   - couverture : part des mots-clés principaux de l'annonce présents dans le CV ;
-   - mots-clés recherchés : trouvés dans le titre (2 pts) ou le texte (1 pt) ;
-   - mots-clés à éviter : présents dans le titre → offre reléguée en bas.
-   Choisir une offre la place dans le panneau « Offre d'emploi » et l'analyse. */
-
-const JOBS_ENDPOINT = location.protocol === 'file:' ? 'http://localhost:3333/jobs' : '/jobs';
-const INBOX_KEYWORDS_KEY = 'cvEditor.inboxKeywords';
-const inboxWantedEl = $('#inboxWanted');
-const inboxAvoidEl = $('#inboxAvoid');
-const inboxStatusEl = $('#inboxStatus');
-const inboxListEl = $('#inboxList');
-let inboxJobs = [];
-
-const splitKeywords = (value) => value.split(',').map((k) => normalizeText(k.trim())).filter(Boolean);
-
-function hasPhrase(normalizedText, phrase) {
-  const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`(^|[^a-z0-9])${escaped}($|[^a-z0-9])`).test(normalizedText);
-}
-
-function scoreJob(job, cvTokens, wanted, avoid) {
-  const title = normalizeText(job.title || '');
-  const body = normalizeText(`${job.location || ''}\n${job.description || ''}`);
-  const top = topKeywords(buildJobModel(`${job.title || ''}\n${job.description || ''}`), 15);
-  const coverage = top.length ? top.filter((w) => cvTokens.has(w)).length / top.length : 0;
-  const hits = wanted.filter((k) => hasPhrase(title, k) || hasPhrase(body, k));
-  const points = wanted.reduce((sum, k) => sum + (hasPhrase(title, k) ? 2 : hasPhrase(body, k) ? 1 : 0), 0);
-  const kwRatio = wanted.length ? points / (2 * wanted.length) : 0;
-  const score = Math.round(wanted.length ? 50 * coverage + 50 * kwRatio : 100 * coverage);
-  const avoided = avoid.filter((k) => hasPhrase(title, k));
-  return { score, coverage: Math.round(coverage * 100), hits, avoided };
-}
-
-// Traduit l'erreur de lecture d'une offre (extension) en libellé français court
-function inboxErrorLabel(error) {
-  if (!error) return '';
-  let m = error.match(/^HTTP (404|410)/);
-  if (m) return `offre introuvable ou expirée (HTTP ${m[1]})`;
-  m = error.match(/^HTTP (403|429|202)/);
-  if (m) return `bloquée par Welcome to the Jungle (HTTP ${m[1]})`;
-  m = error.match(/^HTTP (\d+)/);
-  if (m) return `erreur du site (HTTP ${m[1]})`;
-  if (/Annonce vide/.test(error)) return 'page sans texte lisible';
-  if (/Receiving end|establish connection|ne répond pas/.test(error)) return "l'onglet WTTJ a été fermé ou rechargé pendant la lecture";
-  return error;
-}
-
-function renderInbox() {
-  inboxListEl.textContent = '';
-  const cvTokens = new Set(tokenize(cvFullText()));
-  const wanted = splitKeywords(inboxWantedEl.value);
-  const avoid = splitKeywords(inboxAvoidEl.value);
-  const ranked = inboxJobs
-    .map((job) => ({ job, ...scoreJob(job, cvTokens, wanted, avoid) }))
-    .sort((a, b) => (a.avoided.length > 0) - (b.avoided.length > 0) || b.score - a.score);
-
-  for (const { job, score, coverage, hits, avoided } of ranked) {
-    const useBtn = el('button', { type: 'button', class: 'ghost', text: 'Utiliser cette offre' });
-    useBtn.addEventListener('click', () => {
-      jobTextEl.value = [job.title, job.company && `Entreprise : ${job.company}`, job.description].filter(Boolean).join('\n\n');
-      runAnalysis();
-      $('#offerPanel').scrollIntoView({ behavior: 'smooth' });
-    });
-    const details = [`CV : ${coverage} %`];
-    if (hits.length) details.push(`✓ ${hits.join(', ')}`);
-    if (avoided.length) details.push(`✗ ${avoided.join(', ')}`);
-    if (!job.description) {
-      const reason = inboxErrorLabel(job.error);
-      details.push(reason ? `annonce non lue (${reason})` : 'annonce non lue');
-    }
-    const link = el('a', { href: /^https?:\/\//.test(job.url || '') ? job.url : '#', target: '_blank', rel: 'noopener', text: job.title || job.url });
-    inboxListEl.append(
-      el('li', { class: `inbox-item${avoided.length ? ' avoided' : ''}` },
-        el('span', { class: 'inbox-score', text: String(score) }),
-        el('div', { class: 'inbox-body' },
-          link,
-          el('div', { class: 'inbox-meta', text: [job.company, job.location].filter(Boolean).join(' · ') }),
-          el('div', { class: 'inbox-meta', text: details.join(' — ') }),
-          useBtn))
-    );
-  }
-}
-
-async function loadInbox(silent = false) {
-  if (!silent) {
-    inboxStatusEl.classList.remove('error');
-    inboxStatusEl.textContent = 'Chargement…';
-  }
-  try {
-    const res = await fetch(JOBS_ENDPOINT);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    inboxJobs = Array.isArray(data.jobs) ? data.jobs : [];
-    const when = data.receivedAt ? ` (reçues le ${new Date(data.receivedAt).toLocaleString('fr-FR')})` : '';
-    inboxStatusEl.textContent = inboxJobs.length
-      ? `${inboxJobs.length} offres${when}.`
-      : 'Aucune offre reçue : lancez la collecte depuis l’extension.';
-    renderInbox();
-  } catch {
-    if (silent) return; // chargement silencieux au démarrage : pas d'erreur affichée
-    inboxStatusEl.classList.add('error');
-    inboxStatusEl.textContent = 'Impossible de joindre le serveur : lancez « node server.js ».';
-  }
-}
-
-try {
-  const saved = JSON.parse(localStorage.getItem(INBOX_KEYWORDS_KEY) || '{}');
-  inboxWantedEl.value = saved.wanted || '';
-  inboxAvoidEl.value = saved.avoid || '';
-} catch { /* stockage indisponible */ }
-
-let inboxKeywordsTimer = null;
-[inboxWantedEl, inboxAvoidEl].forEach((input) => input.addEventListener('input', () => {
-  try {
-    localStorage.setItem(INBOX_KEYWORDS_KEY, JSON.stringify({ wanted: inboxWantedEl.value, avoid: inboxAvoidEl.value }));
-  } catch { /* stockage indisponible */ }
-  clearTimeout(inboxKeywordsTimer);
-  inboxKeywordsTimer = setTimeout(renderInbox, 300);
-}));
-$('#inboxLoadBtn').addEventListener('click', loadInbox);
-
 /* ============================================================
    Relecture : lignes d'expérience recalibrées sur l'offre
    ============================================================
@@ -4521,19 +4398,28 @@ $('#importFile').addEventListener('change', (e) => {
   reader.readAsText(file);
 });
 
+// Appelé par extension/popup.js via chrome.scripting.executeScript (world
+// MAIN) dans l'onglet de l'app : remplit le panneau « Offre d'emploi » avec
+// l'offre WTTJ lue par l'extension, bascule sur l'onglet « Nouveau CV » et
+// renvoie le même prompt que le bouton « Copier le prompt » — c'est la
+// popup qui le copie dans le presse-papiers, pas cette fonction. Aucune
+// analyse n'est lancée ici, comme si l'utilisateur avait collé l'offre à la
+// main puis cliqué sur « Copier le prompt ».
+window.cvPromptForJob = (job) => {
+  if (!job || typeof job !== 'object') return { error: 'Offre invalide.' };
+  if (!state.experiences.length) return { error: 'CV vide : remplissez d’abord votre CV dans l’Éditeur.' };
+  jobTextEl.value = [job.title, job.company && `Entreprise : ${job.company}`, job.description].filter(Boolean).join('\n\n');
+  state.jobText = jobTextEl.value;
+  if (jobUrlEl && job.url) jobUrlEl.value = job.url;
+  save();
+  state.activeTab = 'create';
+  rerender();
+  const prompt = buildRewritePrompt();
+  promptPreviewEl.value = prompt;
+  return prompt;
+};
+
 /* ---------- Démarrage ---------- */
 
 jobTextEl.value = state.jobText;
 rerender();
-
-// Servi par server.js (pas file://) : la boîte de réception de l'extension
-// Chrome (extension/) est joignable, on la charge sans bloquer ni alerter.
-if (location.protocol !== 'file:') loadInbox(true);
-
-// L'extension ouvre l'app sur #offres après un envoi : bascule sur l'onglet
-// « Nouveau CV » et amène le panneau des offres collectées à l'écran.
-if (location.hash === '#offres') {
-  state.activeTab = 'create';
-  rerender();
-  $('#inboxPanel').scrollIntoView({ behavior: 'smooth' });
-}

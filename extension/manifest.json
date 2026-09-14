@@ -1,19 +1,12 @@
 {
   "manifest_version": 3,
   "name": "WTTJ → Éditeur de CV",
-  "version": "1.0.0",
-  "description": "Collecte les offres Welcome to the Jungle affichées (toutes les pages) et les envoie à l'Éditeur de CV local.",
-  "permissions": ["scripting", "storage"],
+  "version": "2.1.0",
+  "description": "Prépare le prompt de recalibrage du CV pour l'offre Welcome to the Jungle ouverte.",
+  "permissions": ["activeTab", "scripting", "clipboardWrite"],
   "host_permissions": [
     "https://www.welcometothejungle.com/*",
     "http://localhost/*"
   ],
-  "background": { "service_worker": "background.js" },
-  "content_scripts": [
-    {
-      "matches": ["https://www.welcometothejungle.com/*"],
-      "js": ["content.js"]
-    }
-  ],
-  "action": { "default_popup": "popup.html", "default_title": "Collecter les offres" }
+  "action": { "default_popup": "popup.html", "default_title": "Copier le prompt de recalibrage du CV" }
 }
