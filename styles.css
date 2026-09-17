@@ -1610,6 +1610,27 @@ main.tab-create #createLeft {
 
 .panel-box .hint { font-size: 13px; color: var(--muted); margin: 0 0 10px; }
 
+/* Zone de dépôt dédiée, sous les boutons Importer/Exporter JSON. */
+.json-dropzone {
+  margin-top: 10px;
+  padding: 14px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+  background: var(--bg);
+  transition: border-color .15s, background .15s, color .15s;
+}
+
+/* Retour visuel pendant le survol d'un fichier .json glissé sur la zone. */
+.json-dropzone.drop-over {
+  border-color: var(--accent);
+  border-style: solid;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
 /* Première étape : un encadré distinct, mais volontairement calme pour ne
    pas concurrencer le CV. Son liseré gauche en fait le point d'entrée du
    parcours sans ajouter une nouvelle fenêtre modale. */
