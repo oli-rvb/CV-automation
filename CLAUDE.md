@@ -35,3 +35,9 @@ Five files, no framework, no modules/bundler — `index.html` loads `pdf.js` the
 ## Backlog / workflow
 
 This project's task backlog lives in Notion (not in this repo), driven via the `ntn` CLI. See project memory for the workflow (branch-per-story, one PR per user story, one commit per sub-task).
+
+## Dev workflow
+
+- Commit after each change validated by a test; push, PR and merge only when asked.
+- The user's app runs on port 3333 (`node server.js`). Agents test on another port (`PORT=3399`) and never stop the user's server.
+- The Chrome extension (`extension/`) is loaded unpacked from the main repo checkout, not from a worktree. After changing `extension/`, remind the user to click ↻ in `chrome://extensions`.
