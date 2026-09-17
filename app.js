@@ -866,7 +866,10 @@ function contactBlock() {
 }
 
 function summaryBlock() {
-  return el('div', { class: 'cv-summary', contenteditable: 'true', 'data-bind': 'summary' }, state.profile.summary);
+  return fillMultiline(
+    el('div', { class: 'cv-summary', contenteditable: 'true', 'data-multiline': '', 'data-bind': 'summary' }),
+    state.profile.summary
+  );
 }
 
 function skillsBlock() {

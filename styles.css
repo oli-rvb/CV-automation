@@ -992,6 +992,7 @@ li.bullet:hover .bullet-controls,
 .cv-summary {
   font-size: var(--fs-summary, 14px);
   margin-top: 12px;
+  white-space: pre-wrap;
 }
 
 /* Un peu plus d'air entre le résumé et le premier titre de section (celui-ci
