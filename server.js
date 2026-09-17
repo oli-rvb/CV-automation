@@ -70,7 +70,11 @@ const CHROME = findChrome();
 
 /* ---------- Composition de la page à imprimer ---------- */
 
-function buildPrintPage(cvHtml) {
+function escapeHtml(s) {
+  return String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+}
+
+function buildPrintPage(cvHtml, title) {
   // fonts.css EN PREMIER, comme dans index.html : il porte le @font-face
   // d'Open Sans en data-URI. Sans lui, Chrome imprimerait la feuille avec la
   // police de repli — retours à la ligne différents de l'écran. Le data-URI
@@ -78,17 +82,22 @@ function buildPrintPage(cvHtml) {
   // où aucun chemin relatif du projet ne résout.
   const fonts = fs.readFileSync(path.join(ROOT, 'fonts.css'), 'utf8');
   const css = fs.readFileSync(path.join(ROOT, 'styles.css'), 'utf8');
+  // Le <title> devient la métadonnée « Title » du PDF imprimé par Chrome —
+  // c'est ce que des lecteurs comme Acrobat affichent dans l'onglet, sinon
+  // ils retombent sur le nom du fichier temporaire (cv.html).
+  const titleTag = `<title>${escapeHtml(title || 'CV')}</title>\n`;
   // Même structure que l'app (main > .sheet) pour que les règles
   // écran ET @media print s'appliquent à l'identique.
   return (
     '<!doctype html>\n<html lang="fr">\n<head>\n<meta charset="utf-8">\n' +
+    titleTag +
     `<style>\n${fonts}\n${css}\n</style>\n</head>\n<body>\n<main>${cvHtml}</main>\n</body>\n</html>\n`
   );
 }
 
 /* ---------- Impression via Chrome headless ---------- */
 
-function printToPdf(cvHtml) {
+function printToPdf(cvHtml, title) {
   return new Promise((resolve, reject) => {
     if (!CHROME) {
       reject(new Error('Aucun navigateur Chromium trouvé (définissez CHROME_PATH).'));
@@ -97,7 +106,7 @@ function printToPdf(cvHtml) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cv-pdf-'));
     const htmlFile = path.join(dir, 'cv.html');
     const pdfFile = path.join(dir, 'cv.pdf');
-    fs.writeFileSync(htmlFile, buildPrintPage(cvHtml));
+    fs.writeFileSync(htmlFile, buildPrintPage(cvHtml, title));
 
     const args = [
       '--headless',
@@ -343,9 +352,9 @@ const server = http.createServer((req, res) => {
     });
     req.on('end', async () => {
       try {
-        const { html } = JSON.parse(body);
+        const { html, title } = JSON.parse(body);
         if (typeof html !== 'string' || !html.trim()) throw new Error('html manquant');
-        const pdf = await printToPdf(html);
+        const pdf = await printToPdf(html, typeof title === 'string' ? title : '');
         res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Length': pdf.length });
         res.end(pdf);
       } catch (err) {

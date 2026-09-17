@@ -1005,7 +1005,7 @@ function buildFile(doc, photo, meta) {
    Point d'entrée
    ============================================================ */
 
-async function generateCvPdf(state) {
+async function generateCvPdf(state, title) {
   const photo = state.profile.photo ? await preparePhoto(state.profile.photo) : null;
   const doc = makeDoc(state);
   // Après l'await : le rendu qui suit est synchrone, LINE reste cohérent.
@@ -1013,7 +1013,7 @@ async function generateCvPdf(state) {
   if (state.template === 'design') renderDesign(doc, state, photo);
   else renderPro(doc, state, photo);
   return buildFile(doc, photo, {
-    title: `CV — ${state.profile.name || 'Sans nom'}`,
+    title: title || `CV — ${state.profile.name || 'Sans nom'}`,
     author: state.profile.name || '',
   });
 }
