@@ -139,8 +139,9 @@ button:disabled {
 /* Annuler / Rétablir : boutons icônes de la barre d'outils, même hauteur que
    leurs voisins texte (Imprimer, Réinitialiser…) mais largeur resserrée
    autour du glyphe, centré. */
-/* Retour arrière / rétablir, à droite de la couleur des titres */
+/* Retour arrière / rétablir, alignés à droite de la barre au-dessus du CV */
 .history-ctl {
+  margin-left: auto; /* calé contre le bord droit de la barre */
   display: flex;
   align-items: center;
   gap: 6px;
