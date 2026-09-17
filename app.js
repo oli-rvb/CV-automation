@@ -866,7 +866,10 @@ function contactBlock() {
 }
 
 function summaryBlock() {
-  return el('div', { class: 'cv-summary', contenteditable: 'true', 'data-bind': 'summary' }, state.profile.summary);
+  return fillMultiline(
+    el('div', { class: 'cv-summary', contenteditable: 'true', 'data-multiline': '', 'data-bind': 'summary' }),
+    state.profile.summary
+  );
 }
 
 function skillsBlock() {
@@ -890,6 +893,12 @@ function multilineField(className, field, text) {
     el('div', { class: className, contenteditable: 'true', 'data-multiline': '', 'data-gfield': field }),
     text
   );
+}
+
+// Champs où Maj+Entrée (les champs multilignes : simplement Entrée) ajoute une
+// ligne dans le champ lui-même plutôt que de valider/quitter.
+function isLineBreakField(t) {
+  return t.hasAttribute('data-multiline') || t.classList.contains('bullet-text');
 }
 
 // Sous-groupes de compétences : intitulé en gras + texte libre multiligne,
@@ -1026,7 +1035,10 @@ function bulletsUl(bullets, ownerId) {
         { class: 'bullet' + (badge ? ' moved' : ''), 'data-bullet-id': b.id },
         el('span', { class: 'drag-handle', title: 'Glisser pour réordonner', text: '⠿' }),
         el('span', { class: 'bullet-dot', text: '•' }),
-        el('div', { class: 'bullet-text', contenteditable: 'true', 'data-bullet-id': b.id }, b.text),
+        fillMultiline(
+          el('div', { class: 'bullet-text', contenteditable: 'true', 'data-bullet-id': b.id }),
+          b.text
+        ),
         badge && el('span', { class: 'bullet-badges' }, badge),
         matchBadge(b.text, ownerId),
         el(
@@ -1070,9 +1082,8 @@ function experiencesBlock() {
       el('span', { class: 'exp-period', contenteditable: 'true', 'data-field': 'period' }, exp.period)
     );
 
-    const companyDesc = el(
-      'div',
-      { class: 'exp-company-desc', contenteditable: 'true', 'data-field': 'companyDescription' },
+    const companyDesc = fillMultiline(
+      el('div', { class: 'exp-company-desc', contenteditable: 'true', 'data-multiline': '', 'data-field': 'companyDescription' }),
       exp.companyDescription
     );
 
@@ -1861,7 +1872,7 @@ cvEl.addEventListener('input', (e) => {
   if (!t) return;
   // Les champs multilignes gardent leurs sauts de ligne : innerText les rend,
   // textContent les avalerait (les <br> n'ont pas de texte).
-  const text = t.hasAttribute('data-multiline') ? t.innerText.replace(/\n$/, '') : t.textContent;
+  const text = isLineBreakField(t) ? t.innerText.replace(/\n$/, '') : t.textContent;
 
   if (t.dataset.gfield === 'interest') {
     const row = t.closest('[data-interest-id]');
@@ -1904,20 +1915,22 @@ cvEl.addEventListener('paste', (e) => {
   e.preventDefault();
   // Un champ multiligne garde les retours à la ligne du presse-papiers.
   const raw = e.clipboardData.getData('text/plain');
-  const text = t.hasAttribute('data-multiline')
+  const text = isLineBreakField(t)
     ? raw.replace(/\r\n?/g, '\n').replace(/[^\S\n]+/g, ' ')
     : raw.replace(/\s+/g, ' ');
   document.execCommand('insertText', false, text);
 });
 
-// Entrée dans un tiret = nouveau tiret ; ailleurs, pas de saut de ligne
+// Entrée dans un tiret = nouveau tiret (Maj+Entrée : saut de ligne dans le
+// tiret courant) ; ailleurs, pas de saut de ligne.
 cvEl.addEventListener('keydown', (e) => {
   if (e.key !== 'Enter') return;
   const t = e.target.closest('[contenteditable]');
   if (!t) return;
   e.preventDefault();
-  if (t.hasAttribute('data-multiline')) {
-    // Champ multiligne : Entrée ajoute une ligne dans le champ lui-même.
+  if (t.hasAttribute('data-multiline') || (e.shiftKey && t.classList.contains('bullet-text'))) {
+    // Champ multiligne (ou Maj+Entrée dans un tiret) : Entrée ajoute une
+    // ligne dans le champ lui-même.
     document.execCommand('insertLineBreak');
     t.dispatchEvent(new Event('input', { bubbles: true }));
   } else if (t.classList.contains('bullet-text')) {

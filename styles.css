@@ -992,6 +992,7 @@ li.bullet:hover .bullet-controls,
 .cv-summary {
   font-size: var(--fs-summary, 14px);
   margin-top: 12px;
+  white-space: pre-wrap;
 }
 
 /* Un peu plus d'air entre le résumé et le premier titre de section (celui-ci
@@ -1146,7 +1147,7 @@ li.bullet:hover .bullet-controls,
 
 /* Description de l'entreprise : petite et grise, sous l'en-tête. Taille
    réglable comme les autres (section « Taille des textes »). */
-.exp-company-desc { color: var(--muted); font-size: var(--fs-company-desc, 7px); margin-top: 2px; }
+.exp-company-desc { color: var(--muted); font-size: var(--fs-company-desc, 7px); margin-top: 2px; white-space: pre-wrap; }
 
 /* z-index indispensable : .exp-head est positionné (voir « Ordre de lecture du
    PDF ») et vient après dans le DOM — à z-index égal il se peindrait par-dessus
@@ -1204,6 +1205,7 @@ li.bullet:hover .drag-handle { color: var(--muted); }
   flex: 1;
   font-size: var(--fs-bullet, 14px);
   min-width: 0;
+  white-space: pre-wrap;
 }
 
 /* Superposés à la fin de la ligne, jamais insérés dedans (sinon .bullet-text

@@ -584,11 +584,15 @@ function bulletItem(col, text, { size, color, dotColor }) {
   if (!text) return;
   const indent = 12;
   const lineH = size * LINE;
-  const lines = wrapSegments([{ text, bold: false, size, color }], col.width - indent, col.width - indent);
   col.ensure(2 * PX + lineH); // au moins la première ligne avec la puce
   col.y += 2 * PX;
   opText(col.page(), col.x + 2, col.y + size * 0.8, '•', { size, color: dotColor });
-  drawLines(col, lines, { lineH, indent });
+  // Les sauts de ligne manuels (Maj+Entrée) sont dessinés paragraphe par
+  // paragraphe : wrapSegments traiterait sinon un `\n` comme un simple espace.
+  for (const para of text.split('\n')) {
+    const lines = wrapSegments([{ text: para, bold: false, size, color }], col.width - indent, col.width - indent);
+    drawLines(col, lines, { lineH, indent });
+  }
   col.y += 2 * PX;
 }
 
@@ -680,9 +684,12 @@ function experienceBlock(col, exp, palette, sizes = {}) {
   const desc = (exp.companyDescription || '').trim();
   if (desc) {
     const descSize = descPx * PX;
-    const descLines = wrapSegments([{ text: desc, bold: false, size: descSize, color: palette.muted }], col.width, col.width);
-    col.ensure(descLines.length * descSize * LINE);
-    drawLines(col, descLines, { lineH: descSize * LINE });
+    // Sauts de ligne manuels (Maj+Entrée) : un wrapSegments par paragraphe,
+    // sinon `\n` serait traité comme un simple espace.
+    for (const para of desc.split('\n')) {
+      const descLines = wrapSegments([{ text: para, bold: false, size: descSize, color: palette.muted }], col.width, col.width);
+      drawLines(col, descLines, { lineH: descSize * LINE });
+    }
     col.y += 4.5;
   }
 
@@ -749,7 +756,9 @@ function renderPro(doc, state, photo) {
   }
 
   col.y += 12 * PX;
-  paragraph(col, state.profile.summary, { size: f.summary * PX, color: C.ink });
+  for (const line of (state.profile.summary || '').split('\n')) {
+    paragraph(col, line, { size: f.summary * PX, color: C.ink });
+  }
   col.y += 10 * PX; // air supplémentaire avant le premier titre de section (cf. styles.css)
 
   const st = { size: f.section * PX, color: titleC, ruleColor: titleC, mt: 26 * PX, mb: 10 * PX };
@@ -809,7 +818,9 @@ function renderDesign(doc, state, photo) {
 
   paragraph(main, state.profile.title, { bold: true, size: fm.title * PX, color: titleC });
   main.y += 8 * PX;
-  paragraph(main, state.profile.summary, { size: fm.summary * PX, color: C.ink });
+  for (const line of (state.profile.summary || '').split('\n')) {
+    paragraph(main, line, { size: fm.summary * PX, color: C.ink });
+  }
   main.y += 10 * PX; // air supplémentaire avant le premier titre de section (cf. styles.css)
 
   if (state.experiences.length) {
