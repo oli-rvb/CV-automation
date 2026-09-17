@@ -136,6 +136,16 @@ button:disabled {
   filter: none;
 }
 
+/* Annuler / Rétablir : boutons icônes de la barre d'outils, même hauteur que
+   leurs voisins texte (Imprimer, Réinitialiser…) mais largeur resserrée
+   autour du glyphe, centré. */
+button.icon-btn-history {
+  padding: 7px 10px;
+  font-size: 17px;
+  line-height: 1;
+  font-family: Helvetica, Arial, sans-serif; /* flèches plus nettes que dans Open Sans */
+}
+
 /* Barre au-dessus du CV : modèle Pro / Design + couleur du bandeau */
 
 #cvTools {

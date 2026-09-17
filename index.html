@@ -19,6 +19,8 @@
     <div class="actions">
       <button id="printBtn" class="ghost" type="button" title="Impression via le navigateur">Imprimer</button>
       <button id="pdfBtn" type="button" title="PDF vectoriel : texte net et lisible par les ATS">Télécharger PDF</button>
+      <button id="undoBtn" class="ghost icon-btn-history" type="button" disabled title="Annuler (Cmd/Ctrl+Z)" aria-label="Annuler (Cmd/Ctrl+Z)">↶</button>
+      <button id="redoBtn" class="ghost icon-btn-history" type="button" disabled title="Rétablir (Cmd/Ctrl+Shift+Z)" aria-label="Rétablir (Cmd/Ctrl+Shift+Z)">↷</button>
       <button id="resetBtn" class="ghost danger" type="button">Réinitialiser</button>
     </div>
   </header>
@@ -289,7 +291,6 @@
         <div id="fontControls"></div>
         <div class="panel-actions">
           <button id="fontResetBtn" class="ghost" type="button">Tailles par défaut</button>
-          <button id="fontUndoBtn" class="ghost" type="button" disabled title="Annuler la dernière taille modifiée (Cmd/Ctrl+Z)" aria-label="Annuler la dernière taille modifiée (Cmd/Ctrl+Z)">Annuler</button>
         </div>
       </section>
     </aside>

@@ -387,12 +387,19 @@ function loadState() {
   }
 }
 
-function save() {
+// `grouped` : cette sauvegarde fait partie d'une interaction continue (frappe
+// dans un champ, glissement d'un curseur) et doit fusionner avec la
+// précédente dans l'historique annuler/rétablir plutôt que créer sa propre
+// étape — voir recordHistory() plus bas. Quasiment toutes les mutations du
+// CV passent par save() (directement ou via rerender()), ce qui en fait le
+// point d'accroche unique de l'historique.
+function save(grouped = false) {
   try {
     localStorage.setItem(LS_KEY, JSON.stringify(state));
   } catch {
     /* stockage indisponible : l'édition reste possible dans la page */
   }
+  recordHistory(grouped);
   updateSaveIndicator();
 }
 
@@ -1475,7 +1482,11 @@ function setSideColor(hex) {
   // Les titres suivent le bandeau dans les modes « bandeau » et « complément ».
   applyTitleColor();
   updateSideColorControl();
-  save();
+  // Appelé aussi bien pour un clic sur une pastille (ponctuel) que pendant un
+  // glissement dans le sélecteur libre (continu) : regrouper est correct dans
+  // les deux cas (voir recordHistory), l'étape se clôt d'elle-même en moins
+  // d'1 s ou à la première action suivante.
+  save(true);
 }
 
 /* Mémorise une couleur en tête des « dernières utilisées » (5 au plus).
@@ -1542,7 +1553,7 @@ titleColorModeEl.addEventListener('change', () => {
 titleColorInputEl.addEventListener('input', () => {
   state.titleColor = normalizeHexColor(titleColorInputEl.value, TITLE_COLOR_DEFAULT);
   applyTitleColor();
-  save();
+  save(true); // sélecteur de couleur natif : peut défiler en continu
 });
 
 /* ---------- Contrôle des tailles de police ----------
@@ -1601,59 +1612,132 @@ function renderFontControls() {
     }
     fontControlsEl.append(group);
   }
-  refreshUndoButtonState();
 }
 
-/* ---------- Retour arrière (Cmd/Ctrl+Z) sur les tailles de texte ---------- */
+/* ============================================================
+   Historique global (Annuler / Rétablir)
+   ============================================================
+   Une pile unique d'instantanés du CV (snapshotCV()) couvre TOUTE
+   modification : texte édité, ajout/suppression de section/tiret, glisser-
+   déposer, photo, lien, modèle, couleurs, tailles de texte, réinitialiser,
+   import JSON, remplissage par l'IA, chargement d'un CV sauvegardé... Comme
+   quasiment toutes ces mutations passent par save() (directement ou via
+   rerender()), c'est là qu'on accroche l'historique plutôt que de dupliquer
+   la logique à chaque point d'appel.
 
-// Une entrée par interaction complète (glissement du curseur du début à la
-// fin, ou frappe jusqu'à la validation) — pas par évènement `input`, sinon
-// Cmd+Z ne reviendrait que d'un demi-pixel à la fois. `fontSizePending`
-// mémorise l'état AVANT la première frappe/le premier déplacement de
-// l'interaction en cours : il faut le capturer à ce moment précis, car
-// l'écouteur `input` met déjà `state.fontSizes` à jour en direct pendant
-// l'interaction (comparer à l'état au moment de `change` serait trop tard,
-// il aurait déjà été écrasé).
-const fontSizeHistory = [];
-const FONT_SIZE_HISTORY_MAX = 50;
-let fontSizePending = null; // { tpl, prev } | null
+   Une frappe continue dans un champ (ou un glissement de curseur) ne doit
+   compter que pour UNE étape : `historyPending` mémorise l'instantané
+   d'AVANT le début de l'interaction ; `lastSnapshot` suit l'état courant à
+   chaque save() « groupé ». L'étape n'est réellement empilée qu'à sa clôture
+   (blur du champ, ~1 s d'inactivité, ou toute action qui suit). */
 
-function snapshotFontSize(tpl) {
-  return { tpl, prev: JSON.parse(JSON.stringify(state.fontSizes[tpl])) };
+const HISTORY_MAX = 100;
+const undoStack = [];
+const redoStack = [];
+let lastSnapshot = snapshotCV(); // dernier instantané reflété par undo/redoStack
+let historyPending = null; // instantané d'avant l'interaction continue en cours, ou null
+let historyTypingTimer = null;
+
+function refreshHistoryButtons() {
+  $('#undoBtn').disabled = undoStack.length === 0 && !historyPending;
+  $('#redoBtn').disabled = redoStack.length === 0;
 }
 
-// Reflète l'état de la pile sur le bouton « Annuler » visible : grisé dès
-// qu'il n'y a plus rien à annuler.
-function refreshUndoButtonState() {
-  $('#fontUndoBtn').disabled = fontSizeHistory.length === 0;
-}
-
-function pushFontSizeHistory(entry) {
-  fontSizeHistory.push(entry);
-  if (fontSizeHistory.length > FONT_SIZE_HISTORY_MAX) fontSizeHistory.shift();
-  refreshUndoButtonState();
-}
-
-function undoFontSize() {
-  const entry = fontSizeHistory.pop();
-  if (!entry) return false;
-  state.fontSizes[entry.tpl] = entry.prev;
-  if (entry.tpl === fontTemplate()) {
-    applyFontSizes();
-    renderFontControls();
+// Clôt l'interaction continue en cours (frappe, glissement) : empile
+// l'instantané capturé à son début, sauf si rien n'a finalement changé.
+// Ne touche pas `lastSnapshot` : les save() « groupés » l'ont déjà tenu à
+// jour tout du long, il n'y a rien à en déduire ici.
+function commitHistoryStep() {
+  clearTimeout(historyTypingTimer);
+  historyTypingTimer = null;
+  if (!historyPending) return;
+  const prev = historyPending;
+  historyPending = null;
+  if (JSON.stringify(prev) !== JSON.stringify(lastSnapshot)) {
+    undoStack.push(prev);
+    if (undoStack.length > HISTORY_MAX) undoStack.shift();
   }
-  save();
-  refreshUndoButtonState();
+  refreshHistoryButtons();
+}
+
+// Appelé par save() à chaque mutation du CV.
+function recordHistory(grouped) {
+  const current = snapshotCV();
+  if (grouped) {
+    if (JSON.stringify(current) === JSON.stringify(lastSnapshot)) return; // rien n'a changé
+    if (!historyPending) historyPending = lastSnapshot;
+    lastSnapshot = current;
+    redoStack.length = 0;
+    clearTimeout(historyTypingTimer);
+    historyTypingTimer = setTimeout(commitHistoryStep, 1000);
+    refreshHistoryButtons();
+    return;
+  }
+  // Mutation ponctuelle (bouton, sélection, glisser-déposer…) : clôt d'abord
+  // une éventuelle interaction continue en cours comme étape séparée, puis
+  // empile l'état d'avant CETTE mutation-ci si le CV a changé.
+  commitHistoryStep();
+  if (JSON.stringify(current) === JSON.stringify(lastSnapshot)) return;
+  undoStack.push(lastSnapshot);
+  if (undoStack.length > HISTORY_MAX) undoStack.shift();
+  redoStack.length = 0;
+  lastSnapshot = current;
+  refreshHistoryButtons();
+}
+
+// Referme l'interaction continue en cours dès que le focus quitte un champ
+// (contenteditable du CV, curseur de taille, sélecteur de couleur…), sans
+// attendre le délai d'inactivité. Sans effet s'il n'y a rien en attente.
+document.addEventListener('focusout', () => commitHistoryStep());
+
+// Restaure un instantané (annuler/rétablir) : remet `state` à jour, comme au
+// chargement d'un CV sauvegardé, puis re-rend. `lastSnapshot` est aligné
+// AVANT rerender()/save() pour que ce save() ne réempile rien.
+function restoreCV(entry) {
+  applyCV(entry);
+  lastSnapshot = snapshotCV();
+  refreshHistoryButtons();
+  rerender();
+}
+
+function undo() {
+  // Une frappe/un glissement en cours devient sa propre étape, qu'on annule
+  // ensuite : Cmd+Z pendant la saisie retire alors tout ce qui vient d'être
+  // tapé d'un coup, comme si l'étape avait déjà été close.
+  commitHistoryStep();
+  const entry = undoStack.pop();
+  if (!entry) return false;
+  redoStack.push(lastSnapshot);
+  if (redoStack.length > HISTORY_MAX) redoStack.shift();
+  restoreCV(entry);
   return true;
 }
 
-// N'intercepte Cmd/Ctrl+Z que s'il reste une taille de texte à annuler :
-// pile vide → l'évènement suit son cours normalement (undo natif du
-// navigateur pour un champ texte en cours d'édition, par exemple).
+function redo() {
+  const entry = redoStack.pop();
+  if (!entry) return false;
+  undoStack.push(lastSnapshot);
+  if (undoStack.length > HISTORY_MAX) undoStack.shift();
+  restoreCV(entry);
+  return true;
+}
+
+// N'intercepte le raccourci que s'il y a effectivement quelque chose à
+// annuler/rétablir : sinon l'évènement suit son cours normalement (undo
+// natif du navigateur dans un champ texte, par exemple).
 document.addEventListener('keydown', (e) => {
-  if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.key.toLowerCase() !== 'z') return;
-  if (undoFontSize()) e.preventDefault();
+  if (!(e.metaKey || e.ctrlKey)) return;
+  const k = e.key.toLowerCase();
+  if (k === 'z' && !e.shiftKey) {
+    if ((undoStack.length || historyPending) && undo()) e.preventDefault();
+  } else if ((k === 'z' && e.shiftKey) || k === 'y') {
+    if (redoStack.length && redo()) e.preventDefault();
+  }
 });
+
+$('#undoBtn').addEventListener('click', () => undo());
+$('#redoBtn').addEventListener('click', () => redo());
+refreshHistoryButtons();
 
 // Curseur et champ chiffré règlent la même taille : celui qu'on ne touche pas
 // suit l'autre. Le curseur ne prend que des valeurs valides ; le champ, lui,
@@ -1674,13 +1758,11 @@ fontControlsEl.addEventListener('input', (e) => {
   const role = fontRole(inp.dataset.zone, inp.dataset.role);
   if (!role) return;
   const tpl = fontTemplate();
-  // Capturé une seule fois, avant la première mutation de cette interaction.
-  if (!fontSizePending) fontSizePending = snapshotFontSize(tpl);
   const val = window.cvClampFontSize(inp.value, role.def);
   state.fontSizes[tpl][inp.dataset.zone][role.key] = val;
   syncFontRow(inp, val);
   applyFontSizes();
-  save();
+  save(true); // glissement/frappe en cours : une seule étape d'historique
 });
 
 // À la validation (sortie du champ, flèches) : le champ affiche la valeur
@@ -1696,30 +1778,17 @@ fontControlsEl.addEventListener('change', (e) => {
   inp.value = String(val);
   syncFontRow(inp, val);
   applyFontSizes();
-  save();
-
-  // Interaction terminée : si la valeur a bougé par rapport à l'état capturé
-  // au début, c'est ce point de départ (pas l'état courant, déjà à jour)
-  // qu'il faut empiler pour Cmd/Ctrl+Z.
-  if (fontSizePending) {
-    if (JSON.stringify(fontSizePending.prev) !== JSON.stringify(state.fontSizes[tpl])) {
-      pushFontSizeHistory(fontSizePending);
-    }
-    fontSizePending = null;
-  }
+  save(); // clôt l'interaction en cours (voir recordHistory)
 });
 
 $('#fontResetBtn').addEventListener('click', () => {
   // Seul le modèle affiché est remis à zéro : l'autre garde ses réglages.
   const tpl = fontTemplate();
-  pushFontSizeHistory(snapshotFontSize(tpl));
   state.fontSizes[tpl] = normalizeFontSizes(null)[tpl];
   applyFontSizes();
   renderFontControls();
   save();
 });
-
-$('#fontUndoBtn').addEventListener('click', () => undoFontSize());
 
 /* ---------- Recherche dans l'état ---------- */
 
@@ -1825,7 +1894,7 @@ cvEl.addEventListener('input', (e) => {
     if (owner) owner[t.dataset.field] = text;
     scheduleSuggestions();
   }
-  save();
+  save(true); // frappe en cours : une seule étape d'historique, close au blur
 });
 
 // Coller en texte brut uniquement
@@ -3061,7 +3130,7 @@ $('#clearAnalysisBtn').addEventListener('click', async () => {
 jobTextEl.addEventListener('input', () => {
   // L'analyse ne se relance qu'au clic sur « Analyser », mais on mémorise la saisie
   state.jobText = jobTextEl.value;
-  save();
+  save(true); // frappe en cours : une seule étape d'historique, close au blur
 });
 
 /* ---------- Récupération de l'offre depuis une URL ----------
