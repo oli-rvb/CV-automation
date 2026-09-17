@@ -1082,9 +1082,8 @@ function experiencesBlock() {
       el('span', { class: 'exp-period', contenteditable: 'true', 'data-field': 'period' }, exp.period)
     );
 
-    const companyDesc = el(
-      'div',
-      { class: 'exp-company-desc', contenteditable: 'true', 'data-field': 'companyDescription' },
+    const companyDesc = fillMultiline(
+      el('div', { class: 'exp-company-desc', contenteditable: 'true', 'data-multiline': '', 'data-field': 'companyDescription' }),
       exp.companyDescription
     );
 

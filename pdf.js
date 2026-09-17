@@ -684,9 +684,12 @@ function experienceBlock(col, exp, palette, sizes = {}) {
   const desc = (exp.companyDescription || '').trim();
   if (desc) {
     const descSize = descPx * PX;
-    const descLines = wrapSegments([{ text: desc, bold: false, size: descSize, color: palette.muted }], col.width, col.width);
-    col.ensure(descLines.length * descSize * LINE);
-    drawLines(col, descLines, { lineH: descSize * LINE });
+    // Sauts de ligne manuels (Maj+Entrée) : un wrapSegments par paragraphe,
+    // sinon `\n` serait traité comme un simple espace.
+    for (const para of desc.split('\n')) {
+      const descLines = wrapSegments([{ text: para, bold: false, size: descSize, color: palette.muted }], col.width, col.width);
+      drawLines(col, descLines, { lineH: descSize * LINE });
+    }
     col.y += 4.5;
   }
 
