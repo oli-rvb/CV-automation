@@ -19,8 +19,6 @@
     <div class="actions">
       <button id="printBtn" class="ghost" type="button" title="Impression via le navigateur">Imprimer</button>
       <button id="pdfBtn" type="button" title="PDF vectoriel : texte net et lisible par les ATS">Télécharger PDF</button>
-      <button id="undoBtn" class="ghost icon-btn-history" type="button" disabled title="Annuler (Cmd/Ctrl+Z)" aria-label="Annuler (Cmd/Ctrl+Z)">↶</button>
-      <button id="redoBtn" class="ghost icon-btn-history" type="button" disabled title="Rétablir (Cmd/Ctrl+Shift+Z)" aria-label="Rétablir (Cmd/Ctrl+Shift+Z)">↷</button>
       <button id="resetBtn" class="ghost danger" type="button">Réinitialiser</button>
     </div>
   </header>
@@ -247,6 +245,12 @@
           </select>
           <input type="color" id="titleColorInput"
                  aria-label="Couleur personnalisée des titres" hidden>
+        </div>
+
+        <!-- Retour arrière / rétablir sur toute modification du CV. -->
+        <div class="history-ctl" role="group" aria-label="Historique des modifications">
+          <button id="undoBtn" class="ghost icon-btn-history" type="button" disabled title="Annuler (Cmd/Ctrl+Z)" aria-label="Annuler (Cmd/Ctrl+Z)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
+          <button id="redoBtn" class="ghost icon-btn-history" type="button" disabled title="Rétablir (Cmd/Ctrl+Shift+Z)" aria-label="Rétablir (Cmd/Ctrl+Shift+Z)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg></button>
         </div>
       </div>
 

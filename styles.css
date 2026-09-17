@@ -139,11 +139,30 @@ button:disabled {
 /* Annuler / Rétablir : boutons icônes de la barre d'outils, même hauteur que
    leurs voisins texte (Imprimer, Réinitialiser…) mais largeur resserrée
    autour du glyphe, centré. */
+/* Retour arrière / rétablir, à droite de la couleur des titres */
+.history-ctl {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 button.icon-btn-history {
-  padding: 7px 10px;
-  font-size: 17px;
-  line-height: 1;
-  font-family: Helvetica, Arial, sans-serif; /* flèches plus nettes que dans Open Sans */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px; /* même hauteur que le menu « Titres » voisin */
+  padding: 0;
+}
+
+button.icon-btn-history svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 /* Barre au-dessus du CV : modèle Pro / Design + couleur du bandeau */
