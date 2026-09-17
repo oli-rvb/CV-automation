@@ -3337,11 +3337,18 @@ $('#printBtn').addEventListener('click', () => window.print());
 //    fidèle mais avec de possibles écarts de coupure de ligne.
 const PDF_ENDPOINT = location.protocol === 'file:' ? 'http://localhost:3333/pdf' : '/pdf';
 
-async function backendPdf() {
+// Titre à afficher dans les métadonnées du PDF (onglet Acrobat, etc.) : le nom
+// de la version sauvegardée actuellement chargée, sinon le nom du profil.
+function currentCvTitle() {
+  const active = state.activeVersionId && state.versions.find((v) => v.id === state.activeVersionId);
+  return (active && active.name) || state.profile.name || 'CV';
+}
+
+async function backendPdf(title) {
   const res = await fetch(PDF_ENDPOINT, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ html: cvEl.outerHTML }),
+    body: JSON.stringify({ html: cvEl.outerHTML, title }),
   });
   if (!res.ok) throw new Error(`backend PDF : HTTP ${res.status}`);
   const blob = await res.blob();
@@ -3354,9 +3361,10 @@ $('#pdfBtn').addEventListener('click', async () => {
   const label = btn.textContent;
   btn.textContent = 'Génération…';
   try {
+    const title = currentCvTitle();
     let blob;
     try {
-      blob = await backendPdf();
+      blob = await backendPdf(title);
     } catch (err) {
       console.info('Backend PDF indisponible, génération côté client.', err);
       // Même ordre de tirets que la feuille affichée : celui de la
@@ -3364,7 +3372,7 @@ $('#pdfBtn').addEventListener('click', async () => {
       blob = await generateCvPdf({
         ...state,
         experiences: state.experiences.map((e) => ({ ...e, bullets: displayBullets(e) })),
-      });
+      }, title);
     }
     const name = (state.profile.name || 'CV').trim().replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ');
     const a = el('a', { href: URL.createObjectURL(blob), download: `CV - ${name}.pdf` });
