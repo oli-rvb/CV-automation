@@ -136,6 +136,36 @@ button:disabled {
   filter: none;
 }
 
+/* Annuler / Rétablir : boutons icônes de la barre d'outils, même hauteur que
+   leurs voisins texte (Imprimer, Réinitialiser…) mais largeur resserrée
+   autour du glyphe, centré. */
+/* Retour arrière / rétablir, alignés à droite de la barre au-dessus du CV */
+.history-ctl {
+  margin-left: auto; /* calé contre le bord droit de la barre */
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+button.icon-btn-history {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px; /* même hauteur que le menu « Titres » voisin */
+  padding: 0;
+}
+
+button.icon-btn-history svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 /* Barre au-dessus du CV : modèle Pro / Design + couleur du bandeau */
 
 #cvTools {
