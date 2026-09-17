@@ -3409,9 +3409,7 @@ $('#exportBtn').addEventListener('click', () => {
 
 $('#importBtn').addEventListener('click', () => $('#importFile').click());
 
-$('#importFile').addEventListener('change', (e) => {
-  const file = e.target.files[0];
-  e.target.value = '';
+function importCvFile(file) {
   if (!file) return;
   const reader = new FileReader();
   reader.onload = () => {
@@ -3436,6 +3434,30 @@ $('#importFile').addEventListener('change', (e) => {
     }
   };
   reader.readAsText(file);
+}
+
+$('#importFile').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  importCvFile(file);
+});
+
+// Glisser-déposer d'un fichier .json directement sur la zone dédiée, sous
+// les boutons Importer/Exporter JSON.
+const jsonDropzoneEl = $('#jsonDropzone');
+['dragenter', 'dragover'].forEach((type) => {
+  jsonDropzoneEl.addEventListener(type, (e) => {
+    e.preventDefault();
+    jsonDropzoneEl.classList.add('drop-over');
+  });
+});
+['dragleave', 'dragend'].forEach((type) => {
+  jsonDropzoneEl.addEventListener(type, () => jsonDropzoneEl.classList.remove('drop-over'));
+});
+jsonDropzoneEl.addEventListener('drop', (e) => {
+  e.preventDefault();
+  jsonDropzoneEl.classList.remove('drop-over');
+  importCvFile(e.dataTransfer.files && e.dataTransfer.files[0]);
 });
 
 // Appelé par extension/popup.js via chrome.scripting.executeScript (world
