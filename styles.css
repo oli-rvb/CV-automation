@@ -1204,6 +1204,7 @@ li.bullet:hover .drag-handle { color: var(--muted); }
   flex: 1;
   font-size: var(--fs-bullet, 14px);
   min-width: 0;
+  white-space: pre-wrap;
 }
 
 /* Superposés à la fin de la ligne, jamais insérés dedans (sinon .bullet-text

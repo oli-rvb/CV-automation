@@ -584,11 +584,15 @@ function bulletItem(col, text, { size, color, dotColor }) {
   if (!text) return;
   const indent = 12;
   const lineH = size * LINE;
-  const lines = wrapSegments([{ text, bold: false, size, color }], col.width - indent, col.width - indent);
   col.ensure(2 * PX + lineH); // au moins la première ligne avec la puce
   col.y += 2 * PX;
   opText(col.page(), col.x + 2, col.y + size * 0.8, '•', { size, color: dotColor });
-  drawLines(col, lines, { lineH, indent });
+  // Les sauts de ligne manuels (Maj+Entrée) sont dessinés paragraphe par
+  // paragraphe : wrapSegments traiterait sinon un `\n` comme un simple espace.
+  for (const para of text.split('\n')) {
+    const lines = wrapSegments([{ text: para, bold: false, size, color }], col.width - indent, col.width - indent);
+    drawLines(col, lines, { lineH, indent });
+  }
   col.y += 2 * PX;
 }
 
