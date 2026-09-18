@@ -2705,7 +2705,9 @@ versionListEl.addEventListener('click', async (e) => {
       break;
     }
     case 'overwrite': {
-      if (!(await customConfirm(
+      // Pas de confirmation quand on est déjà sur cette version : on
+      // enregistre simplement les modifications en cours dans celle-ci.
+      if (v.id !== state.activeVersionId && !(await customConfirm(
         `Remplacer le contenu de la version « ${v.name} » par le CV actuel ?`,
         { confirmLabel: 'Sauvegarder' }
       ))) return;
