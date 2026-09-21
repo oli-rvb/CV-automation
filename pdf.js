@@ -265,60 +265,63 @@ function cvFontSizes(sizes, template) {
    La police de l'écran (fonts.css) est un WOFF2 variable : le navigateur
    ne permet pas d'en relire les octets, et le décoder à la main
    (Brotli + glyf transformé) coûterait bien plus qu'il ne rapporte. On
-   embarque donc ici les deux instances statiques dont le CV a besoin
-   (400 et 700), au format TrueType, avec le même jeu de glyphes latin que
-   fonts.css (le français y est complet). Chacune est un flux zlib en
-   base64, écrit tel quel dans le PDF (/FlateDecode).
+   embarque donc ici les trois instances statiques dont le CV a besoin
+   (400 pour le texte, 600 pour le titre et les intitulés de compétences,
+   700 pour le nom, les postes et les titres de section), au format
+   TrueType, avec le même jeu de glyphes latin que fonts.css (le français y
+   est complet). Chacune est un flux zlib en base64, écrit tel quel dans le
+   PDF (/FlateDecode).
 
-   Recette pour les régénérer depuis le WOFF2 de fonts.css (fontTools) :
-   instantiateVariableFont(font, {'wght': 400 | 700}), ne garder que les
-   tables head hhea maxp hmtx cmap loca glyf, enregistrer en TTF, puis
-   zlib.compress. GLYPH_TABLE en est extrait :
-   [point de code, identifiant de glyphe, largeur 400, largeur 700], en
-   millièmes de cadratin. Les deux instances partagent les mêmes
-   identifiants de glyphe.
+   Recette pour les régénérer depuis le WOFF2 de fonts.css (fontTools,
+   avec brotli) : ouvrir le WOFF2, `flavor = None`,
+   instantiateVariableFont(font, {'wght': 400 | 600 | 700}), ne garder que
+   les tables head hhea maxp OS/2 hmtx cmap loca glyf name post,
+   enregistrer en TTF, puis zlib.compress. GLYPH_TABLE en est extrait :
+   [point de code, identifiant de glyphe, largeur 400, largeur 600,
+   largeur 700], en millièmes de cadratin (advance / 2048 × 1000). Les trois
+   instances partagent les mêmes identifiants de glyphe.
    ============================================================ */
 
 const GLYPH_TABLE = [
-  [32,3,260,260], [33,4,264,286], [34,5,398,472], [35,6,646,646],
-  [36,7,572,572], [37,8,827,901], [38,9,729,750], [39,10,219,266], [40,11,295,339], [41,12,295,339],
-  [42,13,551,545], [43,14,572,572], [44,15,259,285], [45,16,322,322], [46,17,263,285], [47,18,367,413],
-  [48,19,572,572], [49,20,572,572], [50,21,572,572], [51,22,572,572], [52,23,572,572], [53,24,572,572],
-  [54,25,572,572], [55,26,572,572], [56,27,572,572], [57,28,572,572], [58,29,263,285], [59,30,263,285],
-  [60,31,572,572], [61,32,572,572], [62,33,572,572], [63,34,432,477], [64,35,896,897], [65,36,632,690],
-  [66,37,646,672], [67,38,630,637], [68,39,726,740], [69,40,556,560], [70,41,516,549], [71,42,727,724],
-  [72,43,737,765], [73,44,279,331], [74,45,269,331], [75,46,612,664], [76,47,522,565], [77,48,899,943],
-  [78,49,753,813], [79,50,778,796], [80,51,602,628], [81,52,778,796], [82,53,617,660], [83,54,548,551],
-  [84,55,551,579], [85,56,729,756], [86,57,596,650], [87,58,923,967], [88,59,578,667], [89,60,559,624],
-  [90,61,572,579], [91,62,327,331], [92,63,367,413], [93,64,327,331], [94,65,572,572], [95,66,438,411],
-  [96,67,277,362], [97,68,556,604], [98,69,612,633], [99,70,479,514], [100,71,612,633], [101,72,562,591],
-  [102,73,336,387], [103,74,543,565], [104,75,613,657], [105,76,252,305], [106,77,252,305], [107,78,525,620],
-  [108,79,252,305], [109,80,926,982], [110,81,613,657], [111,82,602,619], [112,83,612,633], [113,84,612,633],
-  [114,85,409,454], [115,86,477,497], [116,87,356,434], [117,88,613,657], [118,89,500,569], [119,90,775,856],
-  [120,91,523,578], [121,92,501,569], [122,93,469,488], [123,94,375,394], [124,95,549,551], [125,96,375,394],
-  [126,97,572,572], [160,98,260,260], [161,99,264,286], [162,100,572,572], [163,101,572,572], [164,102,572,572],
-  [165,103,572,572], [166,104,549,551], [167,105,514,486], [168,106,580,607], [169,107,832,832], [170,108,353,383],
-  [171,109,496,615], [172,110,572,572], [173,111,322,322], [174,112,832,832], [175,113,500,500], [176,114,428,428],
-  [177,115,572,572], [178,116,348,379], [179,117,348,379], [180,118,277,362], [181,119,618,660], [182,120,655,655],
-  [183,121,263,285], [184,122,222,205], [185,123,348,379], [186,124,374,388], [187,125,496,615], [188,126,740,830],
-  [189,127,768,874], [190,128,778,845], [191,129,432,477], [192,130,632,690], [193,131,632,690], [194,132,632,690],
-  [195,133,632,690], [196,134,632,690], [197,135,632,690], [198,136,868,952], [199,137,630,637], [200,138,556,560],
-  [201,139,556,560], [202,140,556,560], [203,141,556,560], [204,142,279,331], [205,143,279,331], [206,144,279,331],
-  [207,145,279,331], [208,146,726,740], [209,147,753,813], [210,148,778,796], [211,149,778,796], [212,150,778,796],
-  [213,151,778,796], [214,152,778,796], [215,153,572,572], [216,154,778,796], [217,155,729,756], [218,156,729,756],
-  [219,157,729,756], [220,158,729,756], [221,159,559,624], [222,160,602,628], [223,161,623,711], [224,162,556,604],
-  [225,163,556,604], [226,164,556,604], [227,165,556,604], [228,166,556,604], [229,167,556,604], [230,168,862,917],
-  [231,169,479,514], [232,170,562,591], [233,171,562,591], [234,172,562,591], [235,173,562,591], [236,174,252,305],
-  [237,175,252,305], [238,176,252,305], [239,177,252,305], [240,178,600,619], [241,179,613,657], [242,180,602,619],
-  [243,181,602,619], [244,182,602,619], [245,183,602,619], [246,184,602,619], [247,185,572,572], [248,186,602,619],
-  [249,187,613,657], [250,188,613,657], [251,189,613,657], [252,190,613,657], [253,191,501,569], [254,192,612,633],
-  [255,193,501,569], [305,241,252,305], [338,196,925,973], [339,197,948,978], [700,230,169,217], [710,198,409,504],
-  [730,201,298,325], [732,202,442,485], [768,243,0,0], [769,244,0,0], [771,245,0,0], [772,246,0,0],
-  [776,247,0,0], [777,232,0,0], [803,248,0,0], [8194,225,500,500], [8201,226,166,166], [8203,227,0,0],
-  [8211,203,500,500], [8212,204,1000,1000], [8216,205,169,217], [8217,206,169,217], [8218,207,245,285], [8220,208,349,445],
-  [8221,209,349,445], [8222,210,409,513], [8226,211,376,376], [8230,212,778,855], [8242,213,230,303], [8243,214,403,524],
-  [8249,215,300,368], [8250,216,300,368], [8260,217,128,130], [8364,218,572,572], [8482,219,764,773], [8722,220,572,572],
-  [8725,279,367,413], [65279,228,0,0], [65533,229,1000,1000],
+  [32,3,260,260,260], [33,4,264,275,286], [34,5,398,436,472], [35,6,646,646,646], [36,7,572,572,572], [37,8,827,864,901],
+  [38,9,729,739,750], [39,10,219,243,266], [40,11,295,317,339], [41,12,295,317,339], [42,13,551,548,545], [43,14,572,572,572],
+  [44,15,259,272,285], [45,16,322,322,322], [46,17,263,274,285], [47,18,367,390,413], [48,19,572,572,572], [49,20,572,572,572],
+  [50,21,572,572,572], [51,22,572,572,572], [52,23,572,572,572], [53,24,572,572,572], [54,25,572,572,572], [55,26,572,572,572],
+  [56,27,572,572,572], [57,28,572,572,572], [58,29,263,274,285], [59,30,263,274,285], [60,31,572,572,572], [61,32,572,572,572],
+  [62,33,572,572,572], [63,34,432,455,477], [64,35,896,897,897], [65,36,632,661,690], [66,37,646,659,672], [67,38,630,634,637],
+  [68,39,726,733,740], [69,40,556,558,560], [70,41,516,533,549], [71,42,727,726,724], [72,43,737,751,765], [73,44,279,305,331],
+  [74,45,269,300,331], [75,46,612,638,664], [76,47,522,543,565], [77,48,899,921,943], [78,49,753,783,813], [79,50,778,787,796],
+  [80,51,602,615,628], [81,52,778,787,796], [82,53,617,639,660], [83,54,548,550,551], [84,55,551,565,579], [85,56,729,743,756],
+  [86,57,596,623,650], [87,58,923,945,967], [88,59,578,623,667], [89,60,559,592,624], [90,61,572,576,579], [91,62,327,329,331],
+  [92,63,367,390,413], [93,64,327,329,331], [94,65,572,572,572], [95,66,438,425,411], [96,67,277,320,362], [97,68,556,580,604],
+  [98,69,612,623,633], [99,70,479,497,514], [100,71,612,623,633], [101,72,562,576,591], [102,73,336,362,387], [103,74,543,554,565],
+  [104,75,613,635,657], [105,76,252,279,305], [106,77,252,279,305], [107,78,525,573,620], [108,79,252,279,305], [109,80,926,954,982],
+  [110,81,613,635,657], [111,82,602,610,619], [112,83,612,623,633], [113,84,612,623,633], [114,85,409,432,454], [115,86,477,487,497],
+  [116,87,356,396,434], [117,88,613,635,657], [118,89,500,534,569], [119,90,775,815,856], [120,91,523,551,578], [121,92,501,535,569],
+  [122,93,469,479,488], [123,94,375,385,394], [124,95,549,550,551], [125,96,375,385,394], [126,97,572,572,572], [160,98,260,260,260],
+  [161,99,264,275,286], [162,100,572,572,572], [163,101,572,572,572], [164,102,572,572,572], [165,103,572,572,572], [166,104,549,550,551],
+  [167,105,514,500,486], [168,106,580,593,607], [169,107,832,832,832], [170,108,353,368,383], [171,109,496,556,615], [172,110,572,572,572],
+  [173,111,322,322,322], [174,112,832,832,832], [175,113,500,500,500], [176,114,428,428,428], [177,115,572,572,572], [178,116,348,363,379],
+  [179,117,348,363,379], [180,118,277,320,362], [181,119,618,639,660], [182,120,655,655,655], [183,121,263,274,285], [184,122,222,213,205],
+  [185,123,348,363,379], [186,124,374,381,388], [187,125,496,556,615], [188,126,740,785,830], [189,127,768,821,874], [190,128,778,812,845],
+  [191,129,432,455,477], [192,130,632,661,690], [193,131,632,661,690], [194,132,632,661,690], [195,133,632,661,690], [196,134,632,661,690],
+  [197,135,632,661,690], [198,136,868,910,952], [199,137,630,634,637], [200,138,556,558,560], [201,139,556,558,560], [202,140,556,558,560],
+  [203,141,556,558,560], [204,142,279,305,331], [205,143,279,305,331], [206,144,279,305,331], [207,145,279,305,331], [208,146,726,733,740],
+  [209,147,753,783,813], [210,148,778,787,796], [211,149,778,787,796], [212,150,778,787,796], [213,151,778,787,796], [214,152,778,787,796],
+  [215,153,572,572,572], [216,154,778,787,796], [217,155,729,743,756], [218,156,729,743,756], [219,157,729,743,756], [220,158,729,743,756],
+  [221,159,559,592,624], [222,160,602,615,628], [223,161,623,667,711], [224,162,556,580,604], [225,163,556,580,604], [226,164,556,580,604],
+  [227,165,556,580,604], [228,166,556,580,604], [229,167,556,580,604], [230,168,862,890,917], [231,169,479,497,514], [232,170,562,576,591],
+  [233,171,562,576,591], [234,172,562,576,591], [235,173,562,576,591], [236,174,252,279,305], [237,175,252,279,305], [238,176,252,279,305],
+  [239,177,252,279,305], [240,178,600,609,619], [241,179,613,635,657], [242,180,602,610,619], [243,181,602,610,619], [244,182,602,610,619],
+  [245,183,602,610,619], [246,184,602,610,619], [247,185,572,572,572], [248,186,602,610,619], [249,187,613,635,657], [250,188,613,635,657],
+  [251,189,613,635,657], [252,190,613,635,657], [253,191,501,535,569], [254,192,612,623,633], [255,193,501,535,569], [305,241,252,279,305],
+  [338,196,925,949,973], [339,197,948,963,978], [700,230,169,193,217], [710,198,409,457,504], [730,201,298,312,325], [732,202,442,464,485],
+  [768,243,0,0,0], [769,244,0,0,0], [771,245,0,0,0], [772,246,0,0,0], [776,247,0,0,0], [777,232,0,0,0],
+  [803,248,0,0,0], [8194,225,500,500,500], [8201,226,166,166,166], [8203,227,0,0,0], [8211,203,500,500,500], [8212,204,1000,1000,1000],
+  [8216,205,169,193,217], [8217,206,169,193,217], [8218,207,245,265,285], [8220,208,349,397,445], [8221,209,349,397,445], [8222,210,409,461,513],
+  [8226,211,376,376,376], [8230,212,778,816,855], [8242,213,230,267,303], [8243,214,403,463,524], [8249,215,300,334,368], [8250,216,300,334,368],
+  [8260,217,128,129,130], [8364,218,572,572,572], [8482,219,764,769,773], [8722,220,572,572,572], [8725,279,367,390,413], [65279,228,0,0,0],
+  [65533,229,1000,1000,1000],
 ];
 
 const FONT_REGULAR = {
@@ -681,6 +684,216 @@ const FONT_BOLD = {
   ].join(''),
 };
 
+const FONT_SEMIBOLD = {
+  name: 'OpenSans-SemiBold', length1: 22168, bbox: [-509, -240, 960, 940], stemV: 118,
+  data: [
+    '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',
+    '+6NK1F27y0vKS4vLy1nLLcvLFtlZjvIPH+PusqOueddYkaFglty1MGjve5TQSiW1kw55Y+XZ99/yGRsWEGzlPlKdkknn1ZXX1tbX',
+    'ltYBn3aClZkMGmDbp9O6TQfi1vAqRgxVt4gZJC/rSOg4lP+wsmbitICHoL0tYY2S4GTXUYcWa72o7TNmjN3Xpr0j5EbqGyCCbYKX',
+    'ul17wKC/K4y7H04JSEsLCExNZTQv9zEavDM4Pi4kJC4+GN7t7WItuXeHIHt9P1DnBuov+oL88ySySPeoUQ/j1w5NDeRxspaDjc4Y',
+    'GSWUMrde2pauHyMqiw/m0CNdbxcBieYDI1jNm3ER100DRmCbKAUDbsqOwF+A1/hmJ/RUO0TZopLnyXEV66ydhx/UsQsAB4cNE4tA',
+    'c3OpEq949KgPLqJAxxV9VopnJV/oZ6rSmue1NRAhWHDq7MOikoVTHw4fE1PY4PfwuHSQrLQtpm33MHP/U0zFhU+0HtTu9umHd2uP',
+    'Uruz6oLG7GnTfs5oVgYnu4wem5Pd17fJ0Kr4P1vlmqJ+Pn0LhLd5GkHuPHE2U3HxU15wl89o7zCaVSBLpBuhbYBH50sS+8rv5Lxm',
+    'c5NpS5h/qbX+3IKUjkdb1/7S2fN1SFtRUVtwcFvx8jmUx/zPulNTuz+bf7x3zpxedKxlb27u3paWXWPfJe3sZMXMCmjHhrfmfXYU',
+    'DCmvfhzR1jqD2tcode+932qudGa1jXE0FRg+uiA1dhrbYVU4WUUpp5Rl1wV2MBXsPfaHM2zvLI/4YW6FbmyYMHytd7r3hdQ3GqVT',
+    '94zN2990+DLpJbSugdZ11hxGMbfEp8x0BlapVpphsjPUP0zpcoHQxHPTjHd+rb7S2bHRx8D2Hda4pDmAal3fOX0GK8afueUpEotB',
+    'l+zOYNRZnLDq70vUipR1Dc5n3n3/2Il3dDKi0/plxFsiU2pARLfto22sxGE2EfVj/B6dkBhLi6BDQsFXQqG7pi1Te5bRvBNSxGly',
+    'McwLSwHTsH6vUm/nVcEJTM/W8R4lvbTyRnfjjqS098Y0lrnXTJywNOnnC2VHRyclrx6Zm+9VV1q8bCQOnbQqVSq74RKQGOYcFDZ8',
+    'WNaU8d1r3RUHpcMD/WFmdXPVNJP23XofUU8FicS+luoZb2Jn1Uox8T9gsoj1ynFRtMXkrRqzekvqChzGvpO128zkkJlNxBtzKc0E',
+    'zeNnh7UHsjIJvo2gdZMYDVlfRelN63puJzPppGSQvKozcdrBvEcTaia2q4j1WBmU7DLq0CLqY+3YGdPH7J1GKfo8zzjARnbNwVm0',
+    '4gYZeIsYv8Xm/v2DlbPIQOQm/uEvNpfRaJvCl/oql4RR81/uI+9aISysZbIIZ0uJxynvdzkpkBH4nFK+RBF8jO9CI3t7a6GBwMre',
+    'zribZdnrvy41tbMUGDCm5uYGuzHeamwrpg0Ysf3g7l/Yq5iiXasaiuzsihqrFSyG1u8EzmxytdPkZgylErXHXRsaXGWTZwdRrkAM',
+    'RkOhH+nQD2POZ7Sw6HM6N7CLsYmWxcbsQtzF/gFLkSfsv6kAyoGdimdrv9deh+UJWRNjmLUS4H0HshPDkc2zgd/U6tv8VGOMvh88',
+    '1AIW2S7Wd7Ssi/uULRV+SbbiSFnEuEixAqicO1yT7uY/I4pqfimuWptmLDwjMPDLDa6ANmJBpxdBG6/4qfSinuOUt/YP2lr7FeW/',
+    'jB50dJOWItz1AA/zOniYZJ0HWsoZRBUnX2JhxGQwWPLxBDOitNT1VSeygmszM2uDs092R47zqautq/UZF8mewZGzy7A6NtP1rIsm',
+    'BgeVd0YcoSSJEewnxU0WJmZTitlbEYlOwAF8h5VQi4TmnA8KLg2+c/iw0PwvsvuSDLT8xNOiUYUTYmC4E6UjQ0jlp6NBKeYMNgyy',
+    '5Ihc3/qa2jqf3MiV/VSdYM8co5wSI7Bn8RQzE4umYuwVkSjBRyI7y9lrsRqXs66ZMeyVstmR3D4oFcb40uVErlHcyBSpeJ9E3wWi',
+    '3BLLvIPalX7TUsKaxieVeoZM8/NtSw1toqZJhsYpzwUEDFVIbEYoz6oCh5JdZHYR3suM5+dajRJ0pG+iBcTnDvmwv2LHbH4TNJvq',
+    '7DEUBGfGxmaSrV6MtoEVeQ5rUznQo4s1/8OtFInlqr5wNPXl6CUBIyKnhxRNj4zqGDduXnxIW8raGSeLy09OE9zYzLgMPT1UOmrP',
+    '9Pa3MlycrjpI6UtXLaY/OnTmt+nmu0jvwW9iRguuc63p+2HwIUttyIkUVHKVkrRHHa05k5watTQxrwYvZBuHx7hQf7z8M2S0z5kz',
+    '1RcE171lxxzcy5ue7Ds+siJC/ME7FpFVWSf3vZh3eAzwZDKmGHtmO7SkJHGVALVCbc0zWm3NO2gia5GCN5siBThw6n8E7U7JHWY3',
+    'd3rVBodU+sxu6XRwlkpmNM32nBQSWus5q2mWo2xHeGVk1MSIiIlRkZXh1Mchk7zmTAGwVNI5eY5nTWhItXfn5JkOUonTjMmd3lUh',
+    'kZVh4RMioysjIioJJ2BlzUwDzSN7J7CC4gwmfOQqKfcBCJWAo/5kqx+wP+Kh7I/32AfYln3wLdv4jJZSK7WGq9avfvZs9fpV1HNE',
+    '6Wm4iNdxM52eE03v+YGN6/kBeFLf+zvdBR5xABrB88TV9XWTBOGNlc7BUqgcqYEphfDI2lq3ayEUzsoJixv5+emqHekxsYuzy3N9',
+    'Jo4pWZ6eGRKb8MsHNbtjfKe0B80pcSkvquhOOx7QMF7mHuPbOsk3mXbJb5O51aW3rxou2+joGah2CQqQueQ2a8o6nBUTU5e85Sp/',
+    '23qYbXqgqzrI1T27pdo7KcZ5kG1mmE/KCOfBo8BzwAoBQ68RPOTjJlF6DqGLfkRAEe3jM2KEj080nhfDl2IEzaFqdWgw/OhyEs0q',
+    '6X0kjIUxYIG8UDRZBfF7Ttz2vZW5mGym0QNb//286hsffiQ84UVx87glzLFZW9nHN2rqbmLzzRuw2QeNNTfYx7M+eL/wdFfkrKBg',
+    'v0LPtnmtc30blb7l5TO/21s4ftcPXV33d48ft/OBZe11bLFlEza/WV97g/116xb28fVaLGFvdf1risShw9b+7bVv7rYVd1rZ7xm/',
+    '56f5sx4cKM7b89OCrh/3FhB/KpimqG7BFfCa+/1OhV40Tm91bDGwOsYz5s+ts3OfkjyiTJ2yelJlcrhyoiogZNnl4okJAcNycwVX',
+    'ZrSy0cXKUK+8hKQ8H4aRBKslQxsc3Nm5AkGkl9ew3CTSdgaqYuT0fSQkM64GW2Mswi58loGLd7H3sd0udgN+F5fqyusoFT6Qx25h',
+    'N+fh/XYDRWIjMWK86eFkHzaKC+gy3gd7vqOHaz/FLYd6e/ti/EIhORmBmH75DYLRNAyFk7eknBKIyOmdviiDXG7xGsEq/iE9KhAb',
+    'v7W+KOLx29c6KzNHp+dWTH+NOLf+Q3DYnp41r7OwdijbiKEj+OvMmOTol7deJ87J/yk53PtCaMkIhSf6dkkY4cs/GROh5TbC2WI6',
+    'mDaC3g1Gdtyqs3+pSUymQn8VeaxkbfaotaWla0aPXlOSmVeQnpmfRwdrVhQWrMzKWlFYuEKzpiBdU1CgSS8AvNAw48f8wM8aDdyc',
+    'PXAao4D+iK0ZOJBx8CCd0n8kAySkorOotcJPuDWjVPXa+JxISq3Vrn+QMNIpQuWXr8oPX100a51fWdo8PI3OmvtdXG6iu7/aw6NF',
+    'FT19clR1feIMgteHHkFtEX7M7fbxEhQPWKI+55Y/VaC31VM2Z92o5NyC/ceSOyNiumJzs/PKGyZUpMUGBRYGjgpfLvx4WllquY2h',
+    'RU1q8xJHyXrn4fERITGzkwOUQW6uDV7B/9iJEoO3J4dpSE2F2WQW5LlukGak2Qmllg4ZYzPsbV0ra704Px78qiberxrwVhW6sICe',
+    'y9p0XG7iqJkUl1jtLKIZ6uHDqtqJbf7Eb12tTnFTeliljfdkTwgjtGM6Zozd2wbOK0ZNbA/TpFujkq1nudnAKFZKmaa55+c5JblP',
+    'O11Wc202FcP2CDv+nkGHGhoW3Dlx4Zs8BCNkDqXGe+lioYjs9lGZ3D6cJd4Bo8WKWy28wk+FWilypPCOxZtcI61tEhz9w3LGZK1x',
+    '90r1Yf+sbDISzhMaOQ/3CjB+K9vEK5H0PQukLxZeJCM9ykzvSIoLJT5NMZSZr/X4MdheeLGnG7+QJI+wMvM0G1HzEdHlcLBQHwqu',
+    'Ap9t+ujgZyArQd+WGQiV+vDwmiXHD64t7NawZiPHZKelZWenM6U7T5/cs/uEZmNddV1dTXX1JMCXDlZH1md1orACYzUW8BkjY9/Y',
+    'SabMnbiMDWbX68ollB2bkYfzcV4em247UCR2JBAhoYrbGTUDG+rCrRwwrdc/WBCq+OMlYrkYEx+FPMByOvVCz+G3KJoa4mc9fjS2',
+    '30ZjthkvON3ezo79maaN1WKyv0olATuS4nh23OpZoT12eBoVo7258DCOODW8zNeuyInMRp5ARTRHhTkp62gAfRyg4X8YcGJsQKee',
+    '7zm8EtM0JlIgpOCnDxLSnCL9lfmqvPDVhbPWK7kx2EeQTYDax2yAIt3ADPTUG5ibCG/AqgqrBNc4+gJRlI6u/zYslfoD+LV8ayLU',
+    'HnmYREZtTO7o/LLGCRNGxgTDqM0KX140e11WSm7h27R3HytzfqJpkwCelcFOkvUuw+IiYRwnqXXjuL0spdzGyKI6tXmp9vJ/spZC',
+    'AewUejmTpztZ0HeKgJ/IrfvD+4S5Kgs93aTmy9Ji47JcGsvHb07Lyv1k5o17QZNSI6NtHmsiQ0aPDonUULMjEmsKAwLSM9RZOSrF',
+    'Qd/wy1vHdEwM9UtI8vfG0Zy3nZDAn+MWJIpmC13JngP4ajHYEJe8Bt6Ez7wWfhl9ogfP6YdfR5f14Gn98EoUqwc36odfw2UIxg95',
+    'IvyYi3hZ8PFnEvzvi0GTyKbw454PWNNTz6iNjEp7jrLX/kBFv1ThtS1c+F8XlsZrqZnE6rSCTfxAcANaceVaaaU8EIFzMW6uF258',
+    'r9FHHFX/hDfhOa+FX0Yb9OBp/fBKZErgvSRkdZyr78Hj723l6p8Gk7NdD96EJnD1TwD8tB78cm8ZVx+Wp1QDh5+HV7Jf4hKAqnQx',
+    'f1OyHxnlxxDPgcT9QeFJWJAwSylBZM1IzfwOJx85wW75i61fvhwfvYx92Q+3YgNs0PAVF/l/SM4AUDXXqPYrbOI1NgebYuMjP9Xp',
+    'uCTo5GTqy8sUx3FUcZFdjlo/nc4sfC28iYp4LfwyztaD5/TDr+MEPXhaP7wSXYFeYzQLmzKDmDXczgPnx/F2lV4+lT2O41vZo+zp',
+    'NjyCPdmO45g1U9lj7IlpOJ49BX9wfDt7EixFa+8RwUcCFrwEcja3LyrNr7f6jyKQ5Rg5PaHA/PrLxdLKGvNLMF2UuupofMGCkoI8',
+    'EtytOJKQO78wv6jH3U171Hty4upzOT2b3NyoFK/G+IGw9bBhC8ctL8HyYyTSO9ytc9yCIvabY7XHY3redpTMfr6r5ngsneEg6fw3',
+    '4TsX6+T4Fajjbx7Hl3/Cmyiz18IvY3c9eFo/vBK90Tf2mDNc/VCdlk/htIrEz+dxWmWj22UlM71SrJRY4b5zhnJmXvCs22++9eTJ',
+    'JWzTq1XMaN4wct2uTbRB3q6ZKez7gmO/P2ZlqqaCjlbOJwEKaFjfhfKn2waWc/+5klP5h9Oqge19nUfJtAePGhUsy04eURpQcqqz',
+    'aFmgLH+iX1G+RJOcVTQsMEsTOK8yeUrcw5nfLVl0p435MakyPSJEau8V4ueZ15RZtypZIn1PrBiakeAZFeOlzB6jjhwbG57sn5I+',
+    'vCD9ZTOzaPFBTfwCwnMujieUAk9idRbhOHodvAlXvhZ+Gc0YgAue6eBCdL1hAPqwH1r5+wCODf04rmFr7tYOwIXnmAoYdWFkXUwi',
+    'UqJ/RKT0T5CrX5nhrPUjjbCYImEr4DDzYt6NWqz1F6xbUrJ7tGZXY96mDg9Vw7qaok151V9uPVs1LmNtYnLGv6padvqG7GfburZ3',
+    'jU9NbR6B/13TZYTv+RWT0NYbHW/t4UJbfsVJCSXKxFUN9WvShaLUihwv+bbhASM1IzV94cnw1hxKuGhxVkcC6Wk5a0kihtDTON4O',
+    '4w6OW1zkjeNigo7rJ14Lb8ITXwu/jGYOwDn+JvD8/QOgvZ+CCl7gaj/loDGzSN25xKbqQZsCSN2NAN3SDyUWOJVg7r0P8GwO81Od',
+    'BT6H+iISrUJHmL38QUJWuk0cbgUn11sRWatddbs5CjywiUWWd/hi3MygB9mnixYkdTzcuuaXzuYvliTUZ9sbSBtS/8q+qcj2xILi',
+    'aSEh04q650hjK4WOTonuC6bX5nwLy7Zz7Iu5zd9uePNuk42vC1O6O37FzGZbfxvtisSllXlL0k8dURelepC+cvEXThszdLPy/n5+',
+    'tXG9zdTx/fPXwpvwgtfCL6MtA3AOf6YO/wo9+EMdHORBjq/D+u4xrO/4ezN2urOZfS4N2ARar0xWe1bKxESlX2Kiny6nWg4dYhuj',
+    '4pJDQpLjoqizkXwpEvCV955k2pgFYLdkxEON0oW/OcarhqD+TTZBvykXDNh3pq3j0db4dvXIWZkxidj2z8RZgXGdIyPje742s8Bz',
+    'HZI9ls+hfIcMYdvsEtyL2oIpj+Ms2+XoWJPTmPzRXGyOh8mcSnKqEj+YGV09nPKyEL97PKTcTXvb3Cx3L+EFF0XgeDdGx+un6HXw',
+    'JrzttfDLxGvog3M8HcPzdDiBcrvpXO1xOiyhqD+SBSs2ez4a0xfG6l8N6qKq5jRvO3Tmglkx6d3OrPYcp0G0kHn0SEQbOeV0ZL33',
+    '29P2WctbqSlrs+sCKQ8SyBo2YrhFRJQ1GyTqZbPdJjj6jPRmv2F/PnN23175yctj9/VRxtE7jqf3XZ1PQU60AdSbo/cqVaudx2sq',
+    '9a3QknElJ1wJHM/WLuFOkT0WOQpu9kXkSDS7/1DiwAlCa70DlmaurvRgVZ0nHao9Qcm031AJPZc96lTfsreXLsUuP1a9Wa7MObkk',
+    'uF6hqBXcNDbmHcYbBsZncNZ33+P0UzeTF1+fvuvZbHMzBpuToymorPeRSMOUw1hXopDXnhBQ9F234E1wOCWQCfUihK4uOissmLzy',
+    '00atrWDriurdOVl7W+Z9PiLqg5kw+Nt+3tp2I3J442JtwpKZQa2FBc1BQa3U3pr5xvgv1USmvOXe+vYdOznbW1xcVNKF8YljvXPK',
+    'CiLHeF24cHra3tGjd7V17M4evBAsbrzuJAs9SijlVuzcSRZuf1S3jZBtl1vsuimgRRUwWbXRtSjHjhxrmeg6VJavVufJhyp0OwqZ',
+    'zB3qlqCL2wMSS1XULe0MQde+fdyTv/E4wUviiWn0ouifq0eOVAempgpe9gfPKW4nw0O4QbczqjfGX9kpCquYNXNCyYJ5Zd5h4V5e',
+    '4WrmdvPECc3N5VUtTSF+vsHBvn4hPEV0ieAZiVVoyMUEzoEgl6pIPJjocabQLWqUn0dGaqJMoTadajKnZFhGSpLcTT2IuRM3Id5Z',
+    '5ikLDJm/TO4hC+R2WfBVej81u+9uTiY9Dl89exbxT0T6T0T9T2zpi7iBO2+LNArgptKUEikGmQdFy3ZbuEmN6YtWidt3JKYd4m//',
+    '9NXmfFbuDDytxiWDueqmjvZWBoJjUH97Usis2dNUMA6i2L/wG2AnRegDpHipBv4BBtqSa49EaAkK0qq8r0BbWrpJje6bmgfFyJ5D',
+    '0fiHQeaBMTLBMUJBPylcAb2CzaqfIsDWRxot4Ejba+kmMzprSoq7TB3trEU6KtMO7Y8bIBfx9NIhHL23OHox6sKfUm0MH/nR2xck',
+    '9qcrui4+rj4mpj4uvi6aelTaGhjYWlrUFhQ0lewQ9d4X0tgMLAAMOqRAZpQnZwnMmNHcf3UYTe+konQ3oMgBr4Jv2QNvCI5pf4de',
+    'wTP6k/47leQILCT8Cza6xx7QfowNoSq8bar9nSTAlYGqqPHcLk3fzrDelrD+NjDUTYe64/rqismS4y9cotu9oe8PbNkAjWw7sHje',
+    'wC0tal7P4XN0St8tLYxCuHnxMgp4JdYu4mwZufUHBV6l+9w8WNBxzgQJQIVT9NDS/elZEXMT4hrGhg3G77GemPysYZst81aVpXWH',
+    'h3YXbP59rcOaLkxRc1bavvGn4LLH8BNOw4Znd4xaNUhuae5qsbpkYYLM7rq9rPXB1tXmcisLV+NVO57OIrohpe4LlgGhltyq0kxp',
+    'YaHkPHG1nIYPCT2SFaZULDejVp1659rRDgE2uDXhigFFa+//i3L6iLoPJuIW5a31xpssC+20/6J8ZBozNpsqmzhR+wYfa2xh/Ojh',
+    'faMKZnkyqZO2zegs6jPhFdBLcsJTzoWduFtTuq0ZEfVZxzlu36WDfYemjdTiNYzoML+nottPuUdaSKRjqD3Ci+RMKdgsUcBA8EVv',
+    'X4i7LEW1sEvNbUKcu44d3TdigY9qrjq7vChXkWifJRdeXHaCES7qXLLRznaTVJGYnpBqauCODxAJAp1HAT+nDVxceSPOYaOpVnY/',
+    'PPl8Vat2EPTOl46mTgg/Bjuldze1P4TFu+1c1n/vk+x6Wuhd/cSTW/aMCk8uP7SsYlny8ESP0Pj9RW5qh4SEpITUOEodFqv0jwwT',
+    'flxTk1IslU/Iql8WUZ8SqAm3UhSkTmpkaTMPtVwVE6Pyi7fG0wOG+YZZW4UqhwWQ2SyLvSjazZ0QknK+kiElIDzu28ATiqz7d8pA',
+    'KcW03jYozdJ7e7J6sumHw2JCRirObg1qqfXKjO1QR4SrYlNi7DJCAzWawNAMoWVPds9oetdLb79wf++soph5a+w87A7JvIK9g+NV',
+    'YXXpIezjhIiIhJSwMGJDdDZSKASbBzLs+Y05x84XruPsHVABdq7/jhsfmmbnj0k1XGCeEhfiLQsbOjTVY2aX4NPU8ea5m0z8hrvL',
+    'DUVzDIzKAHMfJsD8I+cVuYNczgs/+V/movqt2zfs3bZr47746Oj4uKgoOvq3L+/8+uir20+3Llu5Ytmyld3LAZcXHQu4PgJN8+BH',
+    'c/8duf4dUF7W4ZSFvuvvip87JthYhUuq2wMEBnYT0puXpS4pKlo7ZljpoSF+CQpZnH+0JkH4kYFwtaFJ8vRM99ClnbnzU8ce7Cw+',
+    'sSyLDXQNkXhkqbLSY0eSHimAipPQIwduB5Gzta8epOi/JWStd3/M1RWXFq8d4156cK5Too1ViEvt1ACBoV1p2rTl+1ZHauISfRMV',
+    '0jjhJ6MPzCk+uXyUgXCNoUnqzDTXyO7OObuXZo6MzQQqfDR+RHrO4NwphE5gtxM5e51I3Uc6ODNPD56iB2/Rg6cNwEXV/XAFj4e8',
+    'J7je/zzvNc/TyHPdybduRtN/8q374UP4hrmzewQ+5DUn9/RP6/3zkB60+fJX5rb2tlAKs1vMy/WECm0Nc7s3h4M0aR0I5GUPc6fX',
+    'VPAMINdf7iYQ9hJzB0cJugByha3lIFcFDA4SPARIpXYzoVZrxLaylr1tnF+gp4faJeA+BYIbxbYS94m4UaTv7r2/Uufp6UIR+hmh',
+    'nr0AyQLhi+lJAJmqg6gAspar06iD+PQ+pbbQHQCZrIOQ2MtndANAvtZBEnt/o/ZweL7RQbx6n0Bb7QD5RQcBn5c6ytW5q4P4Aj0n',
+    'OMz3dBAFvHWSa/0hgYBm1sJcl8Hd/3AauJGsdyWZHOs17zt8yGSQC8kdp1tDCm8f3fPVRK1J4+Ilk1+5j1x2EVsf6ruQzP7C/oIt',
+    'sQ1/JRmkT44JrtfdSda/kmyG36YYWhwm39GED773ypVkcr8HpYA2uvN3khv+5yvJ4hTcWr04rrUkf8uoGWHz9/EXklv+y4XkDwC3',
+    'BjjgAbg9eTsmft3F3VdvJPddSEZvd719uFV7uelG7riP8ltXxqTvnj19ZsfaEa1TarfG1mt+5O4jrzzsqH8dObwho/8+crzn1vDs',
+    'CyAFWP0xddxtZDHhTF/Mw4wPInG3kal3tWXUhh8uX/6RYigDS5Udu013Dfkd9jzF4DdD85OdFNmuLOFzPfRJ8X++iZy8+LPmmS+P',
+    'vXIT2aNCTf2t/ey/3UReKeJuIhMNyvz/dBNZobuJXOuS8+bvezwmObv+503kMwtGYrZuQSt3Ezmm/H+7ibwM911Fht5bAjcN+LvI',
+    'Dfzs/77uKvJF3VVkGlUD1WncTWQfEqMa8erVY+WrF5MVfTduFPwC1qJPA7n/pFG48e7kjDmZ4DJPvdnWcXNKArmXPKbtmzU5reFx',
+    'UxKdRtaGhbbkh5aETCspaA8vt3z18vGrF5OPBBbH9F1EjoksDqKu2EaNixyTz11JJtwuBLpj///dRY7l7yLXuijyvU98MFY4SHcX',
+    'eQq5i7xgJItrF7a0jeIufvfdRQZ2D5r/dB1/F3n93f67yMviJ/F3kYnVowKp84LrvNVjnxGrRyVRYsFx3upxEBVA1nJ1GnUQHyqE',
+    '2iK4xls9DmIGdT4TnOWtHgdJpIKoPRyeb3QQLyoY2rrKWz0OEgJvHeXq3NVBfIGeExzmezqIAt46ybX+UAfR/Z8G8DjMuf8rZIr2',
+    'k//AxBjq/m8eXyb/z2GvrkxBnXO6Mg0rg5u6MoNkmNKVBcgWO+vKQiTB4bqyKfKHhQdXxgiZ4OW6MkZG+E1dWYCG4J26si3UOaEr',
+    '20P5XV3ZAer/C8WgGlSLWlA9moDKUQVwVIL8QItJksCMU4FKIU+DOqWoGkoaVAh5A5TS4Z0aVAnwYu6tKOB9I9SvATh57sZha4Q3',
+    'G1Aw8oZPObRBakxGRcgL3qpBkzhoDXzKURVgKoNSNdRpAHiNrs0GXYvur6EiE76XA74q+F4PXrcXUO3D7djEQ+00+BvS/1bfO57/',
+    'eOt1fXu1RjZ8I32awFEn0Wvnf8PdxwG+/w3QZ8LnWq6HXhzGKsgJx8rheRqKg7lpNGDok8VoKJVwPNMAdBJ8i4baVQAbyb01CVqp',
+    'At+okcsnAP5MjquEGt3/Ruxdz0XU/uMH20CiMA3awICuCcGrMkCGMGcYIxOYUU1hLT8E5nFzWJtZwjxiBd6zDaxtbJEdrBQdwAN2',
+    'Ak5IwXLIwUtzgblYARJ3h7lnOPjGntArb+CQL7StRP7gpwQgNQpEQcCJEBSKwsBKRqBI0Jlo0MBYNAJ6Ho8SoCdJKBl4kAr9SwMN',
+    'y4D+aEALR4EMRqMxaCzKQbloHBqP8lA+KkCFmEFbUSeajc6iVegnNActRgvQBrQLbYMxMB8L0SzUDSt9A7QIG6K56B30DTZCb6Ld',
+    '6N/oT/QMbUH70DV0BcZrEfBuKfD1BvD5KrqOPoQx+T6sTX4GnfwY/QvdQm+DTJ6gZegz9An6FCTyED1G80D/J6CJwPEq4Pgm4H0d',
+    'SJfoChkLTWgKWJZm1ArjayqahtrQCbQZdaB2NB3NQI/Qr+gUNsYm6AA6iL5Ad9BXYKtuo0PoMDqGjqN30RF0FL2HutAePAgTe3Ee',
+    'ncGD0UL0Gx6CzbA5tgBvSIytsDW2wUOxLbbD9tgBO2IndAFdxBIsRZ9jGZZjZ+yCXbECu2F3PAwPxx7YE3thb+yDfbEfVmJ/rMIB',
+    'WI0DcRAOxiE4FIfhcByBI3EUjsYxOBaPwHE4nhk5KiWFiskUTa6e4OMT5aPLYw1rmkrrG4pr6kt5SLSfLlfqcpUuD2JSSmoamSr4',
+    'I5w0oXpyY6mwobS4prqEGTG5voZU8vNR++tylS5X6/JAPvfx0+VBujya5HEj4uK4PC4ulmvMLzqGqaipmTiI/CksAgqLayYV6VD5',
+    '6PIAXR5El+WXCSDlT+D+VvEolGrD8vpC/k3DwmIglys1Tqgq6cfmo/Tx1+WBJtCvotKqmilctdbS+hqvkuqaSQY11aV8oXEKDzFq',
+    'rKgv5WGGZTWT63WlCU26eg0Tmvl6DaVNpdV8sXRCeUUjX7F6gg6hiGujqkxIWoCM4K8qM+CxV5WJONwkJ5jhOcELz3msUOBxQgUO',
+    'Y1UZT3P15En1HM1cgeAkBR3NpMjTzJcIZq4ewc3V47FzRR4/V5FrgZQ4lvv5qtD/AzzqDCE=',
+  ].join(''),
+};
+
 // Métriques verticales communes (millièmes de cadratin, hhea / OS/2)
 const FONT_ASCENT = 1069;
 const FONT_DESCENT = -293;
@@ -705,13 +918,15 @@ function glyphOf(ch) {
   return GLYPHS.get(base ? base.codePointAt(0) : 63) || GLYPHS.get(63);
 }
 
-const glyphWidth = (ch, bold) => glyphOf(ch).w[bold ? 1 : 0];
+// Colonne de GLYPH_TABLE selon la graisse CSS demandée (400 par défaut)
+const WEIGHT_COL = { 400: 0, 600: 1, 700: 2 };
+const glyphWidth = (ch, weight) => glyphOf(ch).w[WEIGHT_COL[weight] || 0];
 
-function measure(text, bold, size, charSpace = 0) {
+function measure(text, weight, size, charSpace = 0) {
   let w = 0;
   let count = 0;
   for (const ch of text) {
-    w += glyphWidth(ch, bold);
+    w += glyphWidth(ch, weight);
     count++;
   }
   w = (w * size) / 1000;
@@ -768,8 +983,8 @@ const num = (v) => String(Math.round(v * 100) / 100);
 const rgb = ([r, g, b]) => `${num(r)} ${num(g)} ${num(b)}`;
 
 // y est toujours mesuré depuis le HAUT de la page ; conversion ici.
-function opText(page, x, yBaseline, text, { bold = false, size, color, charSpace = 0 }) {
-  const font = bold ? 'F2' : 'F1';
+function opText(page, x, yBaseline, text, { weight = 400, size, color, charSpace = 0 }) {
+  const font = { 400: 'F1', 600: 'F2', 700: 'F3' }[weight] || 'F1';
   let op = `BT /${font} ${num(size)} Tf ${rgb(color)} rg `;
   if (charSpace) op += `${num(charSpace)} Tc `;
   op += `${num(x)} ${num(PAGE_H - yBaseline)} Td <${glyphHex(text)}> Tj`;
@@ -851,7 +1066,7 @@ function makeCol(doc, x, width, top, bottom) {
 
 /* ---------- Coupure de lignes sur des segments stylés ---------- */
 
-// segs : [{ text, bold, size, color }] ; retourne des lignes de « runs »
+// segs : [{ text, weight, size, color }] ; retourne des lignes de « runs »
 function wrapSegments(segs, firstWidth, restWidth) {
   const lines = [];
   let line = [];
@@ -875,23 +1090,23 @@ function wrapSegments(segs, firstWidth, restWidth) {
       const isSpace = /^\s+$/.test(token);
       if (isSpace) {
         if (line.length === 0) continue;
-        const tw = measure(' ', seg.bold, seg.size);
+        const tw = measure(' ', seg.weight, seg.size);
         line.push({ text: ' ', seg, width: tw });
         w += tw;
         continue;
       }
-      let tw = measure(token, seg.bold, seg.size);
+      let tw = measure(token, seg.weight, seg.size);
       if (w + tw > max && w > 0) pushLine();
       // Mot plus large que la colonne : coupure par caractères
       while (tw > max && token.length > 1) {
         let cut = token.length - 1;
-        while (cut > 1 && measure(token.slice(0, cut), seg.bold, seg.size) > max) cut--;
+        while (cut > 1 && measure(token.slice(0, cut), seg.weight, seg.size) > max) cut--;
         const head = token.slice(0, cut);
-        line.push({ text: head, seg, width: measure(head, seg.bold, seg.size) });
+        line.push({ text: head, seg, width: measure(head, seg.weight, seg.size) });
         w += line[line.length - 1].width;
         pushLine();
         token = token.slice(cut);
-        tw = measure(token, seg.bold, seg.size);
+        tw = measure(token, seg.weight, seg.size);
       }
       line.push({ text: token, seg, width: tw });
       w += tw;
@@ -951,7 +1166,7 @@ function paragraph(col, text, style, opts = {}) {
 function contactItem(col, item, { valueColor, size, valueSize }) {
   const value = (item.value || '').trim();
   if (!value) return;
-  const segs = [{ text: value, bold: false, size: valueSize, color: valueColor }];
+  const segs = [{ text: value, size: valueSize, color: valueColor }];
   const lines = wrapSegments(segs, col.width, col.width);
   drawLines(col, lines, { lineH: size * LINE });
 }
@@ -967,7 +1182,7 @@ function sectionTitle(col, text, { size, color, ruleColor, mt, mb }) {
   col.ensure(mt + size * LINE + 4 + mb + size * LINE);
   col.y += mt;
   opText(col.page(), col.x, col.y + baselineOffset(size, size * LINE), text.toUpperCase(), {
-    bold: true, size, color, charSpace: size * 0.06,
+    weight: 700, size, color, charSpace: size * 0.06,
   });
   col.y += size * LINE + 3 * PX;
   opRect(col.page(), col.x, col.y, col.width, 2 * PX, ruleColor);
@@ -985,7 +1200,7 @@ function bulletItem(col, text, { size, color, dotColor }) {
   // Les sauts de ligne manuels (Maj+Entrée) sont dessinés paragraphe par
   // paragraphe : wrapSegments traiterait sinon un `\n` comme un simple espace.
   for (const para of text.split('\n')) {
-    const lines = wrapSegments([{ text: para, bold: false, size, color }], col.width - indent, col.width - indent);
+    const lines = wrapSegments([{ text: para, size, color }], col.width - indent, col.width - indent);
     drawLines(col, lines, { lineH, indent });
   }
   col.y += 2 * PX;
@@ -997,12 +1212,12 @@ function bulletItem(col, text, { size, color, dotColor }) {
 function subsectionBlock(col, item, palette, sizes = {}) {
   const { title: titleSize = 15, detail: detailPx = 14, bullet = 14, gap = 14 } = sizes;
   const tSize = titleSize * PX;
-  const headSegs = [{ text: (item.title || '').trim(), bold: true, size: tSize, color: palette.ink }];
+  const headSegs = [{ text: (item.title || '').trim(), weight: 700, size: tSize, color: palette.ink }];
   const detail = (item.detail || '').trim();
   if (detail) {
     headSegs.push(
-      { text: '  —  ', bold: false, size: detailPx * PX, color: palette.muted },
-      { text: detail, bold: false, size: detailPx * PX, color: palette.muted }
+      { text: '  —  ', size: detailPx * PX, color: palette.muted },
+      { text: detail, size: detailPx * PX, color: palette.muted }
     );
   }
   const lines = wrapSegments(headSegs, col.width, col.width);
@@ -1032,7 +1247,7 @@ function linkItem(col, link, { urlColor, labelSize, urlSize }) {
   const url = (link.url || '').trim();
   const text = label || url;
   if (!text) return;
-  const segs = [{ text, bold: false, size: urlSize, color: urlColor }];
+  const segs = [{ text, size: urlSize, color: urlColor }];
   const lines = wrapSegments(segs, col.width, col.width);
   col.y += 1 * PX;
   drawLines(col, lines, { lineH: labelSize * LINE, url: linkHref(url) });
@@ -1046,12 +1261,12 @@ function experienceBlock(col, exp, palette, sizes = {}) {
     companyDescription: descPx = 7, bullet = 14, gap = 14,
   } = sizes;
   const roleSize = role * PX;
-  const headSegs = [{ text: (exp.role || '').trim(), bold: true, size: roleSize, color: palette.ink }];
+  const headSegs = [{ text: (exp.role || '').trim(), weight: 700, size: roleSize, color: palette.ink }];
   const company = (exp.company || '').trim();
   if (company) {
     headSegs.push(
-      { text: '  —  ', bold: false, size: companySize * PX, color: palette.muted },
-      { text: company, bold: false, size: companySize * PX, color: palette.muted }
+      { text: '  —  ', size: companySize * PX, color: palette.muted },
+      { text: company, size: companySize * PX, color: palette.muted }
     );
   }
   const period = (exp.period || '').trim();
@@ -1082,7 +1297,7 @@ function experienceBlock(col, exp, palette, sizes = {}) {
     // Sauts de ligne manuels (Maj+Entrée) : un wrapSegments par paragraphe,
     // sinon `\n` serait traité comme un simple espace.
     for (const para of desc.split('\n')) {
-      const descLines = wrapSegments([{ text: para, bold: false, size: descSize, color: palette.muted }], col.width, col.width);
+      const descLines = wrapSegments([{ text: para, size: descSize, color: palette.muted }], col.width, col.width);
       drawLines(col, descLines, { lineH: descSize * LINE });
     }
     col.y += 4.5;
@@ -1102,7 +1317,7 @@ function skillGroupsBlock(col, groups, { size, labelColor, textColor }) {
     const text = (g.text || '').trim();
     if (!label && !text) continue;
     col.y += 5 * PX;
-    if (label) paragraph(col, label, { bold: true, size, color: labelColor });
+    if (label) paragraph(col, label, { weight: 600, size, color: labelColor });
     for (const line of text.split('\n')) paragraph(col, line, { size, color: textColor });
   }
 }
@@ -1130,9 +1345,9 @@ function renderPro(doc, state, photo) {
   const photoSize = 110 * PX;
   if (photo) col.width = contentW - photoSize - 24 * PX;
 
-  paragraph(col, state.profile.name, { bold: true, size: f.name * PX, color: C.ink }, { lineH: f.name * PX * 1.2 });
+  paragraph(col, state.profile.name, { weight: 700, size: f.name * PX, color: C.ink }, { lineH: f.name * PX * 1.2 });
   col.y += 2 * PX;
-  paragraph(col, state.profile.title, { bold: true, size: f.title * PX, color: titleC });
+  paragraph(col, state.profile.title, { weight: 600, size: f.title * PX, color: titleC });
   col.y += 6 * PX;
   contactLines(col, state, {
     labelColor: C.ink, valueColor: C.muted, size: f.contact * PX, valueSize: f.contactValue * PX,
@@ -1211,7 +1426,7 @@ function renderDesign(doc, state, photo) {
   };
   const subSizes = { title: fm.item, detail: fm.detail, bullet: fm.bullet, gap: 8 };
 
-  paragraph(main, state.profile.title, { bold: true, size: fm.title * PX, color: titleC });
+  paragraph(main, state.profile.title, { weight: 600, size: fm.title * PX, color: titleC });
   main.y += 8 * PX;
   for (const line of (state.profile.summary || '').split('\n')) {
     paragraph(main, line, { size: fm.summary * PX, color: C.ink });
@@ -1247,7 +1462,7 @@ function renderDesign(doc, state, photo) {
     side.y += photoSize;
   }
   side.y += 8 * PX;
-  paragraph(side, state.profile.name, { bold: true, size: fs.name * PX, color: S.fg }, { lineH: fs.name * PX * 1.2 });
+  paragraph(side, state.profile.name, { weight: 700, size: fs.name * PX, color: S.fg }, { lineH: fs.name * PX * 1.2 });
 
   if (state.profile.contact.length) {
     sectionTitle(side, 'Contact', stSide);
@@ -1341,8 +1556,8 @@ function toUnicodeCMap() {
 }
 
 // Police TrueType embarquée en Type0 / CIDFontType2 (Identity-H) ;
-// renvoie l'id de l'objet police. `bold` choisit la colonne de largeurs.
-function addFont(addObj, font, bold, toUnicodeId) {
+// renvoie l'id de l'objet police. `col` choisit la colonne de largeurs de GLYPH_TABLE.
+function addFont(addObj, font, col, toUnicodeId) {
   const data = base64Bytes(font.data);
   const fileId = addObj([
     `<< /Length ${data.length} /Length1 ${font.length1} /Filter /FlateDecode >>\nstream\n`,
@@ -1357,7 +1572,7 @@ function addFont(addObj, font, bold, toUnicodeId) {
   ]);
   // Largeurs (millièmes de cadratin) indexées par identifiant de glyphe
   const widths = [];
-  for (const [, gid, ...w] of GLYPH_TABLE) widths[gid] = w[bold ? 1 : 0];
+  for (const [, gid, ...w] of GLYPH_TABLE) widths[gid] = w[col];
   const cidId = addObj([
     `<< /Type /Font /Subtype /CIDFontType2 /BaseFont /${font.name} ` +
       `/CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> ` +
@@ -1376,8 +1591,9 @@ function buildFile(doc, photo, meta) {
 
   const cmapBytes = latin1Bytes(toUnicodeCMap());
   const toUnicodeId = addObj([`<< /Length ${cmapBytes.length} >>\nstream\n`, cmapBytes, '\nendstream']);
-  const fontRegId = addFont(addObj, FONT_REGULAR, false, toUnicodeId);
-  const fontBoldId = addFont(addObj, FONT_BOLD, true, toUnicodeId);
+  const fontRegId = addFont(addObj, FONT_REGULAR, 0, toUnicodeId);
+  const fontSemiId = addFont(addObj, FONT_SEMIBOLD, 1, toUnicodeId);
+  const fontBoldId = addFont(addObj, FONT_BOLD, 2, toUnicodeId);
 
   let imageId = 0;
   if (photo) {
@@ -1390,7 +1606,7 @@ function buildFile(doc, photo, meta) {
     ]);
   }
 
-  let resources = `<< /Font << /F1 ${fontRegId} 0 R /F2 ${fontBoldId} 0 R >>`;
+  let resources = `<< /Font << /F1 ${fontRegId} 0 R /F2 ${fontSemiId} 0 R /F3 ${fontBoldId} 0 R >>`;
   if (imageId) resources += ` /XObject << /Im1 ${imageId} 0 R >>`;
   resources += ' >>';
   const resourcesId = addObj([resources]);
