@@ -1156,19 +1156,27 @@ function experiencesBlock() {
   const frag = el('section', { class: 'cv-block' });
   frag.append(sectionTitle('Expériences professionnelles'));
   state.experiences.forEach((exp, i) => {
-    const controls = el(
-      'div',
-      { class: 'exp-controls' },
-      i > 0 && iconBtn('↑', 'exp-up', 'Monter l’expérience'),
-      i < state.experiences.length - 1 && iconBtn('↓', 'exp-down', 'Descendre l’expérience'),
-      iconBtn('✕', 'exp-del', 'Supprimer l’expérience', 'del')
-    );
-
+    // Rangée unique en bas du bloc : « + Ajouter un tiret » à gauche, puis à
+    // droite le réglage de limite et les icônes ↑ ↓ ✕ (voir « Limite
+    // d'affichage » dans styles.css — c'est là que vivent désormais toutes
+    // les affordances du bloc, plus aucune ne recouvre le titre ou la période).
     const footer = el(
       'div',
       { class: 'exp-footer' },
-      visibleLimitCtl(exp),
-      exp.maxVisible === 0 && el('span', { class: 'limit-zero-note', text: 'non imprimé' })
+      el('button', { class: 'add-bullet', type: 'button', 'data-action': 'bullet-add', text: '+ Ajouter un tiret' }),
+      el(
+        'div',
+        { class: 'exp-footer-right' },
+        visibleLimitCtl(exp),
+        exp.maxVisible === 0 && el('span', { class: 'limit-zero-note', text: 'non imprimé' }),
+        el(
+          'div',
+          { class: 'exp-controls' },
+          i > 0 && iconBtn('↑', 'exp-up', 'Monter l’expérience'),
+          i < state.experiences.length - 1 && iconBtn('↓', 'exp-down', 'Descendre l’expérience'),
+          iconBtn('✕', 'exp-del', 'Supprimer l’expérience', 'del')
+        )
+      )
     );
 
     const head = el(
@@ -1193,11 +1201,9 @@ function experiencesBlock() {
       el(
         'section',
         { class: 'exp' + (exp.maxVisible === 0 ? ' limit-zero' : ''), 'data-exp-id': exp.id },
-        controls,
         head,
         companyDesc,
         bulletsUl(displayBullets(exp), exp.id, exp.maxVisible),
-        el('button', { class: 'add-bullet', type: 'button', 'data-action': 'bullet-add', text: '+ Ajouter un tiret' }),
         footer
       )
     );
@@ -1215,17 +1221,19 @@ function subsectionsBlock(title, items, kind, addLabel, side = false) {
   const frag = el('section', { class: 'cv-block' });
   frag.append(sectionTitle(title, side));
   items.forEach((it) => {
-    const controls = el(
-      'div',
-      { class: 'exp-controls' },
-      iconBtn('✕', `${kind}-del`, 'Supprimer', 'del')
-    );
-
+    // Même rangée unique qu'une expérience (voir experiencesBlock) : « +
+    // Ajouter un point » à gauche, réglage de limite et ✕ à droite.
     const footer = el(
       'div',
       { class: 'exp-footer' },
-      visibleLimitCtl(it),
-      it.maxVisible === 0 && el('span', { class: 'limit-zero-note', text: 'non imprimé' })
+      el('button', { class: 'add-bullet', type: 'button', 'data-action': 'bullet-add', text: '+ Ajouter un point' }),
+      el(
+        'div',
+        { class: 'exp-footer-right' },
+        visibleLimitCtl(it),
+        it.maxVisible === 0 && el('span', { class: 'limit-zero-note', text: 'non imprimé' }),
+        el('div', { class: 'exp-controls' }, iconBtn('✕', `${kind}-del`, 'Supprimer', 'del'))
+      )
     );
 
     const head = el(
@@ -1244,10 +1252,8 @@ function subsectionsBlock(title, items, kind, addLabel, side = false) {
       el(
         'section',
         { class: 'exp' + (it.maxVisible === 0 ? ' limit-zero' : ''), [`data-${kind}-id`]: it.id },
-        controls,
         head,
         bulletsUl(displayBullets(it), it.id, it.maxVisible),
-        el('button', { class: 'add-bullet', type: 'button', 'data-action': 'bullet-add', text: '+ Ajouter un point' }),
         footer
       )
     );
