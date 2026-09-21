@@ -544,6 +544,15 @@ const cvScope = {
   get data() { return state; },
 };
 
+// Cible de l'onglet « Bibliothèque » : même contrat que cvScope (accesseur
+// `data`, pas une référence figée, pour suivre `state` après une
+// réassignation en bloc), mais `isCv: false` — pas de profil, pas de
+// proposition d'ordre, pas de limite d'affichage (voir libraryFromCV).
+const libraryScope = {
+  isCv: false,
+  get data() { return state.library; },
+};
+
 // Liste de contacts / liens de la cible : sous `profile` pour le CV (seul à
 // porter une mise en forme), à plat pour la Bibliothèque — voir libraryFromCV.
 function scopeContact(scope) {
@@ -1133,7 +1142,7 @@ function sectionTitle(text, side = false) {
 /* ---------- Onglets « Nouveau CV » / « CV de base » ---------- */
 
 function inCreateTab() {
-  return state.activeTab !== 'base';
+  return state.activeTab === 'create';
 }
 
 // Ordre proposé pour une expérience (null hors proposition). Le tableau
@@ -1460,6 +1469,44 @@ function renderDesign() {
   // backend) est extrait dans l'ordre du document — le placement visuel
   // (barre à gauche) est fixé par la grille CSS.
   cvEl.append(main, side);
+}
+
+/* Onglet « Bibliothèque » : remplit chaque panneau de #libraryPanel (voir
+   index.html) avec les mêmes fonctions de rendu que le CV, paramétrées par
+   libraryScope — mêmes classes CSS, donc même apparence des blocs et des
+   points, sans les affordances propres au CV (photo, profil, proposition,
+   limite d'affichage), déjà court-circuitées derrière `scope.isCv` dans ces
+   fonctions. Pas de feuille A4 ici : chaque panneau est un simple conteneur
+   qu'on vide puis remplit, sans mise à l'échelle ni pagination. */
+function renderLibrary() {
+  const contactBody = $('#libContactBody');
+  contactBody.textContent = '';
+  contactBody.append(
+    sectionTitle('Contact'),
+    contactBlock(libraryScope),
+    sectionTitle('Liens'),
+    linksBlock(libraryScope)
+  );
+
+  const expBody = $('#libExperiencesBody');
+  expBody.textContent = '';
+  expBody.append(experiencesBlock(libraryScope));
+
+  const eduBody = $('#libEducationBody');
+  eduBody.textContent = '';
+  eduBody.append(educationBlock(libraryScope));
+
+  const projectsBody = $('#libProjectsBody');
+  projectsBody.textContent = '';
+  projectsBody.append(projectsBlock(libraryScope));
+
+  const skillsBody = $('#libSkillsBody');
+  skillsBody.textContent = '';
+  skillsBody.append(skillsBlock(libraryScope), skillGroupsBlock(libraryScope));
+
+  const interestsBody = $('#libInterestsBody');
+  interestsBody.textContent = '';
+  interestsBody.append(interestsBlock(libraryScope));
 }
 
 /* Applique la couleur du bandeau à la feuille.
@@ -2100,10 +2147,12 @@ function proposalRemove(ownerId, bulletId) {
 
 function updateTabs() {
   const layout = $('#layout');
-  layout.classList.toggle('tab-create', inCreateTab());
-  layout.classList.toggle('tab-base', !inCreateTab());
-  for (const [id, on] of [['#tabCreate', inCreateTab()], ['#tabBase', !inCreateTab()]]) {
+  layout.classList.toggle('tab-create', state.activeTab === 'create');
+  layout.classList.toggle('tab-base', state.activeTab === 'base');
+  layout.classList.toggle('tab-library', state.activeTab === 'library');
+  for (const [id, tab] of [['#tabCreate', 'create'], ['#tabBase', 'base'], ['#tabLibrary', 'library']]) {
     const b = $(id);
+    const on = state.activeTab === tab;
     b.classList.toggle('active', on);
     b.setAttribute('aria-selected', String(on));
   }
@@ -2111,6 +2160,7 @@ function updateTabs() {
 
 function rerender() {
   renderCV();
+  renderLibrary();
   renderSuggestions();
   renderVersions();
   updateTemplateToggle();
@@ -3669,6 +3719,11 @@ $('#tabCreate').addEventListener('click', () => {
 
 $('#tabBase').addEventListener('click', () => {
   state.activeTab = 'base';
+  rerender();
+});
+
+$('#tabLibrary').addEventListener('click', () => {
+  state.activeTab = 'library';
   rerender();
 });
 

@@ -652,6 +652,26 @@ main.tab-create #versionsPanel { display: none; }
 #createLeft { display: flex; flex-direction: column; gap: 16px; }
 main.tab-base #createLeft { display: none; }
 
+/* Onglet « Bibliothèque » : un formulaire libre, pas une feuille A4 — une
+   seule colonne centrée qui défile librement (voir renderLibrary, app.js).
+   #createLeft, #cvColumn et #versionsPanel n'existent que pour le CV : on les
+   masque ici comme #versionsPanel l'est dans tab-create ci-dessus. */
+main.tab-library { grid-template-columns: minmax(0, 900px); }
+main.tab-library #createLeft,
+main.tab-library #cvColumn,
+main.tab-library #versionsPanel { display: none; }
+
+#libraryPanel { display: flex; flex-direction: column; gap: 16px; }
+main.tab-create #libraryPanel,
+main.tab-base #libraryPanel { display: none; }
+
+/* Poignée ⠿ des tirets (position absolue, -18px depuis .exp — voir
+   .drag-handle plus bas) : le padding de .panel-box (18px) est trop juste
+   pour l'accueillir sans qu'elle déborde du cadre. On élargit uniquement le
+   padding gauche des panneaux qui contiennent des tirets déplaçables
+   (Expériences, Formation, Projets), sans toucher aux règles du CV. */
+#libExperiencesPanel, #libEducationPanel, #libProjectsPanel { padding-left: 42px; }
+
 @media (max-width: 980px) {
   main, main.tab-create { grid-template-columns: 1fr; }
   main.tab-create #createLeft { grid-column: 1; grid-row: 1; }
@@ -2329,7 +2349,7 @@ main.tab-create #createLeft {
 
 @media print {
   html, body { width: 210mm; background: #fff; }
-  #toolbar, #cvTools, #createLeft, #versionsPanel, #overflowNotice { display: none; }
+  #toolbar, #cvTools, #createLeft, #versionsPanel, #libraryPanel, #overflowNotice { display: none; }
   main { display: block; padding: 0; margin: 0; max-width: none; }
   .sheet { box-shadow: none; border-radius: 0; margin: 0; }
   /* Modèle pro : les marges de chaque page viennent de @page. On neutralise donc
