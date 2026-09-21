@@ -242,7 +242,12 @@ function defaultCV() {
 }
 
 function defaultState() {
-  return { ...defaultCV(), versions: [], activeVersionId: null, proposal: null, activeTab: 'create', recentColors: [] };
+  const s = { ...defaultCV(), versions: [], activeVersionId: null, proposal: null, activeTab: 'create', recentColors: [] };
+  // Amorçage unique de la Bibliothèque à partir du CV d'exemple : simple
+  // valeur de départ (pour ne pas repartir de zéro), aucun lien permanent
+  // avec le CV ensuite — voir le commentaire détaillé dans normalizeState().
+  s.library = libraryFromCV(s);
+  return s;
 }
 
 /* ---------- Chargement / sauvegarde ---------- */
@@ -296,6 +301,78 @@ function normalizeSubsections(list) {
     // Sauvegarde antérieure à la scission titre/détail : { id, text }
     return { ...splitLine(id, String((e && e.text) ?? '')), bullets: [] };
   });
+}
+
+/* ---------- Bibliothèque ----------
+   Réservoir de contenu réutilisable, séparé du CV de base (futur onglet
+   « Bibliothèque ») : l'utilisateur pourra y stocker bien plus de contenu que
+   ce qui tient sur une page. Ne porte QUE du contenu réutilisable — contact,
+   liens, expériences, formation, projets, compétences, centres d'intérêt —
+   jamais de mise en forme (nom, titre, résumé, photo, gabarit, couleurs…) ni
+   de `maxVisible` : la Bibliothèque n'a pas de limite d'affichage, c'est le
+   réservoir, il contient tout. */
+
+// Amorçage : copie du contenu du CV donné, sans maxVisible. N'est appelé
+// qu'une fois (voir defaultState/normalizeState) — ensuite CV et Bibliothèque
+// divergent librement, aucun lien permanent entre eux.
+function libraryFromCV(cv) {
+  const stripMaxVisible = (list) =>
+    JSON.parse(JSON.stringify(list)).map((item) => {
+      delete item.maxVisible;
+      return item;
+    });
+  return {
+    contact: JSON.parse(JSON.stringify(cv.profile.contact)),
+    links: JSON.parse(JSON.stringify(cv.profile.links)),
+    experiences: stripMaxVisible(cv.experiences),
+    education: stripMaxVisible(cv.education),
+    projects: stripMaxVisible(cv.projects),
+    skills: cv.skills,
+    skillGroups: JSON.parse(JSON.stringify(cv.skillGroups)),
+    interests: JSON.parse(JSON.stringify(cv.interests)),
+  };
+}
+
+// Normalisation de la Bibliothèque, sur le modèle de normalizeCV() : même
+// repli tolérant (valeur absente/invalide → repli sûr). Réutilise telles
+// quelles normalizeBullets() et normalizeSubsections() — c'est précisément
+// pour ça qu'elles ne connaissent pas `maxVisible`. Pour contact/links, même
+// forme que profile.contact/profile.links, mais SANS le code de migration
+// des tout premiers formats (normalizeContact) : la Bibliothèque n'a pas ce
+// passé, elle n'existe que depuis ce commit.
+function normalizeLibrary(raw) {
+  const data = raw && typeof raw === 'object' ? raw : {};
+  return {
+    contact: (Array.isArray(data.contact) ? data.contact : []).map((c) => ({
+      id: (c && c.id) || uid(),
+      label: String((c && c.label) ?? ''),
+      value: String((c && c.value) ?? ''),
+    })),
+    links: (Array.isArray(data.links) ? data.links : []).map((l) => ({
+      id: (l && l.id) || uid(),
+      label: String((l && l.label) ?? ''),
+      url: String((l && l.url) ?? ''),
+    })),
+    experiences: (Array.isArray(data.experiences) ? data.experiences : []).map((e) => ({
+      id: (e && e.id) || uid(),
+      role: String((e && e.role) ?? ''),
+      company: String((e && e.company) ?? ''),
+      period: String((e && e.period) ?? ''),
+      companyDescription: String((e && e.companyDescription) ?? ''),
+      bullets: normalizeBullets(e && e.bullets),
+    })),
+    education: normalizeSubsections(data.education),
+    projects: normalizeSubsections(data.projects),
+    skills: typeof data.skills === 'string' ? data.skills : '',
+    skillGroups: (Array.isArray(data.skillGroups) ? data.skillGroups : []).map((g) => ({
+      id: (g && g.id) || uid(),
+      label: String((g && g.label) ?? ''),
+      text: String((g && g.text) ?? ''),
+    })),
+    interests: (Array.isArray(data.interests) ? data.interests : []).map((it) =>
+      typeof it === 'string' ? { id: uid(), text: it } : { id: (it && it.id) || uid(), text: String((it && it.text) ?? '') }
+    ),
+  };
 }
 
 function normalizeCV(data) {
@@ -392,7 +469,18 @@ function normalizeState(data) {
   }
   // d'anciennes données peuvent contenir data.rewrite (ex-feature de
   // recalibrage semi-auto) : ignoré, il n'existe plus dans l'état.
-  s.activeTab = data.activeTab === 'base' ? 'base' : 'create';
+  s.activeTab = ['base', 'library'].includes(data.activeTab) ? data.activeTab : 'create';
+  // Bibliothèque : on teste la PRÉSENCE de la clé (`'library' in data`), pas
+  // sa validité (`data.library && ...`) — si elle existe mais est malformée,
+  // normalizeLibrary() la répare quand même. Un test de validité ferait
+  // ré-amorcer la Bibliothèque à partir du CV courant à la moindre anomalie
+  // passagère (import partiel, état en cours de migration…), écrasant
+  // silencieusement tout le travail déjà fait dans l'onglet Bibliothèque.
+  // L'amorçage par copie du CV n'a lieu qu'une fois, à la toute première
+  // absence de la clé (CV existant d'avant cette fonctionnalité) : ensuite,
+  // CV et Bibliothèque n'ont plus aucun lien, ils évoluent chacun de leur
+  // côté.
+  s.library = 'library' in data ? normalizeLibrary(data.library) : libraryFromCV(s);
   // Dernières couleurs libres utilisées (pipette), de la plus récente à la
   // plus ancienne. On ne garde que des hex valides, dédoublonnés, 5 au plus.
   const seen = new Set();
@@ -3578,8 +3666,10 @@ $('#pdfBtn').addEventListener('click', async () => {
 
 $('#resetBtn').addEventListener('click', async () => {
   if (!(await customConfirm('Réinitialiser le CV avec le contenu d’exemple ? Les versions sauvegardées sont conservées.', { confirmLabel: 'Réinitialiser', danger: true }))) return;
-  const { versions, activeTab } = state;
-  state = { ...defaultCV(), versions, activeVersionId: null, proposal: null, activeTab };
+  // La Bibliothèque est indépendante du CV de base (voir normalizeState) :
+  // la réinitialisation de celui-ci ne doit surtout pas y toucher.
+  const { versions, activeTab, library } = state;
+  state = { ...defaultCV(), versions, activeVersionId: null, proposal: null, activeTab, library };
   jobTextEl.value = '';
   rerender();
 });
