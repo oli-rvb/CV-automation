@@ -899,10 +899,15 @@ const FONT_ASCENT = 1069;
 const FONT_DESCENT = -293;
 const FONT_CAP_HEIGHT = 714;
 
-// Ligne de base d'un texte dans une ligne de hauteur `lineH`, comme en CSS :
-// le contenu (ascendante + descendante de la police) est centré verticalement.
-const baselineOffset = (size, lineH) =>
-  (lineH - ((FONT_ASCENT - FONT_DESCENT) * size) / 1000) / 2 + (FONT_ASCENT * size) / 1000;
+// Ligne de base d'un texte dans une ligne de hauteur `lineH` (en pt), comme
+// Chrome : ascendante et descendante de la police arrondies au pixel CSS, le
+// reste de l'interligne réparti à parts égales au-dessus et au-dessous.
+function baselineOffset(size, lineH) {
+  const s = size / PX;
+  const asc = Math.round((FONT_ASCENT * s) / 1000);
+  const desc = Math.round((-FONT_DESCENT * s) / 1000);
+  return ((lineH / PX - asc - desc) / 2 + asc) * PX;
+}
 
 const GLYPHS = new Map(GLYPH_TABLE.map(([cp, gid, ...w]) => [cp, { gid, w }]));
 
@@ -1025,8 +1030,27 @@ function opPhoto(page, x, yTop, size, ring) {
 }
 
 /* ============================================================
-   Flux de mise en page : colonnes avec pagination automatique
+   Flux de mise en page : colonnes, marges CSS et pagination
+
+   La mise en page reproduit le modèle de boîtes de styles.css, tel que
+   Chrome l'imprime : hauteurs de ligne, marges qui fusionnent entre frères,
+   paddings des .exp, marges tronquées en haut de page, tirets et en-têtes
+   insécables, titres de section collés à leur premier bloc, orphelines et
+   veuves de 2 lignes. Toutes les valeurs de px viennent de styles.css.
    ============================================================ */
+
+// Espacements (px CSS) par modèle : `.sheet.design` resserre la densité.
+const DENSITY = {
+  pro: { exp: { pad: 6, mb: 14 }, ul: 6, li: 2, section: { mt: 26, mb: 10 }, summaryMt: 12 },
+  design: { exp: { pad: 4, mb: 8 }, ul: 3, li: 0, section: { mt: 14, mb: 6 }, summaryMt: 8 },
+};
+let D = DENSITY.pro; // fixé par generateCvPdf selon le modèle
+
+// L'en-tête d'une expérience est un <div> de 16 px (taille du corps) : sa
+// « strut » impose l'interligne quelle que soit la taille du poste.
+const HEAD_STRUT = 16 * PX;
+
+const px = (v) => v * PX;
 
 function makeDoc(state) {
   const doc = { pages: [], template: state.template, annots: [] };
@@ -1045,28 +1069,91 @@ function makeDoc(state) {
   return doc;
 }
 
-function makeCol(doc, x, width, top, bottom) {
+/* Colonne de texte. `y` est le haut du prochain contenu ; `pending` la marge
+   CSS en attente : deux marges adjacentes fusionnent (la plus grande gagne) et
+   une marge tombant en haut de page est supprimée, comme en CSS. Sans
+   `paginate` (modèle design, feuille de 297 mm exactement) la colonne ne
+   change jamais de page : ce qui dépasse le bas de la feuille est coupé. */
+function makeCol(doc, x, width, top, bottom, paginate = true) {
   return {
-    doc, x, width, top, bottom,
+    doc, x, width, top, bottom, paginate,
     pageIndex: 0,
     y: top,
+    pending: 0,
+    keep: null, // titre de section à emmener avec son premier bloc
     page() {
       while (this.doc.pages.length <= this.pageIndex) this.doc.newPage();
       return this.doc.pages[this.pageIndex];
     },
-    // Saute de page si `h` ne tient pas dans la colonne
-    ensure(h) {
-      if (this.y + h <= PAGE_H - this.bottom) return;
+    limit() {
+      return PAGE_H - this.bottom;
+    },
+    margin(m) {
+      this.pending = Math.max(this.pending, m);
+    },
+    flush() {
+      this.y += this.pending;
+      this.pending = 0;
+    },
+    // Espace rigide (padding) : la marge en attente passe d'abord
+    space(h) {
+      this.flush();
+      this.y += h;
+    },
+    room() {
+      return this.paginate ? this.limit() - this.y - this.pending : Infinity;
+    },
+    breakPage() {
+      const kept = this.keep;
+      const from = this.page();
+      this.keep = null;
       this.pageIndex++;
       this.y = this.top;
+      this.pending = 0;
       this.page();
+      if (kept && kept.page === from) {
+        // break-after: avoid — le titre suit son bloc sur la nouvelle page
+        from.ops.splice(kept.from, kept.count);
+        kept.redraw();
+      }
+    },
+    // Réserve la place d'un bloc de hauteur `h` (marge en attente comprise) :
+    // page suivante s'il ne tient pas.
+    place(h) {
+      if (this.paginate && this.y > this.top + 0.01 && this.pending + h > this.limit() - this.y + 0.01) {
+        this.breakPage();
+      }
+      this.keep = null;
+      this.flush();
     },
   };
 }
 
 /* ---------- Coupure de lignes sur des segments stylés ---------- */
 
-// segs : [{ text, weight, size, color }] ; retourne des lignes de « runs »
+// Opportunités de coupure après un tiret ou une barre oblique (« Marchand-
+// Lefèvre », « CI/CD »), sauf devant un chiffre : règles UAX #14 de Chrome.
+const BREAK_AFTER = /(?<=[^\s\-–/][-–/])(?=[^\s\d\-–/])/;
+
+// Ligne CSS : la strut de l'élément et chaque fragment posent leur propre
+// demi-interligne ; la ligne fait la hauteur du plus grand « au-dessus de la
+// ligne de base » plus celle du plus grand « en dessous ».
+function lineMetrics(runs, strut) {
+  let above = 0;
+  let below = 0;
+  const add = (size) => {
+    const lineH = size * LINE;
+    const a = baselineOffset(size, lineH);
+    above = Math.max(above, a);
+    below = Math.max(below, lineH - a);
+  };
+  if (strut) add(strut);
+  for (const r of runs) add(r.seg.size);
+  return { above, height: above + below };
+}
+
+// segs : [{ text, weight, size, color, breakAll }] ; retourne des lignes de
+// « runs ». `breakAll` = word-break: break-all (champs de contact).
 function wrapSegments(segs, firstWidth, restWidth) {
   const lines = [];
   let line = [];
@@ -1085,7 +1172,13 @@ function wrapSegments(segs, firstWidth, restWidth) {
 
   for (const seg of segs) {
     if (!seg.text) continue;
-    for (let token of seg.text.split(/(\s+)/)) {
+    const words = seg.breakAll ? Array.from(seg.text) : seg.text.split(/(\s+)/);
+    const tokens = [];
+    for (const t of words) {
+      if (seg.breakAll || /^\s+$/.test(t)) tokens.push(t);
+      else tokens.push(...t.split(BREAK_AFTER));
+    }
+    for (let token of tokens) {
       if (!token) continue;
       const isSpace = /^\s+$/.test(token);
       if (isSpace) {
@@ -1116,59 +1209,118 @@ function wrapSegments(segs, firstWidth, restWidth) {
   return lines;
 }
 
-// Dessine des lignes préparées par wrapSegments ; retourne les rectangles
-// réellement occupés (pour poser des annotations de lien).
-function drawLines(col, lines, { lineH, indent = 0, url = null } = {}) {
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    col.ensure(lineH);
-    const page = col.page();
-    const baseSize = line.runs.reduce((m, r) => Math.max(m, r.seg.size), 0);
-    const baseline = col.y + baselineOffset(baseSize, lineH);
-    let x = col.x + indent;
-    // Fusion des runs consécutifs de même style en un seul Tj
-    let run = null;
-    const flush = () => {
-      if (!run) return;
-      opText(page, run.x, baseline, run.text, run.seg);
-      run = null;
-    };
-    for (const r of line.runs) {
-      if (run && run.seg === r.seg) run.text += r.text;
-      else {
-        flush();
-        run = { x, text: r.text, seg: r.seg };
-      }
-      x += r.width;
-    }
-    flush();
-    if (url && line.width > 0) {
-      page.annots.push({
-        url,
-        rect: [col.x + indent, PAGE_H - col.y - lineH, col.x + indent + line.width, PAGE_H - col.y],
-      });
-    }
-    col.y += lineH;
+// Champ multiligne (white-space: pre-wrap) : chaque saut de ligne manuel
+// (Maj+Entrée) ouvre un paragraphe, une ligne vide garde sa hauteur.
+function wrapParagraphs(text, seg, width) {
+  const lines = [];
+  for (const para of String(text || '').trim().split('\n')) {
+    if (!para.trim()) lines.push({ runs: [], width: 0, size: seg.size });
+    else lines.push(...wrapSegments([{ ...seg, text: para }], width, width));
   }
+  return lines;
 }
 
-// Paragraphe d'un seul style
+/* Dessine des lignes préparées par wrapSegments et fait avancer la colonne.
+   - strut : taille de la « strut » de l'élément (par défaut celle des runs) ;
+   - avoid : bloc insécable (break-inside: avoid), `pad` = padding haut et bas ;
+   - sinon le bloc peut se couper, avec 2 lignes d'orpheline et de veuve ;
+   - align : 'center' pour le nom du bandeau ;
+   - marker : puce dessinée à gauche de la première ligne ;
+   - url : annotation de lien sur chaque ligne.
+   Retourne la position réelle de chaque ligne (pour poser la période d'une
+   expérience sur la ligne de base du poste). */
+function drawLines(col, lines, o = {}) {
+  const { strut = 0, indent = 0, url = null, align = 'left', avoid = false, pad = 0, marker = null } = o;
+  const metrics = lines.map((l) => lineMetrics(l.runs, strut || l.size || 0));
+  const placed = [];
+  let i = 0;
+  while (i < lines.length) {
+    const n = lines.length - i;
+    let k = n;
+    if (col.paginate) {
+      const room = col.room() - (avoid ? 2 * pad : 0);
+      let h = 0;
+      k = 0;
+      while (k < n && h + metrics[i + k].height <= room + 0.01) h += metrics[i + k++].height;
+      if (k < n) {
+        if (avoid) k = 0;
+        else {
+          if (k < 2) k = 0;
+          else if (n - k < 2) k = Math.max(0, n - 2);
+          if (k < 2) k = 0;
+        }
+        if (k === 0) {
+          if (col.y > col.top + 0.01) {
+            col.breakPage();
+            continue;
+          }
+          k = avoid ? n : 1; // page vide : on dessine quand même
+        }
+      }
+    }
+    let total = 0;
+    for (let j = i; j < i + k; j++) total += metrics[j].height;
+    col.place(total + (avoid ? 2 * pad : 0));
+    if (avoid) col.y += pad;
+    for (let j = i; j < i + k; j++) {
+      const line = lines[j];
+      const m = metrics[j];
+      const page = col.page();
+      const baseline = col.y + m.above;
+      const x0 = col.x + indent + (align === 'center' ? (col.width - indent - line.width) / 2 : 0);
+      if (col.paginate || col.y < PAGE_H) {
+        if (marker && j === 0) opText(page, col.x, baseline, marker.text, marker);
+        // Fusion des runs consécutifs de même style en un seul Tj
+        let x = x0;
+        let run = null;
+        const flush = () => {
+          if (run) opText(page, run.x, baseline, run.text, run.seg);
+          run = null;
+        };
+        for (const r of line.runs) {
+          if (run && run.seg === r.seg) run.text += r.text;
+          else {
+            flush();
+            run = { x, text: r.text, seg: r.seg };
+          }
+          x += r.width;
+        }
+        flush();
+        if (url && line.width > 0) {
+          page.annots.push({ url, rect: [x0, PAGE_H - col.y - m.height, x0 + line.width, PAGE_H - col.y] });
+        }
+      }
+      placed.push({ page, baseline, x: x0, width: line.width });
+      col.y += m.height;
+    }
+    if (avoid) col.y += pad;
+    i += k;
+    if (i < lines.length) col.breakPage();
+  }
+  return placed;
+}
+
+// Bloc de texte d'un seul style (`pre` : champ multiligne). `editable` : champ
+// contenteditable de l'écran, qui garde une ligne de haut même vide (Chrome y
+// réserve la ligne du curseur) — sans quoi une description d'entreprise
+// laissée vide raccourcirait le PDF de secours de 10 px par expérience.
 function paragraph(col, text, style, opts = {}) {
+  const { editable = false, ...rest } = opts;
   text = (text || '').trim();
-  if (!text) return;
-  const indent = opts.indent || 0;
-  const lines = wrapSegments([{ text, ...style }], col.width - indent, col.width - indent);
-  drawLines(col, lines, { lineH: opts.lineH || style.size * LINE, indent, url: opts.url });
+  if (!text && !editable) return;
+  const w = col.width - (rest.indent || 0);
+  const lines = !text ? [{ runs: [], width: 0, size: style.size }]
+    : rest.pre ? wrapParagraphs(text, style, w) : wrapSegments([{ text, ...style }], w, w);
+  drawLines(col, lines, { strut: style.size, ...rest });
 }
 
 // Champ de contact : la valeur seule, sans intitulé ni annotation d'URL —
-// cf. .contact-value en CSS.
-function contactItem(col, item, { valueColor, size, valueSize }) {
+// cf. .contact-value en CSS (word-break: break-all).
+function contactItem(col, item, { valueColor, valueSize, pad }) {
   const value = (item.value || '').trim();
   if (!value) return;
-  const segs = [{ text: value, size: valueSize, color: valueColor }];
-  const lines = wrapSegments(segs, col.width, col.width);
-  drawLines(col, lines, { lineH: size * LINE });
+  const segs = [{ text: value, size: valueSize, color: valueColor, breakAll: true }];
+  drawLines(col, wrapSegments(segs, col.width, col.width), { strut: valueSize, avoid: true, pad });
 }
 
 function contactLines(col, state, style) {
@@ -1177,60 +1329,37 @@ function contactLines(col, state, style) {
 
 /* ---------- Blocs du CV ---------- */
 
-function sectionTitle(col, text, { size, color, ruleColor, mt, mb }) {
-  // On garde le titre attaché à la première ligne du contenu qui suit
-  col.ensure(mt + size * LINE + 4 + mb + size * LINE);
-  col.y += mt;
-  opText(col.page(), col.x, col.y + baselineOffset(size, size * LINE), text.toUpperCase(), {
-    weight: 700, size, color, charSpace: size * 0.06,
-  });
-  col.y += size * LINE + 3 * PX;
-  opRect(col.page(), col.x, col.y, col.width, 2 * PX, ruleColor);
-  col.y += 2 * PX + mb;
+// Titre de section : marge, texte, filet (padding 3 px + bordure 2 px). Il
+// reste collé au bloc qui le suit (break-after: avoid) : si ce bloc part sur
+// la page suivante, le titre le suit — d'où l'enregistrement de son dessin.
+function sectionTitle(col, text, { size, color, ruleColor, mt, mb, ls = 0.06 }) {
+  const lineH = size * LINE;
+  const h = lineH + px(3) + px(2);
+  col.keep = null;
+  col.margin(mt);
+  col.place(h);
+  const emit = () => {
+    const page = col.page();
+    const from = page.ops.length;
+    opText(page, col.x, col.y + baselineOffset(size, lineH), text.toUpperCase(), {
+      weight: 700, size, color, charSpace: size * ls,
+    });
+    opRect(page, col.x, col.y + lineH + px(3), col.width, px(2), ruleColor);
+    col.y += h;
+    col.margin(mb);
+    return { page, from, count: page.ops.length - from, redraw: emit };
+  };
+  col.keep = emit();
 }
 
 function bulletItem(col, text, { size, color, dotColor }) {
-  text = (text || '').trim();
-  if (!text) return;
-  const indent = 12;
-  const lineH = size * LINE;
-  col.ensure(2 * PX + lineH); // au moins la première ligne avec la puce
-  col.y += 2 * PX;
-  opText(col.page(), col.x + 2, col.y + baselineOffset(size, lineH), '•', { size, color: dotColor });
-  // Les sauts de ligne manuels (Maj+Entrée) sont dessinés paragraphe par
-  // paragraphe : wrapSegments traiterait sinon un `\n` comme un simple espace.
-  for (const para of text.split('\n')) {
-    const lines = wrapSegments([{ text: para, size, color }], col.width - indent, col.width - indent);
-    drawLines(col, lines, { lineH, indent });
-  }
-  col.y += 2 * PX;
-}
-
-// Sous-section « Formation / Projets » : titre en gras + détail atténué (comme
-// le rôle et l'entreprise d'une expérience, sans période), puis ses points.
-// Même structure que experienceBlock(), en plus compact.
-function subsectionBlock(col, item, palette, sizes = {}) {
-  const { title: titleSize = 15, detail: detailPx = 14, bullet = 14, gap = 14 } = sizes;
-  const tSize = titleSize * PX;
-  const headSegs = [{ text: (item.title || '').trim(), weight: 700, size: tSize, color: palette.ink }];
-  const detail = (item.detail || '').trim();
-  if (detail) {
-    headSegs.push(
-      { text: '  —  ', size: detailPx * PX, color: palette.muted },
-      { text: detail, size: detailPx * PX, color: palette.muted }
-    );
-  }
-  const lines = wrapSegments(headSegs, col.width, col.width);
-  const lineH = tSize * LINE;
-
-  col.ensure(lines.length * lineH + 4.5 + 10.5 * PX * LINE);
-  drawLines(col, lines, { lineH });
-
-  col.y += 4.5;
-  for (const b of item.bullets) {
-    bulletItem(col, b.text, { size: bullet * PX, color: palette.ink, dotColor: palette.ink });
-  }
-  col.y += gap * PX;
+  // La puce est le glyphe « • » suivi de 6 px d'écart (flex de li.bullet).
+  const indent = measure('•', 400, size) + px(6);
+  // Les sauts de ligne manuels (Maj+Entrée) sont des paragraphes distincts.
+  const lines = wrapParagraphs(text, { size, color }, col.width - indent);
+  drawLines(col, lines, {
+    strut: size, indent, avoid: true, pad: px(D.li), marker: { text: '•', size, color: dotColor },
+  });
 }
 
 function linkHref(url) {
@@ -1242,122 +1371,134 @@ function linkHref(url) {
 // Lien hypertexte : seul le texte libre est écrit, et c'est lui qui porte
 // l'annotation cliquable vers l'URL (invisible sur le CV). Sans texte, on
 // retombe sur l'URL — c'est le cas des données antérieures aux hyperliens.
-function linkItem(col, link, { urlColor, labelSize, urlSize }) {
+function linkItem(col, link, { urlColor, urlSize, pad }) {
   const label = (link.label || '').trim();
   const url = (link.url || '').trim();
   const text = label || url;
   if (!text) return;
   const segs = [{ text, size: urlSize, color: urlColor }];
-  const lines = wrapSegments(segs, col.width, col.width);
-  col.y += 1 * PX;
-  drawLines(col, lines, { lineH: labelSize * LINE, url: linkHref(url) });
-  col.y += 1 * PX;
+  drawLines(col, wrapSegments(segs, col.width, col.width), {
+    strut: urlSize, avoid: true, pad, url: linkHref(url),
+  });
 }
 
-// sizes (en px CSS) : par défaut celles du modèle « pro ».
-function experienceBlock(col, exp, palette, sizes = {}) {
-  const {
-    role = 15, company: companySize = 14, period: periodPx = 13,
-    companyDescription: descPx = 7, bullet = 14, gap = 14,
-  } = sizes;
-  const roleSize = role * PX;
-  const headSegs = [{ text: (exp.role || '').trim(), weight: 700, size: roleSize, color: palette.ink }];
-  const company = (exp.company || '').trim();
-  if (company) {
-    headSegs.push(
-      { text: '  —  ', size: companySize * PX, color: palette.muted },
-      { text: company, size: companySize * PX, color: palette.muted }
-    );
-  }
-  const period = (exp.period || '').trim();
-  const periodSize = periodPx * PX;
-  const periodW = period ? measure(period, false, periodSize) : 0;
-  const firstWidth = col.width - (periodW ? periodW + 12 : 0);
-  const lines = wrapSegments(headSegs, firstWidth, col.width);
-  const lineH = roleSize * LINE;
-
-  // L'en-tête reste attaché à son premier tiret
-  col.ensure(lines.length * lineH + 4.5 + 10.5 * PX * LINE);
-  const headPage = col.page();
-  const headY = col.y;
-  drawLines(col, lines, { lineH });
-  if (period) {
-    opText(headPage, col.x + col.width - periodW, headY + baselineOffset(roleSize, lineH), period, {
-      size: periodSize, color: palette.muted,
+// Bloc .exp (expérience, formation ou projet) : padding, en-tête insécable
+// (poste — détail, période calée à droite), description, puis les tirets.
+// e : { headSegs, headW, period, periodSize, desc, descSize, bullets, bullet }
+function entryBlock(col, e, palette) {
+  const lines = wrapSegments(e.headSegs, e.headW, e.headW);
+  const headH = lines.reduce((h, l) => h + lineMetrics(l.runs, HEAD_STRUT).height, 0);
+  const pad = px(D.exp.pad);
+  // Marge, padding haut et en-tête tiennent ensemble sur une page
+  col.place(pad + headH);
+  col.y += pad;
+  const placed = drawLines(col, lines, { strut: HEAD_STRUT, avoid: true });
+  if (e.period && placed.length) {
+    const first = placed[0];
+    opText(first.page, col.x + col.width - measure(e.period, 400, e.periodSize), first.baseline, e.period, {
+      size: e.periodSize, color: palette.muted,
     });
   }
 
-  col.y += 4.5; // marge avant la description / les tirets
-
   // Description de l'entreprise : petite et grise, sous l'en-tête. Sa taille
   // est réglable comme les autres (section « Taille des textes »).
-  const desc = (exp.companyDescription || '').trim();
-  if (desc) {
-    const descSize = descPx * PX;
-    // Sauts de ligne manuels (Maj+Entrée) : un wrapSegments par paragraphe,
-    // sinon `\n` serait traité comme un simple espace.
-    for (const para of desc.split('\n')) {
-      const descLines = wrapSegments([{ text: para, size: descSize, color: palette.muted }], col.width, col.width);
-      drawLines(col, descLines, { lineH: descSize * LINE });
-    }
-    col.y += 4.5;
-  }
+  col.margin(px(2));
+  paragraph(col, e.desc, { size: e.descSize, color: palette.muted }, { pre: true, editable: e.editableDesc });
 
-  for (const b of exp.bullets) {
-    bulletItem(col, b.text, { size: bullet * PX, color: palette.ink, dotColor: palette.ink });
+  col.margin(px(D.ul));
+  for (const b of e.bullets) {
+    bulletItem(col, b.text, { size: e.bullet, color: palette.ink, dotColor: palette.ink });
   }
-  col.y += gap * PX; // marge entre expériences
+  col.space(pad);
+  col.margin(px(D.exp.mb));
+}
+
+// sizes (en px CSS) : par défaut celles du modèle « pro ».
+function experienceBlock(col, exp, palette, sizes) {
+  const period = (exp.period || '').trim();
+  const periodSize = px(sizes.period);
+  // Le <div> du poste est un élément flex à côté de la période (même vide) :
+  // il perd sa largeur et l'écart de 12 px, sur toutes ses lignes.
+  const headW = col.width - (period ? measure(period, 400, periodSize) : 0) - px(12);
+  entryBlock(col, {
+    headSegs: [
+      { text: (exp.role || '').trim(), weight: 700, size: px(sizes.role), color: palette.ink },
+      { text: ' — ', size: HEAD_STRUT, color: palette.ink },
+      { text: (exp.company || '').trim(), size: px(sizes.company), color: palette.muted },
+    ],
+    headW, period, periodSize,
+    desc: exp.companyDescription, descSize: px(sizes.companyDescription), editableDesc: true,
+    bullets: exp.bullets, bullet: px(sizes.bullet),
+  }, palette);
+}
+
+// Formation / Projets : titre en gras + détail atténué (comme le poste et
+// l'entreprise d'une expérience, sans période ni description).
+function subsectionBlock(col, item, palette, sizes) {
+  entryBlock(col, {
+    headSegs: [
+      { text: (item.title || '').trim(), weight: 700, size: px(sizes.title), color: palette.ink },
+      { text: ' — ', size: HEAD_STRUT, color: palette.ink },
+      { text: (item.detail || '').trim(), size: px(sizes.detail), color: palette.muted },
+    ],
+    headW: col.width, period: '', periodSize: 0,
+    desc: '', descSize: 0,
+    bullets: item.bullets, bullet: px(sizes.bullet),
+  }, palette);
 }
 
 // Sous-groupes de compétences (intitulé en gras + texte multiligne) et
 // centres d'intérêt : rendus à la suite du bloc « Compétences ».
 function skillGroupsBlock(col, groups, { size, labelColor, textColor }) {
+  col.margin(px(8)); // .cv-skill-groups : margin-top 8 px, comme chaque .skill-group
   for (const g of groups || []) {
     const label = (g.label || '').trim();
     const text = (g.text || '').trim();
     if (!label && !text) continue;
-    col.y += 5 * PX;
-    if (label) paragraph(col, label, { weight: 600, size, color: labelColor });
-    for (const line of text.split('\n')) paragraph(col, line, { size, color: textColor });
+    col.margin(px(8));
+    const lines = [];
+    if (label) lines.push(...wrapSegments([{ text: label, weight: 600, size, color: labelColor }], col.width, col.width));
+    if (text) lines.push(...wrapParagraphs(text, { size, color: textColor }, col.width));
+    drawLines(col, lines, { strut: size, avoid: true });
   }
 }
 
 function interestsBlock(col, interests, { size, color }) {
+  col.margin(px(6));
   for (const it of interests || []) {
     const text = (it.text || '').trim();
     if (!text) continue;
-    col.y += 4 * PX;
-    for (const line of text.split('\n')) paragraph(col, line, { size, color });
+    col.margin(px(6));
+    drawLines(col, wrapParagraphs(text, { size, color }, col.width), { strut: size, avoid: true, pad: px(1) });
   }
 }
 
 /* ---------- Modèle « Pro » (une colonne) ---------- */
 
 function renderPro(doc, state, photo) {
+  // Marges de la page (@page : 10mm 16mm)
   const ML = 16 * PT_PER_MM;
-  const MT = 14 * PT_PER_MM;
+  const MT = 10 * PT_PER_MM;
   const contentW = PAGE_W - 2 * ML;
   const col = makeCol(doc, ML, contentW, MT, MT);
   const palette = { ink: C.ink, muted: C.muted };
   const titleC = cvTitleColorRgb(state); // couleur des titres selon le mode choisi
   const f = cvFontSizes(state.fontSizes && state.fontSizes.pro, 'pro').main;
 
-  const photoSize = 110 * PX;
-  if (photo) col.width = contentW - photoSize - 24 * PX;
+  // En-tête : texte à gauche, photo de 110 px à droite (24 px d'écart)
+  const photoSize = px(110);
+  if (photo) col.width = contentW - photoSize - px(24);
 
-  paragraph(col, state.profile.name, { weight: 700, size: f.name * PX, color: C.ink }, { lineH: f.name * PX * 1.2 });
-  col.y += 2 * PX;
+  paragraph(col, state.profile.name, { weight: 700, size: f.name * PX, color: C.ink });
+  col.margin(px(2));
   paragraph(col, state.profile.title, { weight: 600, size: f.title * PX, color: titleC });
-  col.y += 6 * PX;
-  contactLines(col, state, {
-    labelColor: C.ink, valueColor: C.muted, size: f.contact * PX, valueSize: f.contactValue * PX,
-  });
-  col.y += 8 * PX;
+  col.margin(px(6));
+  contactLines(col, state, { valueColor: C.ink, valueSize: f.contactValue * PX, pad: px(1) });
+  col.margin(px(8));
   for (const l of state.profile.links) {
-    linkItem(col, l, {
-      labelColor: C.ink, urlColor: C.muted, labelSize: f.contact * PX, urlSize: f.contactValue * PX,
-    });
+    linkItem(col, l, { urlColor: C.ink, urlSize: f.contactValue * PX, pad: px(1) });
   }
+  col.flush(); // la colonne de l'en-tête est un contexte de mise en forme : ses marges en font partie
 
   if (photo) {
     opPhoto(doc.pages[0], PAGE_W - ML - photoSize, MT, photoSize, null);
@@ -1365,47 +1506,36 @@ function renderPro(doc, state, photo) {
     col.width = contentW;
   }
 
-  col.y += 12 * PX;
-  for (const line of (state.profile.summary || '').split('\n')) {
-    paragraph(col, line, { size: f.summary * PX, color: C.ink });
-  }
-  col.y += 10 * PX; // air supplémentaire avant le premier titre de section (cf. styles.css)
+  col.margin(px(D.summaryMt));
+  paragraph(col, state.profile.summary, { size: f.summary * PX, color: C.ink }, { pre: true, editable: true });
+  col.space(px(10)); // air supplémentaire avant le premier titre de section (cf. styles.css)
 
-  const st = { size: f.section * PX, color: titleC, ruleColor: titleC, mt: 26 * PX, mb: 10 * PX };
+  const st = { size: f.section * PX, color: titleC, ruleColor: titleC, mt: px(D.section.mt), mb: px(D.section.mb) };
   const expSizes = {
     role: f.item, company: f.detail, period: f.period,
-    companyDescription: f.companyDescription, bullet: f.bullet, gap: 14,
+    companyDescription: f.companyDescription, bullet: f.bullet,
   };
-  const subSizes = { title: f.item, detail: f.detail, bullet: f.bullet, gap: 14 };
-  if (state.experiences.length) {
-    sectionTitle(col, 'Expériences professionnelles', st);
-    for (const exp of state.experiences) experienceBlock(col, exp, palette, expSizes);
-  }
-  if (state.education.length) {
-    sectionTitle(col, 'Formation', st);
-    for (const ed of state.education) subsectionBlock(col, ed, palette, subSizes);
-  }
-  if (state.projects.length) {
-    sectionTitle(col, 'Projets', st);
-    for (const pr of state.projects) subsectionBlock(col, pr, palette, subSizes);
-  }
-  const hasSkills = (state.skills || '').trim() || (state.skillGroups || []).length;
-  if (hasSkills) {
-    sectionTitle(col, 'Compétences', st);
-    paragraph(col, state.skills, { size: f.skills * PX, color: C.ink });
-    skillGroupsBlock(col, state.skillGroups, { size: f.skills * PX, labelColor: C.ink, textColor: C.ink });
-  }
-  if ((state.interests || []).length) {
-    sectionTitle(col, 'Intérêts', st);
-    interestsBlock(col, state.interests, { size: f.skills * PX, color: C.ink });
-  }
+  const subSizes = { title: f.item, detail: f.detail, bullet: f.bullet };
+  // Les titres de section sont toujours affichés, même sans contenu, comme à l'écran
+  sectionTitle(col, 'Expériences professionnelles', st);
+  for (const exp of state.experiences) experienceBlock(col, exp, palette, expSizes);
+  sectionTitle(col, 'Formation', st);
+  for (const ed of state.education) subsectionBlock(col, ed, palette, subSizes);
+  sectionTitle(col, 'Projets', st);
+  for (const pr of state.projects) subsectionBlock(col, pr, palette, subSizes);
+  sectionTitle(col, 'Compétences', st);
+  paragraph(col, state.skills, { size: f.skills * PX, color: C.ink }, { editable: true });
+  skillGroupsBlock(col, state.skillGroups, { size: f.skills * PX, labelColor: C.ink, textColor: C.ink });
+  sectionTitle(col, 'Intérêts', st);
+  interestsBlock(col, state.interests, { size: f.skills * PX, color: C.ink });
 }
 
 /* ---------- Modèle « Design » (barre latérale) ---------- */
 
 function renderDesign(doc, state, photo) {
   // Mesures reprises de styles.css (section « Modèle design : densité ») :
-  // .side padding 10mm 5.5mm, .main padding 10mm 9mm.
+  // .side padding 10mm 5.5mm, .main padding 10mm 9mm. La feuille fait
+  // 297 mm exactement : les colonnes ne se paginent pas, le bas est coupé.
   const sideW = SIDE_W;
   const sidePad = 5.5 * PT_PER_MM;
   const mainPad = 9 * PT_PER_MM;
@@ -1414,44 +1544,39 @@ function renderDesign(doc, state, photo) {
   // Colonne principale d'abord : ses textes sont émis en premier dans le
   // flux PDF (titre, résumé, expériences, formation, projets) ; le nom est
   // dans la barre latérale, sous la photo.
-  const main = makeCol(doc, sideW + mainPad, PAGE_W - sideW - 2 * mainPad, MT, MT);
+  const main = makeCol(doc, sideW + mainPad, PAGE_W - sideW - 2 * mainPad, MT, MT, false);
   const palette = { ink: C.ink, muted: C.muted };
   const F = cvFontSizes(state.fontSizes && state.fontSizes.design, 'design');
   const fm = F.main;
   const titleC = cvTitleColorRgb(state); // couleur des titres selon le mode choisi
-  const stMain = { size: fm.section * PX, color: titleC, ruleColor: titleC, mt: 14 * PX, mb: 6 * PX };
+  const stMain = { size: fm.section * PX, color: titleC, ruleColor: titleC, mt: px(D.section.mt), mb: px(D.section.mb) };
   const expSizes = {
     role: fm.item, company: fm.detail, period: fm.period,
-    companyDescription: fm.companyDescription, bullet: fm.bullet, gap: 8,
+    companyDescription: fm.companyDescription, bullet: fm.bullet,
   };
-  const subSizes = { title: fm.item, detail: fm.detail, bullet: fm.bullet, gap: 8 };
+  const subSizes = { title: fm.item, detail: fm.detail, bullet: fm.bullet };
 
+  main.margin(px(2));
   paragraph(main, state.profile.title, { weight: 600, size: fm.title * PX, color: titleC });
-  main.y += 8 * PX;
-  for (const line of (state.profile.summary || '').split('\n')) {
-    paragraph(main, line, { size: fm.summary * PX, color: C.ink });
-  }
-  main.y += 10 * PX; // air supplémentaire avant le premier titre de section (cf. styles.css)
+  main.margin(px(D.summaryMt));
+  paragraph(main, state.profile.summary, { size: fm.summary * PX, color: C.ink }, { pre: true, editable: true });
+  main.space(px(10)); // air supplémentaire avant le premier titre de section (cf. styles.css)
 
-  if (state.experiences.length) {
-    sectionTitle(main, 'Expériences professionnelles', stMain);
-    for (const exp of state.experiences) experienceBlock(main, exp, palette, expSizes);
-  }
-  if (state.education.length) {
-    sectionTitle(main, 'Formation', stMain);
-    for (const ed of state.education) subsectionBlock(main, ed, palette, subSizes);
-  }
-  if (state.projects.length) {
-    sectionTitle(main, 'Projets', stMain);
-    for (const pr of state.projects) subsectionBlock(main, pr, palette, subSizes);
-  }
+  sectionTitle(main, 'Expériences professionnelles', stMain);
+  for (const exp of state.experiences) experienceBlock(main, exp, palette, expSizes);
+  sectionTitle(main, 'Formation', stMain);
+  for (const ed of state.education) subsectionBlock(main, ed, palette, subSizes);
+  sectionTitle(main, 'Projets', stMain);
+  for (const pr of state.projects) subsectionBlock(main, pr, palette, subSizes);
 
   // Barre latérale : photo, Contact, Liens, Compétences, Intérêts.
   // Toutes les teintes suivent la couleur choisie.
   const S = doc.side;
-  const side = makeCol(doc, sidePad, sideW - 2 * sidePad, MT, MT);
+  const side = makeCol(doc, sidePad, sideW - 2 * sidePad, MT, MT, false);
   const fs = F.side;
-  const stSide = { size: fs.section * PX, color: S.fg, ruleColor: S.rule, mt: 14 * PX, mb: 6 * PX };
+  const stSide = {
+    size: fs.section * PX, color: S.fg, ruleColor: S.rule, mt: px(D.section.mt), mb: px(D.section.mb), ls: 0.07,
+  };
 
   if (photo) {
     // 39 mm de diamètre extérieur, contour compris (identique à styles.css :
@@ -1461,33 +1586,22 @@ function renderDesign(doc, state, photo) {
     opPhoto(side.page(), sidePad + (side.width - photoSize) / 2, side.y, photoSize, S.ring);
     side.y += photoSize;
   }
-  side.y += 8 * PX;
-  paragraph(side, state.profile.name, { weight: 700, size: fs.name * PX, color: S.fg }, { lineH: fs.name * PX * 1.2 });
+  // Nom centré sous la photo (.side .cv-name : margin-top 10px)
+  side.margin(px(10));
+  paragraph(side, state.profile.name, { weight: 700, size: fs.name * PX, color: S.fg }, { align: 'center' });
 
-  if (state.profile.contact.length) {
-    sectionTitle(side, 'Contact', stSide);
-    contactLines(side, state, {
-      labelColor: S.fg, valueColor: S.ink, size: fs.contact * PX, valueSize: fs.contactValue * PX,
-    });
-  }
-  if (state.profile.links.length) {
-    sectionTitle(side, 'Liens', stSide);
-    for (const l of state.profile.links) {
-      linkItem(side, l, {
-        labelColor: S.fg, urlColor: S.ink, labelSize: fs.contact * PX, urlSize: fs.contactValue * PX,
-      });
-    }
+  sectionTitle(side, 'Contact', stSide);
+  contactLines(side, state, { valueColor: S.ink, valueSize: fs.contactValue * PX, pad: 0 });
+  sectionTitle(side, 'Liens', stSide);
+  for (const l of state.profile.links) {
+    linkItem(side, l, { urlColor: S.ink, urlSize: fs.contactValue * PX, pad: 0 });
   }
   // Bandeau : uniquement les groupes intitulés — le texte libre `skills`
   // n'apparaît que dans le modèle « pro » (voir renderDesign dans app.js).
-  if ((state.skillGroups || []).length) {
-    sectionTitle(side, 'Compétences', stSide);
-    skillGroupsBlock(side, state.skillGroups, { size: fs.skills * PX, labelColor: S.fg, textColor: S.ink });
-  }
-  if ((state.interests || []).length) {
-    sectionTitle(side, 'Intérêts', stSide);
-    interestsBlock(side, state.interests, { size: fs.skills * PX, color: S.ink });
-  }
+  sectionTitle(side, 'Compétences', stSide);
+  skillGroupsBlock(side, state.skillGroups, { size: fs.skills * PX, labelColor: S.fg, textColor: S.ink });
+  sectionTitle(side, 'Intérêts', stSide);
+  interestsBlock(side, state.interests, { size: fs.skills * PX, color: S.ink });
 }
 
 /* ============================================================
@@ -1686,6 +1800,7 @@ async function generateCvPdf(state, title) {
   const doc = makeDoc(state);
   // Après l'await : le rendu qui suit est synchrone, LINE reste cohérent.
   LINE = state.template === 'design' ? LINE_DESIGN : LINE_PRO;
+  D = state.template === 'design' ? DENSITY.design : DENSITY.pro;
   if (state.template === 'design') renderDesign(doc, state, photo);
   else renderPro(doc, state, photo);
   return buildFile(doc, photo, {
