@@ -673,10 +673,16 @@ function updateOverflowNotice() {
   // donc leur hauteur à la place offerte par la feuille, pas à la leur.
   let excess = 0;
   if (state.template === 'design') {
+    // Mesure sur le contenu IMPRIMÉ, pas sur l'écran : un bloc déplié
+    // (chip .bullet-more) affiche plus de tirets qu'à l'impression, ce qui
+    // fausserait le calcul dans un sens comme dans l'autre. Voir
+    // #cv.measuring-print dans styles.css (synchronisée avec @media print).
+    cvEl.classList.add('measuring-print');
     const room = cvEl.clientHeight;
     for (const col of cvEl.querySelectorAll('.main, .side')) {
       excess = Math.max(excess, col.scrollHeight - room);
     }
+    cvEl.classList.remove('measuring-print');
   }
   // Deux pixels de marge : les arrondis sous-pixels ne doivent pas alarmer.
   if (excess <= 2) {
@@ -714,8 +720,12 @@ function paginatePro() {
   if (kids.length === 0) return 1;
   // Positions NATURELLES (offsetTop/offsetHeight : hauteurs de mise en page, non
   // affectées par le scale visuel du cadre) mesurées AVANT toute insertion.
+  // Sur le contenu IMPRIMÉ (voir #cv.measuring-print, styles.css) : sinon un
+  // bloc déplié à l'écran ferait apparaître un saut de page absent du PDF.
+  cvEl.classList.add('measuring-print');
   const tops = kids.map((k) => k.offsetTop);
   const heights = kids.map((k) => k.offsetHeight);
+  cvEl.classList.remove('measuring-print');
   const start = tops[0];
   let pageBottom = start + PAGE_PRINTABLE_PX; // bas de la zone de contenu de la page courante
   const breaks = [];
@@ -1029,6 +1039,17 @@ function displayBullets(exp) {
     out.push(...byId.values());
   }
   return out;
+}
+
+// Tirets réellement imprimés d'un bloc (expérience, formation, projet) :
+// l'ordre affiché, tronqué à maxVisible. Pas de coupe si maxVisible est
+// `null` ou couvre déjà tous les tirets — voir normalizeMaxVisible/bulletsUl.
+// Utilisé partout où le rendu doit ignorer les tirets repliés (PDF client,
+// couverture de mots-clés, mesures de pagination).
+function visibleBullets(item) {
+  const bullets = displayBullets(item);
+  if (typeof item.maxVisible !== 'number' || item.maxVisible >= bullets.length) return bullets;
+  return bullets.slice(0, item.maxVisible);
 }
 
 // Badge de diff d'un tiret de la proposition : compare sa position affichée à
@@ -3083,15 +3104,22 @@ function saveProposalVersion() {
 // Tout le texte du CV affiché (hors métadonnées de mise en forme), pour
 // savoir quels mots-clés de l'offre y figurent déjà. Réutilisé par la
 // couverture de l'offre ci-dessous, jamais affiché tel quel.
+// Ne compte que ce qui sera réellement imprimé : un bloc à maxVisible === 0
+// est ignoré (son titre/détail comme ses tirets), et les autres blocs
+// n'apportent que leurs tirets visibleBullets(item) — sinon un mot-clé
+// « couvert » uniquement par un tiret replié donnerait un faux sentiment de
+// couverture (le mot n'apparaîtrait pas dans le CV exporté).
 function cvFullText() {
   const parts = [state.profile.title, state.profile.summary, state.skills];
   for (const exp of state.experiences) {
+    if (exp.maxVisible === 0) continue;
     parts.push(exp.role, exp.company);
-    for (const b of exp.bullets) parts.push(b.text);
+    for (const b of visibleBullets(exp)) parts.push(b.text);
   }
   for (const sub of [...state.education, ...state.projects]) {
+    if (sub.maxVisible === 0) continue;
     parts.push(sub.title, sub.detail);
-    for (const b of sub.bullets) parts.push(b.text);
+    for (const b of visibleBullets(sub)) parts.push(b.text);
   }
   for (const g of state.skillGroups) parts.push(g.label, g.text);
   for (const it of state.interests) parts.push(it.text);
@@ -3514,11 +3542,17 @@ $('#pdfBtn').addEventListener('click', async () => {
       blob = await backendPdf(title);
     } catch (err) {
       console.info('Backend PDF indisponible, génération côté client.', err);
-      // Même ordre de tirets que la feuille affichée : celui de la
-      // proposition dans l'onglet « Nouveau CV », celui du CV de base sinon.
+      // Même contenu que la feuille imprimée : ordre de tirets de la
+      // proposition (comme à l'écran), blocs à maxVisible === 0 exclus (ils
+      // ne s'impriment pas) et tirets au-delà de la limite coupés
+      // (visibleBullets) — pdf.js itère tel quel sur ce qu'on lui passe.
+      const printedBlocks = (items) =>
+        items.filter((it) => it.maxVisible !== 0).map((it) => ({ ...it, bullets: visibleBullets(it) }));
       blob = await generateCvPdf({
         ...state,
-        experiences: state.experiences.map((e) => ({ ...e, bullets: displayBullets(e) })),
+        experiences: printedBlocks(state.experiences),
+        education: printedBlocks(state.education),
+        projects: printedBlocks(state.projects),
       }, title);
     }
     const name = (state.profile.name || 'CV').trim().replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ');

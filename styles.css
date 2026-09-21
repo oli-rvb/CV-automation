@@ -1319,6 +1319,19 @@ ul.bullets.expanded-cut li.bullet.below-cut {
 
 .bullet-more:hover { color: var(--accent); border-color: var(--accent); }
 
+/* Mesure sur le contenu IMPRIMÉ (paginatePro/updateOverflowNotice, app.js) :
+   ces deux fonctions mesurent la mise en page réelle du DOM, or un bloc
+   déplié à l'écran (.expanded-cut) y montre plus de tirets qu'à l'impression
+   — sans neutraliser cet écart le temps de la mesure, le nombre de pages
+   annoncé et l'avertissement de dépassement (feuille « Design ») pourraient
+   se tromper. app.js pose cette classe sur #cv juste avant de lire
+   offsetTop/offsetHeight/scrollHeight, puis la retire aussitôt (pas de
+   reflow visible). Mêmes sélecteurs que la règle d'impression ci-dessous
+   (@media print) : à maintenir synchronisés avec elle. */
+#cv.measuring-print li.bullet.below-cut,
+#cv.measuring-print .bullet-more,
+#cv.measuring-print .exp.limit-zero { display: none !important; }
+
 /* ---------- Proposition : indicateurs de modification ----------
    Après analyse d'une offre, le CV affiché est la PROPOSITION. Au survol du
    CV, chaque tiret déplacé porte un badge « était n°X » (sa position dans le
@@ -2340,6 +2353,24 @@ main.tab-create #createLeft {
      Filet de sécurité pour les contrôles flottants ✕ / ↑ / ↓ : */
   .bullet-controls, .exp-controls, .photo-controls,
   .bullet-badges, .match-badge { display: none !important; }
+
+  /* Limite d'affichage (voir « Limite d'affichage » plus haut) : à l'écran,
+     un bloc déplié réaffiche ses .below-cut et .exp.limit-zero reste visible
+     (liseré) pour pouvoir remonter la limite — l'impression doit au contraire
+     TOUJOURS les exclure, quel que soit l'état déplié (.expanded-cut) ou la
+     classe .limit-zero elle-même. `!important` gagne face à la règle d'écran
+     `ul.bullets.expanded-cut li.bullet.below-cut` (plus spécifique mais non
+     `!important`) : sans lui, un bloc déplié imprimerait ses tirets masqués.
+     Mêmes sélecteurs que #cv.measuring-print ci-dessus (paginatePro/
+     updateOverflowNotice), à maintenir synchronisés avec eux. */
+  li.bullet.below-cut, .bullet-more, .exp.limit-zero { display: none !important; }
+
+  /* Titre de section orphelin : si tous les blocs d'une section (expérience,
+     formation, projet) sont à maxVisible === 0, ils disparaissent tous
+     ci-dessus — le titre de section ne doit pas rester seul. */
+  .cv-block:has(.exp):not(:has(.exp:not(.limit-zero))) :is(.cv-section-title, .side-title) {
+    display: none !important;
+  }
 
   li.bullet.moved { background: none !important; }
   .exp:hover { background: none; }
