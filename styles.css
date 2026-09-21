@@ -661,16 +661,30 @@ main.tab-library #createLeft,
 main.tab-library #cvColumn,
 main.tab-library #versionsPanel { display: none; }
 
-#libraryPanel { display: flex; flex-direction: column; gap: 16px; }
+/* margin-bottom (pas padding sur main, qui vaudrait aussi pour les autres
+   onglets) : un peu de respiration après le dernier panneau, qui sinon
+   touche le bas de la fenêtre une fois déroulé jusqu'en bas. */
+#libraryPanel { display: flex; flex-direction: column; gap: 16px; margin-bottom: 24px; }
 main.tab-create #libraryPanel,
 main.tab-base #libraryPanel { display: none; }
+
+/* Barre d'outils hors sujet dans la Bibliothèque : aucun CV n'y est affiché,
+   donc « Imprimer » et « Télécharger PDF » n'ont rien à imprimer/exporter.
+   « Réinitialiser » agit lui aussi sur le CV de base (jamais sur la
+   Bibliothèque, voir resetBtn dans app.js) : cliquer dessus depuis cet onglet
+   serait tout aussi surprenant, donc même traitement. #toolbar est un frère
+   de #layout (pas un ancêtre), d'où :has() plutôt qu'un simple descendant. */
+body:has(#layout.tab-library) #printBtn,
+body:has(#layout.tab-library) #pdfBtn,
+body:has(#layout.tab-library) #resetBtn { display: none; }
 
 /* Poignée ⠿ des tirets (position absolue, -18px depuis .exp — voir
    .drag-handle plus bas) : le padding de .panel-box (18px) est trop juste
    pour l'accueillir sans qu'elle déborde du cadre. On élargit uniquement le
-   padding gauche des panneaux qui contiennent des tirets déplaçables
-   (Expériences, Formation, Projets), sans toucher aux règles du CV. */
-#libExperiencesPanel, #libEducationPanel, #libProjectsPanel { padding-left: 42px; }
+   padding gauche du CONTENU (Expériences, Formation, Projets), pas celui du
+   panneau entier, pour que son <h2> reste aligné avec celui des autres
+   panneaux de la Bibliothèque (Contact, Liens, Compétences, Intérêts). */
+#libExperiencesBody, #libEducationBody, #libProjectsBody { padding-left: 24px; }
 
 @media (max-width: 980px) {
   main, main.tab-create { grid-template-columns: 1fr; }

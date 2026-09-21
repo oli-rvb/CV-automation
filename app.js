@@ -1294,7 +1294,10 @@ function experiencesBlock(scope) {
   // lui, et non tout le CV, qui déclenche l'apparition du « + Ajouter une
   // expérience » au survol (voir la règle de scoping par section dans styles.css).
   const frag = el('section', { class: 'cv-block' });
-  frag.append(sectionTitle('Expériences professionnelles'));
+  // Le titre de section « CV » (bleu souligné) n'a de sens que sur le CV : la
+  // Bibliothèque, formulaire et non document imprimé, porte son propre titre
+  // de panneau dans index.html (voir renderLibrary et le <h2> de son panneau).
+  if (scope.isCv) frag.append(sectionTitle('Expériences professionnelles'));
   scope.data.experiences.forEach((exp, i) => {
     // Rangée unique en bas du bloc : « + Ajouter un tiret » à gauche, puis à
     // droite le réglage de limite et les icônes ↑ ↓ ✕ (voir « Limite
@@ -1360,7 +1363,9 @@ function subsectionsBlock(scope, title, items, kind, addLabel, side = false) {
   // Même conteneur que les expériences : le bouton d'ajout ne se révèle qu'au
   // survol de ce bloc (voir styles.css).
   const frag = el('section', { class: 'cv-block' });
-  frag.append(sectionTitle(title, side));
+  // Comme experiencesBlock() : pas de titre de section « CV » dans la
+  // Bibliothèque, qui a déjà le sien en <h2> de panneau.
+  if (scope.isCv) frag.append(sectionTitle(title, side));
   items.forEach((it) => {
     // Même rangée unique qu'une expérience (voir experiencesBlock) : « +
     // Ajouter un point » à gauche, réglage de limite et ✕ à droite. Comme
@@ -1477,16 +1482,21 @@ function renderDesign() {
    points, sans les affordances propres au CV (photo, profil, proposition,
    limite d'affichage), déjà court-circuitées derrière `scope.isCv` dans ces
    fonctions. Pas de feuille A4 ici : chaque panneau est un simple conteneur
-   qu'on vide puis remplit, sans mise à l'échelle ni pagination. */
+   qu'on vide puis remplit, sans mise à l'échelle ni pagination.
+
+   Un seul traitement de titre dans tout l'onglet : le <h2> sombre du panneau
+   (index.html), un par domaine — Contact, Liens, Expériences, Formation,
+   Projets, Compétences, Intérêts. Jamais le titre bleu souligné du CV
+   (sectionTitle), réservé au document imprimé ; experiencesBlock() et
+   subsectionsBlock() ne l'ajoutent d'ailleurs plus que pour scope.isCv. */
 function renderLibrary() {
   const contactBody = $('#libContactBody');
   contactBody.textContent = '';
-  contactBody.append(
-    sectionTitle('Contact'),
-    contactBlock(libraryScope),
-    sectionTitle('Liens'),
-    linksBlock(libraryScope)
-  );
+  contactBody.append(contactBlock(libraryScope));
+
+  const linksBody = $('#libLinksBody');
+  linksBody.textContent = '';
+  linksBody.append(linksBlock(libraryScope));
 
   const expBody = $('#libExperiencesBody');
   expBody.textContent = '';
