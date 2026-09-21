@@ -796,6 +796,25 @@ function iconBtn(label, action, title, extraClass = '') {
   });
 }
 
+// Réglage de la limite d'affichage d'un bloc (expérience, formation, projet) :
+// combien de tirets, dans l'ordre courant, sont montrés à l'écran et à
+// l'impression (voir normalizeMaxVisible/bulletsUl). Vide = pas de limite.
+function visibleLimitCtl(item) {
+  return el(
+    'label',
+    { class: 'visible-limit-ctl', title: 'Nombre de tirets affichés (vide = tous)' },
+    el('span', { class: 'visible-limit-label', text: 'Aff.' }),
+    el('input', {
+      class: 'visible-limit-input',
+      type: 'number',
+      min: '0',
+      max: String(item.bullets.length),
+      placeholder: '∞',
+      value: item.maxVisible === null ? '' : String(item.maxVisible),
+    })
+  );
+}
+
 /* ---------- Blocs réutilisés par les deux modèles ---------- */
 
 function photoBlock() {
@@ -1052,18 +1071,31 @@ function matchBadge(text, ownerId) {
   });
 }
 
+// Ids des blocs (expérience/formation/projet) dont la coupe d'affichage est
+// dépliée à l'écran — purement éphémère : jamais persisté, jamais dans
+// `state`, donc toujours replié après un rechargement de la page.
+const expandedCutIds = new Set();
+
 // Liste de points réordonnable, partagée par les expériences, la formation
 // et les projets (l'identité du propriétaire se retrouve via ownerFromSection,
 // pas via un attribut sur le <ul> lui-même). `ownerId` sert au diff avec le
-// CV de base (et aux mots-clés matchés) pendant une proposition.
-function bulletsUl(bullets, ownerId) {
-  const ul = el('ul', { class: 'bullets' });
+// CV de base (et aux mots-clés matchés) pendant une proposition. `maxVisible`
+// coupe l'affichage après les N premiers points dans l'ordre courant ; les
+// points au-delà restent enregistrés (voir normalizeMaxVisible) et sont
+// seulement masqués — révélables via le chip « + N » en fin de liste.
+function bulletsUl(bullets, ownerId, maxVisible) {
+  // maxVisible peut dépasser bullets.length en cours de session (points
+  // supprimés depuis le réglage de la limite) : au-delà, pas de coupe.
+  const cut = typeof maxVisible === 'number' && maxVisible < bullets.length ? maxVisible : null;
+  const expanded = cut !== null && expandedCutIds.has(ownerId);
+  const ul = el('ul', { class: 'bullets' + (expanded ? ' expanded-cut' : '') });
   bullets.forEach((b, j) => {
     const badge = diffBadge(b.id, j, ownerId);
+    const belowCut = cut !== null && j >= cut;
     ul.append(
       el(
         'li',
-        { class: 'bullet' + (badge ? ' moved' : ''), 'data-bullet-id': b.id },
+        { class: 'bullet' + (badge ? ' moved' : '') + (belowCut ? ' below-cut' : ''), 'data-bullet-id': b.id },
         el('span', { class: 'drag-handle', title: 'Glisser pour réordonner', text: '⠿' }),
         el('span', { class: 'bullet-dot', text: '•' }),
         fillMultiline(
@@ -1082,6 +1114,17 @@ function bulletsUl(bullets, ownerId) {
       )
     );
   });
+  if (cut !== null) {
+    const hidden = bullets.length - cut;
+    ul.append(
+      el('button', {
+        class: 'bullet-more',
+        type: 'button',
+        'data-action': 'bullet-more',
+        text: expanded ? 'Masquer' : `+ ${hidden} point${hidden > 1 ? 's' : ''} masqué${hidden > 1 ? 's' : ''}`,
+      })
+    );
+  }
   return ul;
 }
 
@@ -1095,9 +1138,15 @@ function experiencesBlock() {
     const controls = el(
       'div',
       { class: 'exp-controls' },
-      i > 0 && iconBtn('↑', 'exp-up', 'Monter l’expérience'),
-      i < state.experiences.length - 1 && iconBtn('↓', 'exp-down', 'Descendre l’expérience'),
-      iconBtn('✕', 'exp-del', 'Supprimer l’expérience', 'del')
+      el(
+        'div',
+        { class: 'exp-controls-row' },
+        i > 0 && iconBtn('↑', 'exp-up', 'Monter l’expérience'),
+        i < state.experiences.length - 1 && iconBtn('↓', 'exp-down', 'Descendre l’expérience'),
+        iconBtn('✕', 'exp-del', 'Supprimer l’expérience', 'del')
+      ),
+      visibleLimitCtl(exp),
+      exp.maxVisible === 0 && el('span', { class: 'limit-zero-note', text: 'non imprimé' })
     );
 
     const head = el(
@@ -1121,11 +1170,11 @@ function experiencesBlock() {
     frag.append(
       el(
         'section',
-        { class: 'exp', 'data-exp-id': exp.id },
+        { class: 'exp' + (exp.maxVisible === 0 ? ' limit-zero' : ''), 'data-exp-id': exp.id },
         controls,
         head,
         companyDesc,
-        bulletsUl(displayBullets(exp), exp.id),
+        bulletsUl(displayBullets(exp), exp.id, exp.maxVisible),
         el('button', { class: 'add-bullet', type: 'button', 'data-action': 'bullet-add', text: '+ Ajouter un tiret' })
       )
     );
@@ -1143,7 +1192,13 @@ function subsectionsBlock(title, items, kind, addLabel, side = false) {
   const frag = el('section', { class: 'cv-block' });
   frag.append(sectionTitle(title, side));
   items.forEach((it) => {
-    const controls = el('div', { class: 'exp-controls' }, iconBtn('✕', `${kind}-del`, 'Supprimer', 'del'));
+    const controls = el(
+      'div',
+      { class: 'exp-controls' },
+      el('div', { class: 'exp-controls-row' }, iconBtn('✕', `${kind}-del`, 'Supprimer', 'del')),
+      visibleLimitCtl(it),
+      it.maxVisible === 0 && el('span', { class: 'limit-zero-note', text: 'non imprimé' })
+    );
 
     const head = el(
       'div',
@@ -1160,10 +1215,10 @@ function subsectionsBlock(title, items, kind, addLabel, side = false) {
     frag.append(
       el(
         'section',
-        { class: 'exp', [`data-${kind}-id`]: it.id },
+        { class: 'exp' + (it.maxVisible === 0 ? ' limit-zero' : ''), [`data-${kind}-id`]: it.id },
         controls,
         head,
-        bulletsUl(displayBullets(it), it.id),
+        bulletsUl(displayBullets(it), it.id, it.maxVisible),
         el('button', { class: 'add-bullet', type: 'button', 'data-action': 'bullet-add', text: '+ Ajouter un point' })
       )
     );
@@ -2017,6 +2072,12 @@ cvEl.addEventListener('click', async (e) => {
       proposalRemove(owner.id, li.dataset.bulletId);
       break;
     }
+    case 'bullet-more': {
+      if (!owner) return;
+      if (expandedCutIds.has(owner.id)) expandedCutIds.delete(owner.id);
+      else expandedCutIds.add(owner.id);
+      break;
+    }
     case 'bullet-up':
     case 'bullet-down': {
       if (!owner || !li) return;
@@ -2136,6 +2197,19 @@ cvEl.addEventListener('click', async (e) => {
     default:
       return;
   }
+  rerender();
+});
+
+// Réglage de la limite d'affichage (champ numérique de .exp-controls) : pas
+// de conflit avec le listener `input` ci-dessus, qui ne traite que les
+// [contenteditable] (le champ number n'en est pas un).
+cvEl.addEventListener('change', (e) => {
+  const input = e.target.closest('.visible-limit-input');
+  if (!input) return;
+  const owner = ownerFromSection(input.closest('section.exp'));
+  if (!owner) return;
+  const raw = input.value.trim();
+  owner.maxVisible = raw === '' ? null : normalizeMaxVisible(Number(raw), owner.bullets.length);
   rerender();
 });
 

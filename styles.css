@@ -1151,13 +1151,25 @@ li.bullet:hover .bullet-controls,
 
 /* z-index indispensable : .exp-head est positionné (voir « Ordre de lecture du
    PDF ») et vient après dans le DOM — à z-index égal il se peindrait par-dessus
-   ces boutons et capterait leurs clics. */
+   ces boutons et capterait leurs clics.
+   Ancrés à DROITE (comme .bullet-controls) et non à gauche : à gauche, ils
+   recouvraient toujours le tout début du titre (« Développeur web » lu
+   « oppeur web ») — la partie la plus lisible du bloc. À droite, ils ne
+   recouvrent au pire que la fin de la période ou du détail, comme partout
+   ailleurs dans l'app. */
 .exp-controls {
   position: absolute;
   top: 4px;
-  left: 4px;
+  right: 4px;
   z-index: 2;
   display: none;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+}
+
+.exp-controls-row {
+  display: flex;
   gap: 4px;
 }
 
@@ -1220,6 +1232,72 @@ li.bullet:hover .drag-handle { color: var(--muted); }
 }
 
 li.bullet:hover .bullet-controls { display: flex; }
+
+/* ---------- Limite d'affichage (à l'écran uniquement) ----------
+   Combien de tirets, dans l'ordre courant, sont montrés à l'écran et à
+   l'impression (voir normalizeMaxVisible/bulletsUl côté JS). Réglage logé
+   dans .exp-controls, donc déjà invisible à l'impression : rien à faire
+   côté print pour ce contrôle. */
+
+.visible-limit-ctl {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  color: var(--muted);
+  cursor: default;
+}
+
+.visible-limit-label { white-space: nowrap; }
+
+.visible-limit-input {
+  width: 40px;
+  height: 20px;
+  padding: 0 3px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--btn-bg);
+  color: inherit;
+  font-size: 11px;
+  text-align: center;
+}
+
+.visible-limit-input:focus { outline: none; border-color: var(--accent); }
+
+/* Limite à 0 : le bloc reste visible et modifiable à l'écran (pour pouvoir
+   remonter la limite), signalé seulement par un liseré discret — l'étape 4
+   le fera disparaître à l'impression. */
+.exp.limit-zero { box-shadow: inset 2px 0 0 var(--muted); }
+
+.limit-zero-note {
+  font-size: 10px;
+  font-style: italic;
+  white-space: nowrap;
+}
+
+/* Tirets au-delà de la limite : masqués par défaut (l'écran doit rester
+   fidèle au PDF, notamment pour la feuille « Design » figée à 297 mm),
+   révélables en grisé via le chip .bullet-more. */
+li.bullet.below-cut { display: none; }
+
+ul.bullets.expanded-cut li.bullet.below-cut {
+  display: flex;
+  opacity: 0.45;
+}
+
+.bullet-more {
+  display: block;
+  margin-top: 2px;
+  padding: 1px 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--btn-bg);
+  color: var(--muted);
+  font-size: 10.5px;
+  cursor: pointer;
+}
+
+.bullet-more:hover { color: var(--accent); border-color: var(--accent); }
 
 /* ---------- Proposition : indicateurs de modification ----------
    Après analyse d'une offre, le CV affiché est la PROPOSITION. Au survol du
