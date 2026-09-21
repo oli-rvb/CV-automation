@@ -1569,12 +1569,6 @@ function renderCV() {
   applyFontSizes();
   if (state.template === 'design') renderDesign();
   else renderPro();
-
-  if (pendingFocusBulletId) {
-    const target = cvEl.querySelector(`.bullet-text[data-bullet-id="${pendingFocusBulletId}"]`);
-    pendingFocusBulletId = null;
-    if (target) focusEnd(target);
-  }
 }
 
 function updateTemplateToggle() {
@@ -1929,13 +1923,14 @@ function renderFontControls() {
 /* ============================================================
    Historique global (Annuler / Rétablir)
    ============================================================
-   Une pile unique d'instantanés du CV (snapshotCV()) couvre TOUTE
-   modification : texte édité, ajout/suppression de section/tiret, glisser-
-   déposer, photo, lien, modèle, couleurs, tailles de texte, réinitialiser,
-   import JSON, remplissage par l'IA, chargement d'un CV sauvegardé... Comme
-   quasiment toutes ces mutations passent par save() (directement ou via
-   rerender()), c'est là qu'on accroche l'historique plutôt que de dupliquer
-   la logique à chaque point d'appel.
+   Une pile unique d'instantanés (historySnapshot(), CV + Bibliothèque) couvre
+   TOUTE modification : texte édité, ajout/suppression de section/tiret,
+   glisser-déposer, photo, lien, modèle, couleurs, tailles de texte,
+   réinitialiser, import JSON, remplissage par l'IA, chargement d'un CV
+   sauvegardé, édition de la Bibliothèque... Comme quasiment toutes ces
+   mutations passent par save() (directement ou via rerender()), c'est là
+   qu'on accroche l'historique plutôt que de dupliquer la logique à chaque
+   point d'appel.
 
    Une frappe continue dans un champ (ou un glissement de curseur) ne doit
    compter que pour UNE étape : `historyPending` mémorise l'instantané
@@ -1946,7 +1941,7 @@ function renderFontControls() {
 const HISTORY_MAX = 100;
 const undoStack = [];
 const redoStack = [];
-let lastSnapshot = snapshotCV(); // dernier instantané reflété par undo/redoStack
+let lastSnapshot = historySnapshot(); // dernier instantané reflété par undo/redoStack
 let historyPending = null; // instantané d'avant l'interaction continue en cours, ou null
 let historyTypingTimer = null;
 
@@ -1972,9 +1967,9 @@ function commitHistoryStep() {
   refreshHistoryButtons();
 }
 
-// Appelé par save() à chaque mutation du CV.
+// Appelé par save() à chaque mutation du CV ou de la Bibliothèque.
 function recordHistory(grouped) {
-  const current = snapshotCV();
+  const current = historySnapshot();
   if (grouped) {
     if (JSON.stringify(current) === JSON.stringify(lastSnapshot)) return; // rien n'a changé
     if (!historyPending) historyPending = lastSnapshot;
@@ -2002,12 +1997,13 @@ function recordHistory(grouped) {
 // attendre le délai d'inactivité. Sans effet s'il n'y a rien en attente.
 document.addEventListener('focusout', () => commitHistoryStep());
 
-// Restaure un instantané (annuler/rétablir) : remet `state` à jour, comme au
-// chargement d'un CV sauvegardé, puis re-rend. `lastSnapshot` est aligné
-// AVANT rerender()/save() pour que ce save() ne réempile rien.
+// Restaure un instantané (annuler/rétablir) : remet `state` à jour, CV et
+// Bibliothèque, comme au chargement d'un CV sauvegardé, puis re-rend.
+// `lastSnapshot` est aligné AVANT rerender()/save() pour que ce save() ne
+// réempile rien.
 function restoreCV(entry) {
-  applyCV(entry);
-  lastSnapshot = snapshotCV();
+  applyHistorySnapshot(entry);
+  lastSnapshot = historySnapshot();
   refreshHistoryButtons();
   rerender();
 }
@@ -2161,6 +2157,17 @@ function updateTabs() {
 function rerender() {
   renderCV();
   renderLibrary();
+  // Focus du tiret vide créé par Entrée ou « + Ajouter un tiret » (voir
+  // installEditing) : recherché dans TOUT le document, et non le seul CV,
+  // pour valoir aussi dans la Bibliothèque — les deux éditeurs partagent
+  // `pendingFocusBulletId`, et l'id (uid()) est unique quel que soit le
+  // conteneur. Après renderCV()/renderLibrary(), qui viennent de reconstruire
+  // les deux arbres DOM.
+  if (pendingFocusBulletId) {
+    const target = document.querySelector(`.bullet-text[data-bullet-id="${pendingFocusBulletId}"]`);
+    pendingFocusBulletId = null;
+    if (target) focusEnd(target);
+  }
   renderSuggestions();
   renderVersions();
   updateTemplateToggle();
@@ -2530,9 +2537,14 @@ function installEditing(rootEl, scope) {
   });
 }
 
-// Un seul appel pour l'instant : la Bibliothèque en ajoutera un second sur son
-// propre conteneur (voir le commentaire d'installEditing ci-dessus).
 installEditing(cvEl, cvScope);
+
+// Second éditeur, sur son propre conteneur : mêmes gestes que le CV (saisie,
+// Entrée/Maj+Entrée, boutons, glisser-déposer), sans dupliquer installEditing
+// (voir son commentaire plus haut) — `libraryScope.isCv` à `false` en
+// court-circuite les parties propres au CV (proposition, photo, limite
+// d'affichage).
+installEditing($('#libraryPanel'), libraryScope);
 
 /* ---------- Photo : pop-up de recadrage / centrage ---------- */
 
@@ -2946,6 +2958,22 @@ function applyCV(data) {
   state.interests = cv.interests;
   state.jobText = cv.jobText;
   jobTextEl.value = state.jobText;
+}
+
+// Instantané utilisé par l'historique (Annuler/Rétablir) UNIQUEMENT : reprend
+// snapshotCV() et y ajoute la Bibliothèque, pour que ses propres
+// modifications soient elles aussi annulables/rétablissables. Les CV
+// sauvegardés (saveCurrentCvAsVersion) et l'export JSON restent scopés au
+// seul CV via snapshotCV()/applyCV() : ils ne doivent pas embarquer une copie
+// de la Bibliothèque, qui n'a pas sa place dans un CV ni dans une sauvegarde
+// par CV.
+function historySnapshot() {
+  return { ...snapshotCV(), library: JSON.parse(JSON.stringify(state.library)) };
+}
+
+function applyHistorySnapshot(entry) {
+  applyCV(entry);
+  state.library = normalizeLibrary(entry.library);
 }
 
 // Nombre de CV sauvegardés affichés en permanence en haut de la liste ; les
