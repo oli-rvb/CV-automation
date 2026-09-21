@@ -1138,13 +1138,14 @@ function experiencesBlock() {
     const controls = el(
       'div',
       { class: 'exp-controls' },
-      el(
-        'div',
-        { class: 'exp-controls-row' },
-        i > 0 && iconBtn('↑', 'exp-up', 'Monter l’expérience'),
-        i < state.experiences.length - 1 && iconBtn('↓', 'exp-down', 'Descendre l’expérience'),
-        iconBtn('✕', 'exp-del', 'Supprimer l’expérience', 'del')
-      ),
+      i > 0 && iconBtn('↑', 'exp-up', 'Monter l’expérience'),
+      i < state.experiences.length - 1 && iconBtn('↓', 'exp-down', 'Descendre l’expérience'),
+      iconBtn('✕', 'exp-del', 'Supprimer l’expérience', 'del')
+    );
+
+    const footer = el(
+      'div',
+      { class: 'exp-footer' },
       visibleLimitCtl(exp),
       exp.maxVisible === 0 && el('span', { class: 'limit-zero-note', text: 'non imprimé' })
     );
@@ -1175,7 +1176,8 @@ function experiencesBlock() {
         head,
         companyDesc,
         bulletsUl(displayBullets(exp), exp.id, exp.maxVisible),
-        el('button', { class: 'add-bullet', type: 'button', 'data-action': 'bullet-add', text: '+ Ajouter un tiret' })
+        el('button', { class: 'add-bullet', type: 'button', 'data-action': 'bullet-add', text: '+ Ajouter un tiret' }),
+        footer
       )
     );
   });
@@ -1195,7 +1197,12 @@ function subsectionsBlock(title, items, kind, addLabel, side = false) {
     const controls = el(
       'div',
       { class: 'exp-controls' },
-      el('div', { class: 'exp-controls-row' }, iconBtn('✕', `${kind}-del`, 'Supprimer', 'del')),
+      iconBtn('✕', `${kind}-del`, 'Supprimer', 'del')
+    );
+
+    const footer = el(
+      'div',
+      { class: 'exp-footer' },
       visibleLimitCtl(it),
       it.maxVisible === 0 && el('span', { class: 'limit-zero-note', text: 'non imprimé' })
     );
@@ -1219,7 +1226,8 @@ function subsectionsBlock(title, items, kind, addLabel, side = false) {
         controls,
         head,
         bulletsUl(displayBullets(it), it.id, it.maxVisible),
-        el('button', { class: 'add-bullet', type: 'button', 'data-action': 'bullet-add', text: '+ Ajouter un point' })
+        el('button', { class: 'add-bullet', type: 'button', 'data-action': 'bullet-add', text: '+ Ajouter un point' }),
+        footer
       )
     );
   });
@@ -2200,7 +2208,7 @@ cvEl.addEventListener('click', async (e) => {
   rerender();
 });
 
-// Réglage de la limite d'affichage (champ numérique de .exp-controls) : pas
+// Réglage de la limite d'affichage (champ numérique de .exp-footer) : pas
 // de conflit avec le listener `input` ci-dessus, qui ne traite que les
 // [contenteditable] (le champ number n'en est pas un).
 cvEl.addEventListener('change', (e) => {

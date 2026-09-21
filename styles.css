@@ -840,6 +840,7 @@ main.tab-create #cvScale #cv {
 .drag-handle,
 .add-bullet, .add-exp, .add-edu, .add-project, .add-link, .add-contact,
 .add-group, .add-interest,
+.exp-footer,
 .photo-box:not(:has(.cv-photo)) { display: none; }
 
 .exp:is(:hover, :focus-within) .drag-handle,
@@ -854,6 +855,11 @@ main.tab-create #cvScale #cv {
 .cv-interests:is(:hover, :focus-within) .add-interest {
   display: inline-block;
 }
+
+/* .exp-footer regroupe le réglage de limite (et sa mention « non imprimé ») :
+   c'est un conteneur flex, pas un bouton, donc son display de révélation
+   diffère des `.add-*` ci-dessus. */
+.exp:is(:hover, :focus-within) .exp-footer { display: flex; }
 
 /* ---------- Fondu à l'apparition / disparition ----------
    `display` reste le commutateur : c'est lui, et lui seul, qui garantit que
@@ -871,12 +877,13 @@ main.tab-create #cvScale #cv {
 .bullet-controls, .exp-controls, .photo-controls,
 .add-bullet, .add-exp, .add-edu, .add-project, .add-link, .add-contact,
 .add-group, .add-interest,
+.exp-footer,
 .photo-box:not(:has(.cv-photo)) {
   opacity: 0;
   transition: opacity 120ms ease, display 120ms allow-discrete;
 }
 
-.exp:is(:hover, :focus-within) :is(.drag-handle, .add-bullet),
+.exp:is(:hover, :focus-within) :is(.drag-handle, .add-bullet, .exp-footer),
 .cv-block:is(:hover, :focus-within) :is(.add-exp, .add-edu, .add-project),
 .cv-links:is(:hover, :focus-within) .add-link,
 .cv-contact-block:is(:hover, :focus-within) .add-contact,
@@ -895,7 +902,7 @@ li.bullet:hover .bullet-controls,
 }
 
 @starting-style {
-  .exp:is(:hover, :focus-within) :is(.drag-handle, .add-bullet),
+  .exp:is(:hover, :focus-within) :is(.drag-handle, .add-bullet, .exp-footer),
   .cv-block:is(:hover, :focus-within) :is(.add-exp, .add-edu, .add-project),
   .cv-links:is(:hover, :focus-within) .add-link,
   .cv-contact-block:is(:hover, :focus-within) .add-contact,
@@ -936,8 +943,9 @@ li.bullet:hover .bullet-controls,
 #cv .interest-item:has([contenteditable]:focus) .bullet-controls,
 /* ✕ / ↑ / ↓ d'une expérience/formation/projet — posés sur son titre */
 #cv .exp:has(.exp-role:focus) .exp-controls,
-/* « + Ajouter un tiret » — retombe sur le titre du bloc suivant */
-#cv .exp:has(+ .exp .exp-head [contenteditable]:focus) .add-bullet,
+/* « + Ajouter un tiret » et le réglage de limite — retombent sur le titre du
+   bloc suivant */
+#cv .exp:has(+ .exp .exp-head [contenteditable]:focus) :is(.add-bullet, .exp-footer),
 /* « + Ajouter un lien » — retombe sur la première ligne du résumé */
 #cv .cv-header:has(~ .cv-summary:focus) .add-link,
 /* « + Ajouter un champ » — retombe sur le premier lien */
@@ -1163,13 +1171,6 @@ li.bullet:hover .bullet-controls,
   right: 4px;
   z-index: 2;
   display: none;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 3px;
-}
-
-.exp-controls-row {
-  display: flex;
   gap: 4px;
 }
 
@@ -1235,9 +1236,28 @@ li.bullet:hover .bullet-controls { display: flex; }
 
 /* ---------- Limite d'affichage (à l'écran uniquement) ----------
    Combien de tirets, dans l'ordre courant, sont montrés à l'écran et à
-   l'impression (voir normalizeMaxVisible/bulletsUl côté JS). Réglage logé
-   dans .exp-controls, donc déjà invisible à l'impression : rien à faire
-   côté print pour ce contrôle. */
+   l'impression (voir normalizeMaxVisible/bulletsUl côté JS). Réglage posé en
+   BAS du bloc (.exp-footer), sur la même rangée que « + Ajouter un tiret » :
+   c'est l'espace resté libre sous la liste qu'il coupe. Il logeait auparavant
+   dans .exp-controls (en haut à droite), qui devenait alors assez large pour
+   recouvrir toute la période au survol (« 2019 » au lieu de « 2019 – 2022 »)
+   — .exp-controls ne garde donc que ses icônes ↑ ↓ ✕.
+   .exp-footer suit les mêmes règles que les autres affordances d'édition
+   (display:none au repos, jamais dans le flux une fois révélé — voir « Affor-
+   dances d'édition ») : déjà invisible à l'impression, rien à faire côté print
+   pour ce contrôle. `right: 0` et pas de `top` : comme .add-bullet (à
+   `left: 0`, lui aussi sans `top`), sa position verticale « statique » tombe
+   au même endroit, juste sous la liste — les deux atterrissent donc sur la
+   même rangée sans se chevaucher. */
+
+.exp-footer {
+  position: absolute;
+  right: 0;
+  z-index: 2;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
 
 .visible-limit-ctl {
   display: flex;
