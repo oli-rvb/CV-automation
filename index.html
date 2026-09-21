@@ -163,7 +163,8 @@
         transférer vers un autre navigateur&nbsp;; importez ensuite ce
         fichier pour le restaurer à l'identique. Vos autres CV sauvegardés ne
         sont pas concernés, et la photo n'est pas incluse dans le fichier
-        (elle reste celle déjà affichée après import).
+        (elle reste celle déjà affichée après import). La Bibliothèque a sa
+        propre porte d'export/import, dans l'onglet «&nbsp;Bibliothèque&nbsp;».
       </p>
       <div class="panel-actions">
         <button id="importBtn" class="ghost" type="button">Importer JSON</button>
@@ -325,6 +326,18 @@
         </p>
         <div class="panel-actions">
           <button id="libSendToBaseBtn" class="ghost danger" type="button">Envoyer vers le CV de base</button>
+        </div>
+        <p class="hint">
+          La Bibliothèque n'existe que dans ce navigateur&nbsp;: exportez-la
+          dans un fichier pour la conserver ou la transférer ailleurs, puis
+          importez-la pour la restaurer. Cette porte est distincte de
+          l'import/export JSON du CV (onglet «&nbsp;Nouveau CV&nbsp;»), qui ne
+          concerne que le CV actuellement affiché.
+        </p>
+        <div class="panel-actions">
+          <button id="libImportBtn" class="ghost" type="button">Importer une Bibliothèque</button>
+          <input type="file" id="libImportFile" accept="application/json,.json" hidden>
+          <button id="libExportBtn" class="ghost" type="button">Exporter la Bibliothèque</button>
         </div>
       </section>
 

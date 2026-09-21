@@ -2592,6 +2592,52 @@ $('#libSendToBaseBtn').addEventListener('click', async () => {
   rerender();
 });
 
+// Export / import de la Bibliothèque : sa seule porte de sortie, puisqu'elle
+// ne vit que dans le localStorage de ce navigateur. Même mécanique que
+// l'export/import JSON du CV (exportBtn/importCvFile plus bas dans ce
+// fichier) — même façon de déclencher un téléchargement et de lire un
+// fichier, même tolérance au fichier invalide — mais une porte distincte :
+// celle-ci ne touche jamais au CV, l'autre ne touche jamais à la Bibliothèque.
+$('#libExportBtn').addEventListener('click', () => {
+  const blob = new Blob([JSON.stringify(state.library, null, 2)], { type: 'application/json' });
+  const a = el('a', { href: URL.createObjectURL(blob), download: 'bibliotheque.json' });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(a.href);
+});
+
+$('#libImportBtn').addEventListener('click', () => $('#libImportFile').click());
+
+$('#libImportFile').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async () => {
+    let data;
+    try {
+      data = JSON.parse(reader.result);
+      // Un JSON qui n'est même pas un objet est rejeté ici, pour ne pas
+      // demander de confirmation puis remplacer la Bibliothèque existante par
+      // du vide sur un simple fichier invalide. Au-delà de ce test minimal,
+      // normalizeLibrary() (appelé après confirmation) répare tolérant tout
+      // le reste (clés manquantes, mauvaises formes).
+      if (!data || typeof data !== 'object') throw new Error('format');
+    } catch {
+      alert('Fichier invalide : attendu un export JSON de la Bibliothèque.');
+      return;
+    }
+    if (!(await customConfirm(
+      'Remplacer toute la Bibliothèque par le contenu de ce fichier ?',
+      { confirmLabel: 'Remplacer', danger: true }
+    ))) return;
+    state.library = normalizeLibrary(data);
+    rerender();
+  };
+  reader.readAsText(file);
+});
+
 /* ---------- Photo : pop-up de recadrage / centrage ---------- */
 
 const photoModalEl = $('#photoModal');
