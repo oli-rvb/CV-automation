@@ -3874,7 +3874,7 @@ $('#printBtn').addEventListener('click', () => window.print());
 // 1. Backend (server.js + Chrome headless) : le PDF est mis en page par le
 //    même moteur que l'écran — correspondance exacte (polices, retours à la
 //    ligne).
-// 2. Secours sans backend : générateur client pdf.js (métriques Helvetica),
+// 2. Secours sans backend : générateur client pdf.js (Open Sans embarquée),
 //    fidèle mais avec de possibles écarts de coupure de ligne.
 const PDF_ENDPOINT = location.protocol === 'file:' ? 'http://localhost:3333/pdf' : '/pdf';
 
