@@ -1017,8 +1017,8 @@ function displayBullets(exp) {
 // styles.css) et jamais dans le PDF.
 function diffBadge(bulletId, index, ownerId) {
   if (!ownerId || !inCreateTab() || !proposalOrderFor(ownerId)) return null;
-  const exp = findExp(ownerId);
-  const baseIdx = exp ? exp.bullets.findIndex((b) => b.id === bulletId) : -1;
+  const owner = findOwnerById(ownerId);
+  const baseIdx = owner ? owner.bullets.findIndex((b) => b.id === bulletId) : -1;
   if (baseIdx === -1 || baseIdx === index) return null;
   const arrow = baseIdx > index ? '↑' : '↓';
   return el('span', {
@@ -1034,11 +1034,11 @@ function diffBadge(bulletId, index, ownerId) {
 // de retokeniser l'offre pour chaque tiret de chaque expérience.
 let renderJobModel = null;
 
-// Badge listant les mots-clés de l'offre trouvés dans un tiret d'expérience
-// (ownerId n'est fourni que pour les expériences, voir bulletsUl). Élément
-// SÉPARÉ du .bullet-text (jamais dans son innerHTML) pour ne jamais
-// corrompre le texte édité par l'utilisateur. Comme diffBadge : uniquement
-// au survol (voir styles.css), jamais dans le PDF.
+// Badge listant les mots-clés de l'offre trouvés dans un tiret (expérience,
+// formation ou projet — ownerId n'est fourni que si le tiret appartient à un
+// propriétaire, voir bulletsUl). Élément SÉPARÉ du .bullet-text (jamais dans
+// son innerHTML) pour ne jamais corrompre le texte édité par l'utilisateur.
+// Comme diffBadge : uniquement au survol (voir styles.css), jamais dans le PDF.
 function matchBadge(text, ownerId) {
   if (!ownerId || !renderJobModel) return null;
   const { matched } = scoreBullet(text, renderJobModel);
@@ -1054,8 +1054,8 @@ function matchBadge(text, ownerId) {
 
 // Liste de points réordonnable, partagée par les expériences, la formation
 // et les projets (l'identité du propriétaire se retrouve via ownerFromSection,
-// pas via un attribut sur le <ul> lui-même). `ownerId` n'est fourni que pour
-// les expériences : il sert au diff avec le CV de base pendant une proposition.
+// pas via un attribut sur le <ul> lui-même). `ownerId` sert au diff avec le
+// CV de base (et aux mots-clés matchés) pendant une proposition.
 function bulletsUl(bullets, ownerId) {
   const ul = el('ul', { class: 'bullets' });
   bullets.forEach((b, j) => {
@@ -1163,7 +1163,7 @@ function subsectionsBlock(title, items, kind, addLabel, side = false) {
         { class: 'exp', [`data-${kind}-id`]: it.id },
         controls,
         head,
-        bulletsUl(it.bullets),
+        bulletsUl(displayBullets(it), it.id),
         el('button', { class: 'add-bullet', type: 'button', 'data-action': 'bullet-add', text: '+ Ajouter un point' })
       )
     );
@@ -1838,15 +1838,20 @@ function findExp(id) {
   return state.experiences.find((e) => e.id === id);
 }
 
+// Retrouve un propriétaire de tirets (expérience, formation ou projet) par
+// son id, quelle que soit sa liste — les trois partagent la même structure
+// (titre, détail éventuel, liste de points).
+function findOwnerById(id) {
+  return state.experiences.find((e) => e.id === id) || state.education.find((e) => e.id === id) || state.projects.find((e) => e.id === id);
+}
+
 // Retrouve l'expérience/formation/projet propriétaire d'un <section class="exp">,
 // quel que soit son type — les trois partagent la même structure (titre, détail
 // éventuel, liste de points).
 function ownerFromSection(section) {
   if (!section) return null;
-  if (section.dataset.expId) return findExp(section.dataset.expId);
-  if (section.dataset.eduId) return state.education.find((x) => x.id === section.dataset.eduId);
-  if (section.dataset.projectId) return state.projects.find((x) => x.id === section.dataset.projectId);
-  return null;
+  const id = section.dataset.expId || section.dataset.eduId || section.dataset.projectId;
+  return id ? findOwnerById(id) : null;
 }
 
 // Tient l'ordre proposé d'une expérience en phase avec ses tirets : un tiret
@@ -1973,7 +1978,7 @@ cvEl.addEventListener('keydown', (e) => {
     // idx === -1 : ligne ajoutée par la relecture, sans place dans le CV de
     // base — le nouveau tiret rejoint la fin de l'expérience.
     owner.bullets.splice(idx === -1 ? owner.bullets.length : idx + 1, 0, nb);
-    proposalInsert(section.dataset.expId, nb.id, idx === -1 ? null : t.dataset.bulletId);
+    proposalInsert(owner.id, nb.id, idx === -1 ? null : t.dataset.bulletId);
     pendingFocusBulletId = nb.id;
     rerender();
   } else {
@@ -2002,14 +2007,14 @@ cvEl.addEventListener('click', async (e) => {
       if (!owner) return;
       const nb = { id: uid(), text: '' };
       owner.bullets.push(nb);
-      proposalInsert(expSection.dataset.expId, nb.id);
+      proposalInsert(owner.id, nb.id);
       pendingFocusBulletId = nb.id;
       break;
     }
     case 'bullet-del': {
       if (!owner || !li) return;
       owner.bullets = owner.bullets.filter((b) => b.id !== li.dataset.bulletId);
-      proposalRemove(expSection.dataset.expId, li.dataset.bulletId);
+      proposalRemove(owner.id, li.dataset.bulletId);
       break;
     }
     case 'bullet-up':
@@ -2017,7 +2022,7 @@ cvEl.addEventListener('click', async (e) => {
       if (!owner || !li) return;
       // Dans l'onglet « Nouveau CV » pendant une proposition, les flèches
       // réordonnent la proposition ; sinon, le CV de base.
-      const ord = inCreateTab() ? proposalOrderFor(expSection.dataset.expId) : null;
+      const ord = inCreateTab() ? proposalOrderFor(owner.id) : null;
       const arr = ord || owner.bullets;
       const idx = ord ? ord.indexOf(li.dataset.bulletId) : owner.bullets.findIndex((b) => b.id === li.dataset.bulletId);
       if (idx === -1) return;
@@ -2059,6 +2064,7 @@ cvEl.addEventListener('click', async (e) => {
       if (!expSection) return;
       if (!(await customConfirm('Supprimer cette formation et tous ses points ?', { confirmLabel: 'Supprimer', danger: true }))) return;
       state.education = state.education.filter((x) => x.id !== expSection.dataset.eduId);
+      if (state.proposal) delete state.proposal.orders[expSection.dataset.eduId];
       break;
     }
     case 'project-add': {
@@ -2069,6 +2075,7 @@ cvEl.addEventListener('click', async (e) => {
       if (!expSection) return;
       if (!(await customConfirm('Supprimer ce projet et tous ses points ?', { confirmLabel: 'Supprimer', danger: true }))) return;
       state.projects = state.projects.filter((x) => x.id !== expSection.dataset.projectId);
+      if (state.proposal) delete state.proposal.orders[expSection.dataset.projectId];
       break;
     }
     case 'link-add': {
@@ -2503,7 +2510,7 @@ cvEl.addEventListener('dragend', () => {
       .filter((id) => known.has(id));
     // Pendant une proposition (onglet « Nouveau CV »), le glisser-déposer
     // réordonne la proposition ; sinon, le CV de base.
-    const ord = inCreateTab() ? proposalOrderFor(section.dataset.expId) : null;
+    const ord = inCreateTab() ? proposalOrderFor(owner.id) : null;
     if (ord) ord.splice(0, ord.length, ...order);
     else owner.bullets.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
   }
@@ -2879,9 +2886,9 @@ function effectiveJobText() {
 let newCvNameDraft = '';
 let proposalSaved = false;
 
-// Construit la proposition : l'ordre suggéré par l'analyse, par expérience.
-// Le CV de base n'est PAS modifié — la proposition n'est qu'une surcouche
-// d'ordre, affichée dans l'onglet « Nouveau CV ».
+// Construit la proposition : l'ordre suggéré par l'analyse, par expérience,
+// formation et projet. Le CV de base n'est PAS modifié — la proposition
+// n'est qu'une surcouche d'ordre, affichée dans l'onglet « Nouveau CV ».
 function buildProposal() {
   newCvNameDraft = '';
   proposalSaved = false;
@@ -2892,10 +2899,10 @@ function buildProposal() {
   }
   const orders = {};
   let changed = false;
-  for (const exp of state.experiences) {
-    const suggested = suggestOrder(exp, model).scored.map((s) => s.bullet.id);
-    orders[exp.id] = suggested;
-    if (suggested.some((id, i) => exp.bullets[i].id !== id)) changed = true;
+  for (const owner of [...state.experiences, ...state.education, ...state.projects]) {
+    const suggested = suggestOrder(owner, model).scored.map((s) => s.bullet.id);
+    orders[owner.id] = suggested;
+    if (suggested.some((id, i) => owner.bullets[i].id !== id)) changed = true;
   }
   state.proposal = changed ? { orders } : null;
 }
@@ -2950,14 +2957,14 @@ function extractCompanyName(lines) {
   return '';
 }
 
-// Le CV de base, avec les tirets de chaque expérience dans l'ordre proposé :
-// c'est ce qui est enregistré comme nouveau CV.
-function snapshotProposalCV() {
-  const snap = snapshotCV();
-  for (const exp of snap.experiences) {
-    const ord = proposalOrderFor(exp.id);
+// Réordonne les tirets de chaque élément de `list` selon la proposition en
+// cours (no-op sans proposition pour cet élément). Partagé par les trois
+// listes (expériences, formations, projets) lors de l'enregistrement.
+function applyProposalOrder(list) {
+  for (const owner of list) {
+    const ord = proposalOrderFor(owner.id);
     if (ord) {
-      const byId = new Map(exp.bullets.map((b) => [b.id, b]));
+      const byId = new Map(owner.bullets.map((b) => [b.id, b]));
       const out = [];
       for (const id of ord) {
         const b = byId.get(id);
@@ -2966,9 +2973,18 @@ function snapshotProposalCV() {
           byId.delete(id);
         }
       }
-      exp.bullets = [...out, ...byId.values()];
+      owner.bullets = [...out, ...byId.values()];
     }
   }
+}
+
+// Le CV de base, avec les tirets de chaque expérience/formation/projet dans
+// l'ordre proposé : c'est ce qui est enregistré comme nouveau CV.
+function snapshotProposalCV() {
+  const snap = snapshotCV();
+  applyProposalOrder(snap.experiences);
+  applyProposalOrder(snap.education);
+  applyProposalOrder(snap.projects);
   return snap;
 }
 
@@ -3055,17 +3071,17 @@ function renderSuggestions() {
           'Ré-analyser l’offre reconstruit la proposition.',
       })
     );
-    for (const exp of state.experiences) {
-      if (!proposalOrderFor(exp.id)) continue;
+    for (const owner of [...state.experiences, ...state.education, ...state.projects]) {
+      if (!proposalOrderFor(owner.id)) continue;
       let moved = 0;
-      displayBullets(exp).forEach((b, i) => {
-        if (!exp.bullets[i] || exp.bullets[i].id !== b.id) moved += 1;
+      displayBullets(owner).forEach((b, i) => {
+        if (!owner.bullets[i] || owner.bullets[i].id !== b.id) moved += 1;
       });
       box.append(
         el(
           'div',
           { class: 'proposal-exp-line' },
-          el('strong', { text: exp.role || 'Expérience' }),
+          el('strong', { text: owner.role || owner.title || 'Élément' }),
           ` : ${moved ? `${moved} tiret${moved > 1 ? 's' : ''} déplacé${moved > 1 ? 's' : ''}` : 'ordre inchangé'}`
         )
       );
@@ -3097,7 +3113,9 @@ function renderSuggestions() {
     }
     resultsEl.append(box);
   } else {
-    const upToDate = state.experiences.every((exp) => suggestOrder(exp, model).alreadyApplied);
+    const upToDate = [...state.experiences, ...state.education, ...state.projects].every(
+      (owner) => suggestOrder(owner, model).alreadyApplied
+    );
     resultsEl.append(
       el('p', {
         class: upToDate ? 'apply-note' : 'empty-note',
