@@ -652,6 +652,40 @@ main.tab-create #versionsPanel { display: none; }
 #createLeft { display: flex; flex-direction: column; gap: 16px; }
 main.tab-base #createLeft { display: none; }
 
+/* Onglet « Bibliothèque » : un formulaire libre, pas une feuille A4 — une
+   seule colonne centrée qui défile librement (voir renderLibrary, app.js).
+   #createLeft, #cvColumn et #versionsPanel n'existent que pour le CV : on les
+   masque ici comme #versionsPanel l'est dans tab-create ci-dessus. */
+main.tab-library { grid-template-columns: minmax(0, 900px); }
+main.tab-library #createLeft,
+main.tab-library #cvColumn,
+main.tab-library #versionsPanel { display: none; }
+
+/* margin-bottom (pas padding sur main, qui vaudrait aussi pour les autres
+   onglets) : un peu de respiration après le dernier panneau, qui sinon
+   touche le bas de la fenêtre une fois déroulé jusqu'en bas. */
+#libraryPanel { display: flex; flex-direction: column; gap: 16px; margin-bottom: 24px; }
+main.tab-create #libraryPanel,
+main.tab-base #libraryPanel { display: none; }
+
+/* Barre d'outils hors sujet dans la Bibliothèque : aucun CV n'y est affiché,
+   donc « Imprimer » et « Télécharger PDF » n'ont rien à imprimer/exporter.
+   « Réinitialiser » agit lui aussi sur le CV de base (jamais sur la
+   Bibliothèque, voir resetBtn dans app.js) : cliquer dessus depuis cet onglet
+   serait tout aussi surprenant, donc même traitement. #toolbar est un frère
+   de #layout (pas un ancêtre), d'où :has() plutôt qu'un simple descendant. */
+body:has(#layout.tab-library) #printBtn,
+body:has(#layout.tab-library) #pdfBtn,
+body:has(#layout.tab-library) #resetBtn { display: none; }
+
+/* Poignée ⠿ des tirets (position absolue, -18px depuis .exp — voir
+   .drag-handle plus bas) : le padding de .panel-box (18px) est trop juste
+   pour l'accueillir sans qu'elle déborde du cadre. On élargit uniquement le
+   padding gauche du CONTENU (Expériences, Formation, Projets), pas celui du
+   panneau entier, pour que son <h2> reste aligné avec celui des autres
+   panneaux de la Bibliothèque (Contact, Liens, Compétences, Intérêts). */
+#libExperiencesBody, #libEducationBody, #libProjectsBody { padding-left: 24px; }
+
 @media (max-width: 980px) {
   main, main.tab-create { grid-template-columns: 1fr; }
   main.tab-create #createLeft { grid-column: 1; grid-row: 1; }
@@ -838,15 +872,15 @@ main.tab-create #cvScale #cv {
    souris) : le PDF reprend l'état au repos. */
 
 .drag-handle,
-.add-bullet, .add-exp, .add-edu, .add-project, .add-link, .add-contact,
+.add-exp, .add-edu, .add-project, .add-link, .add-contact,
 .add-group, .add-interest,
+.exp-footer,
 .photo-box:not(:has(.cv-photo)) { display: none; }
 
 .exp:is(:hover, :focus-within) .drag-handle,
 .cv-header:is(:hover, :focus-within) .photo-box:not(:has(.cv-photo)),
 .side:is(:hover, :focus-within) .photo-box:not(:has(.cv-photo)) { display: block; }
 
-.exp:is(:hover, :focus-within) .add-bullet,
 .cv-block:is(:hover, :focus-within) :is(.add-exp, .add-edu, .add-project),
 .cv-links:is(:hover, :focus-within) .add-link,
 .cv-contact-block:is(:hover, :focus-within) .add-contact,
@@ -854,6 +888,12 @@ main.tab-create #cvScale #cv {
 .cv-interests:is(:hover, :focus-within) .add-interest {
   display: inline-block;
 }
+
+/* .exp-footer regroupe toutes les affordances d'un bloc (ajout de tiret,
+   réglage de limite, ↑ ↓ ✕) : c'est un conteneur flex, pas un bouton isolé,
+   donc son display de révélation diffère des `.add-*` ci-dessus — et ses
+   enfants (.add-bullet, .exp-controls) n'ont pas besoin du leur, propre. */
+.exp:is(:hover, :focus-within) .exp-footer { display: flex; }
 
 /* ---------- Fondu à l'apparition / disparition ----------
    `display` reste le commutateur : c'est lui, et lui seul, qui garantit que
@@ -868,15 +908,16 @@ main.tab-create #cvScale #cv {
    à payer, il n'y a pas de raccourci en CSS. */
 
 .drag-handle,
-.bullet-controls, .exp-controls, .photo-controls,
-.add-bullet, .add-exp, .add-edu, .add-project, .add-link, .add-contact,
+.bullet-controls, .photo-controls,
+.add-exp, .add-edu, .add-project, .add-link, .add-contact,
 .add-group, .add-interest,
+.exp-footer,
 .photo-box:not(:has(.cv-photo)) {
   opacity: 0;
   transition: opacity 120ms ease, display 120ms allow-discrete;
 }
 
-.exp:is(:hover, :focus-within) :is(.drag-handle, .add-bullet),
+.exp:is(:hover, :focus-within) :is(.drag-handle, .exp-footer),
 .cv-block:is(:hover, :focus-within) :is(.add-exp, .add-edu, .add-project),
 .cv-links:is(:hover, :focus-within) .add-link,
 .cv-contact-block:is(:hover, :focus-within) .add-contact,
@@ -889,13 +930,12 @@ li.bullet:hover .bullet-controls,
 .contact-item:hover .bullet-controls,
 .skill-group:hover .bullet-controls,
 .interest-item:hover .bullet-controls,
-.exp:hover .exp-controls,
 .photo-box:hover .photo-controls {
   opacity: 1;
 }
 
 @starting-style {
-  .exp:is(:hover, :focus-within) :is(.drag-handle, .add-bullet),
+  .exp:is(:hover, :focus-within) :is(.drag-handle, .exp-footer),
   .cv-block:is(:hover, :focus-within) :is(.add-exp, .add-edu, .add-project),
   .cv-links:is(:hover, :focus-within) .add-link,
   .cv-contact-block:is(:hover, :focus-within) .add-contact,
@@ -908,7 +948,6 @@ li.bullet:hover .bullet-controls,
   .contact-item:hover .bullet-controls,
   .skill-group:hover .bullet-controls,
   .interest-item:hover .bullet-controls,
-  .exp:hover .exp-controls,
   .photo-box:hover .photo-controls {
     opacity: 0;
   }
@@ -934,10 +973,9 @@ li.bullet:hover .bullet-controls,
 #cv .contact-item:has([contenteditable]:focus) .bullet-controls,
 #cv .skill-group:has([contenteditable]:focus) .bullet-controls,
 #cv .interest-item:has([contenteditable]:focus) .bullet-controls,
-/* ✕ / ↑ / ↓ d'une expérience/formation/projet — posés sur son titre */
-#cv .exp:has(.exp-role:focus) .exp-controls,
-/* « + Ajouter un tiret » — retombe sur le titre du bloc suivant */
-#cv .exp:has(+ .exp .exp-head [contenteditable]:focus) .add-bullet,
+/* .exp-footer (« + Ajouter un tiret », réglage de limite, ↑ ↓ ✕) — retombe
+   sur le titre du bloc suivant */
+#cv .exp:has(+ .exp .exp-head [contenteditable]:focus) .exp-footer,
 /* « + Ajouter un lien » — retombe sur la première ligne du résumé */
 #cv .cv-header:has(~ .cv-summary:focus) .add-link,
 /* « + Ajouter un champ » — retombe sur le premier lien */
@@ -1149,19 +1187,16 @@ li.bullet:hover .bullet-controls,
    réglable comme les autres (section « Taille des textes »). */
 .exp-company-desc { color: var(--muted); font-size: var(--fs-company-desc, 7px); margin-top: 2px; white-space: pre-wrap; }
 
-/* z-index indispensable : .exp-head est positionné (voir « Ordre de lecture du
-   PDF ») et vient après dans le DOM — à z-index égal il se peindrait par-dessus
-   ces boutons et capterait leurs clics. */
+/* ↑ ↓ ✕ d'un bloc (expérience/formation/projet) : sous-rangée de .exp-footer,
+   en bas du bloc (voir « Limite d'affichage » plus bas) — plus jamais en haut
+   à droite du titre comme auparavant, où ils recouvraient la fin de la
+   période au survol (« 2019 – 2022 » devenait « 2019 »). .exp-footer gère
+   seul l'apparition/disparition de toute la rangée ; .exp-controls n'est
+   qu'un conteneur flex, toujours affiché dès que son parent l'est. */
 .exp-controls {
-  position: absolute;
-  top: 4px;
-  left: 4px;
-  z-index: 2;
-  display: none;
+  display: flex;
   gap: 4px;
 }
-
-.exp:hover .exp-controls { display: flex; }
 
 /* ---------- Tirets ---------- */
 
@@ -1220,6 +1255,110 @@ li.bullet:hover .drag-handle { color: var(--muted); }
 }
 
 li.bullet:hover .bullet-controls { display: flex; }
+
+/* ---------- Limite d'affichage (à l'écran uniquement) ----------
+   .exp-footer est l'UNIQUE rangée, en bas du bloc, qui porte tout ce qui
+   n'est pas du texte du CV pour une expérience/formation/projet :
+   « + Ajouter un tiret » (à gauche), le réglage de limite ci-dessous et les
+   icônes ↑ ↓ ✕ (à droite, regroupés dans .exp-footer-right) — pour éloigner
+   « Supprimer » de « Ajouter » et éviter les clics malheureux. Une seule
+   rangée, donc un seul jeu de règles d'affichage/fondu (voir « Affordances
+   d'édition ») : ses enfants n'ont pas à gérer eux-mêmes leur display/
+   opacity, ils suivent celui de .exp-footer — déjà invisible à l'impression,
+   rien à faire côté print pour ce contrôle.
+   `left: 0; right: 0` (pleine largeur du bloc) + `justify-content:
+   space-between` : le bouton d'ajout part à gauche, le reste à droite, sans
+   qu'aucun des deux n'ait à connaître la largeur de l'autre. */
+
+.exp-footer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.exp-footer-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.visible-limit-ctl {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  color: var(--muted);
+  cursor: default;
+}
+
+.visible-limit-label { white-space: nowrap; }
+
+.visible-limit-input {
+  width: 40px;
+  height: 20px;
+  padding: 0 3px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--btn-bg);
+  color: inherit;
+  font-size: 11px;
+  text-align: center;
+}
+
+.visible-limit-input:focus { outline: none; border-color: var(--accent); }
+
+/* Limite à 0 : le bloc reste visible et modifiable à l'écran (pour pouvoir
+   remonter la limite), signalé seulement par un liseré discret — l'étape 4
+   le fera disparaître à l'impression. */
+.exp.limit-zero { box-shadow: inset 2px 0 0 var(--muted); }
+
+.limit-zero-note {
+  font-size: 10px;
+  font-style: italic;
+  white-space: nowrap;
+}
+
+/* Tirets au-delà de la limite : masqués par défaut (l'écran doit rester
+   fidèle au PDF, notamment pour la feuille « Design » figée à 297 mm),
+   révélables en grisé via le chip .bullet-more. */
+li.bullet.below-cut { display: none; }
+
+ul.bullets.expanded-cut li.bullet.below-cut {
+  display: flex;
+  opacity: 0.45;
+}
+
+.bullet-more {
+  display: block;
+  margin-top: 2px;
+  padding: 1px 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--btn-bg);
+  color: var(--muted);
+  font-size: 10.5px;
+  cursor: pointer;
+}
+
+.bullet-more:hover { color: var(--accent); border-color: var(--accent); }
+
+/* Mesure sur le contenu IMPRIMÉ (paginatePro/updateOverflowNotice, app.js) :
+   ces deux fonctions mesurent la mise en page réelle du DOM, or un bloc
+   déplié à l'écran (.expanded-cut) y montre plus de tirets qu'à l'impression
+   — sans neutraliser cet écart le temps de la mesure, le nombre de pages
+   annoncé et l'avertissement de dépassement (feuille « Design ») pourraient
+   se tromper. app.js pose cette classe sur #cv juste avant de lire
+   offsetTop/offsetHeight/scrollHeight, puis la retire aussitôt (pas de
+   reflow visible). Mêmes sélecteurs que la règle d'impression ci-dessous
+   (@media print) : à maintenir synchronisés avec elle. */
+#cv.measuring-print li.bullet.below-cut,
+#cv.measuring-print .bullet-more,
+#cv.measuring-print .exp.limit-zero { display: none !important; }
 
 /* ---------- Proposition : indicateurs de modification ----------
    Après analyse d'une offre, le CV affiché est la PROPOSITION. Au survol du
@@ -1349,17 +1488,19 @@ li.bullet:hover .bullet-controls { display: flex; }
 .icon-btn:hover { color: var(--accent); border-color: var(--accent); filter: none; }
 .icon-btn.del:hover { color: var(--danger); border-color: var(--danger); }
 
-/* display : voir « Affordances d'édition » (masqués hors survol du CV).
-   `top` non renseigné : chacun garde sa position statique verticale — sa place
-   naturelle sous sa liste — mais hors du flux, donc sans plus rien pousser.
+/* .add-exp/.add-edu/.add-project/.add-link/.add-contact/.add-group/
+   .add-interest : boutons "+ Ajouter…" d'une SECTION entière, hors de
+   .exp-footer — posés en absolu sous leur liste. `top` non renseigné :
+   chacun garde sa position statique verticale — sa place naturelle sous sa
+   liste — mais hors du flux, donc sans plus rien pousser.
    Compacts (≈21px) pour tenir dans l'interligne que le CV laisse déjà sous
    chaque liste, au lieu de mordre sur le bloc suivant. Fond translucide +
-   z-index pour rester lisibles par-dessus ce qu'ils chevauchent malgré tout. */
+   z-index pour rester lisibles par-dessus ce qu'ils chevauchent malgré tout.
+   `.add-bullet` (« + Ajouter un tiret »/« un point ») partage leur habillage
+   visuel ci-dessous, mais vit DANS .exp-footer (voir « Limite d'affichage ») :
+   simple bouton de cette rangée flex, pas de position ni de z-index propres. */
 .add-bullet, .add-exp, .add-edu, .add-project, .add-link, .add-contact,
 .add-group, .add-interest {
-  position: absolute;
-  z-index: 2;
-  margin-top: 2px;
   background: var(--btn-bg);
   border: 1px dashed var(--line);
   color: var(--muted);
@@ -1368,11 +1509,14 @@ li.bullet:hover .bullet-controls { display: flex; }
 }
 
 /* Ancrés à droite : les lignes du CV s'y terminent court, un bouton y masque
-   donc rarement du texte. `.add-bullet` reste à gauche, sa place d'origine :
-   il tombe dans la marge sous les tirets, et ne croise ainsi jamais
-   « + Ajouter une expérience », qui lui est à droite. */
+   donc rarement du texte. */
 .add-exp, .add-edu, .add-project, .add-link, .add-contact,
-.add-group, .add-interest { right: 0; }
+.add-group, .add-interest {
+  position: absolute;
+  z-index: 2;
+  margin-top: 2px;
+  right: 0;
+}
 
 .add-bullet:hover, .add-exp:hover, .add-edu:hover, .add-project:hover, .add-link:hover, .add-contact:hover,
 .add-group:hover, .add-interest:hover {
@@ -2223,7 +2367,7 @@ main.tab-create #createLeft {
      débordait de la zone imprimable du modèle pro (210 − 2×16 mm) et Chrome
      réduisait tout le PDF à ≈ 85 % (« shrink to fit »), marge droite en prime. */
   html, body { background: #fff; }
-  #toolbar, #cvTools, #createLeft, #versionsPanel, #overflowNotice { display: none; }
+  #toolbar, #cvTools, #createLeft, #versionsPanel, #libraryPanel, #overflowNotice { display: none; }
   main { display: block; padding: 0; margin: 0; max-width: none; }
   .sheet { box-shadow: none; border-radius: 0; margin: 0; }
   /* Modèle pro : les marges de chaque page viennent de @page. On neutralise donc
@@ -2249,9 +2393,29 @@ main.tab-create #createLeft {
   /* Les affordances d'édition (poignées, boutons d'ajout, « + Photo ») sont
      déjà hors du flux au repos et ne reviennent que sur :hover / :focus-within,
      qui ne s'appliquent pas sans souris : le PDF reprend la feuille au repos.
-     Filet de sécurité pour les contrôles flottants ✕ / ↑ / ↓ : */
-  .bullet-controls, .exp-controls, .photo-controls,
+     Filet de sécurité pour les contrôles flottants : .exp-footer regroupe
+     désormais ✕ / ↑ / ↓ (ex-.exp-controls), en plus de l'ajout de tiret et du
+     réglage de limite. */
+  .bullet-controls, .exp-footer, .photo-controls,
   .bullet-badges, .match-badge { display: none !important; }
+
+  /* Limite d'affichage (voir « Limite d'affichage » plus haut) : à l'écran,
+     un bloc déplié réaffiche ses .below-cut et .exp.limit-zero reste visible
+     (liseré) pour pouvoir remonter la limite — l'impression doit au contraire
+     TOUJOURS les exclure, quel que soit l'état déplié (.expanded-cut) ou la
+     classe .limit-zero elle-même. `!important` gagne face à la règle d'écran
+     `ul.bullets.expanded-cut li.bullet.below-cut` (plus spécifique mais non
+     `!important`) : sans lui, un bloc déplié imprimerait ses tirets masqués.
+     Mêmes sélecteurs que #cv.measuring-print ci-dessus (paginatePro/
+     updateOverflowNotice), à maintenir synchronisés avec eux. */
+  li.bullet.below-cut, .bullet-more, .exp.limit-zero { display: none !important; }
+
+  /* Titre de section orphelin : si tous les blocs d'une section (expérience,
+     formation, projet) sont à maxVisible === 0, ils disparaissent tous
+     ci-dessus — le titre de section ne doit pas rester seul. */
+  .cv-block:has(.exp):not(:has(.exp:not(.limit-zero))) :is(.cv-section-title, .side-title) {
+    display: none !important;
+  }
 
   li.bullet.moved { background: none !important; }
   .exp:hover { background: none; }

@@ -15,6 +15,7 @@
     <nav class="tabs" role="tablist" aria-label="Pages">
       <button id="tabBase" class="tab-btn" type="button" role="tab">CV de base</button>
       <button id="tabCreate" class="tab-btn" type="button" role="tab">Nouveau CV</button>
+      <button id="tabLibrary" class="tab-btn" type="button" role="tab">Bibliothèque</button>
     </nav>
     <div class="actions">
       <button id="printBtn" class="ghost" type="button" title="Impression via le navigateur">Imprimer</button>
@@ -162,7 +163,8 @@
         transférer vers un autre navigateur&nbsp;; importez ensuite ce
         fichier pour le restaurer à l'identique. Vos autres CV sauvegardés ne
         sont pas concernés, et la photo n'est pas incluse dans le fichier
-        (elle reste celle déjà affichée après import).
+        (elle reste celle déjà affichée après import). La Bibliothèque a sa
+        propre porte d'export/import, dans l'onglet «&nbsp;Bibliothèque&nbsp;».
       </p>
       <div class="panel-actions">
         <button id="importBtn" class="ghost" type="button">Importer JSON</button>
@@ -301,6 +303,79 @@
         </div>
       </section>
     </aside>
+
+    <!-- Onglet « Bibliothèque » : réservoir de contenu séparé du CV de base
+         (voir state.library dans app.js), sans contrainte de mise en page —
+         un formulaire qui défile librement, pas une feuille A4. Une section
+         par domaine ; le rendu (renderLibrary, app.js) réutilise les mêmes
+         fonctions et les mêmes classes CSS que le CV. -->
+    <div id="libraryPanel">
+      <section class="panel-box" id="libIntro">
+        <h2>Bibliothèque</h2>
+        <p class="hint">
+          Stockez ici tout votre contenu professionnel, sans limite ni
+          contrainte de mise en page&nbsp;: autant de points que vous voulez
+          par expérience, formation ou projet. Le CV de base et la
+          Bibliothèque restent indépendants — modifier l'un ne modifie jamais
+          l'autre.
+        </p>
+        <p class="hint">
+          Quand la Bibliothèque est prête, envoyez-la vers le CV de base pour
+          le remplir&nbsp;: cela remplace tout son contenu réutilisable (le
+          profil et la mise en forme du CV ne sont pas concernés).
+        </p>
+        <div class="panel-actions">
+          <button id="libSendToBaseBtn" class="ghost danger" type="button">Envoyer vers le CV de base</button>
+        </div>
+        <p class="hint">
+          La Bibliothèque n'existe que dans ce navigateur&nbsp;: exportez-la
+          dans un fichier pour la conserver ou la transférer ailleurs, puis
+          importez-la pour la restaurer. Cette porte est distincte de
+          l'import/export JSON du CV (onglet «&nbsp;Nouveau CV&nbsp;»), qui ne
+          concerne que le CV actuellement affiché.
+        </p>
+        <div class="panel-actions">
+          <button id="libImportBtn" class="ghost" type="button">Importer une Bibliothèque</button>
+          <input type="file" id="libImportFile" accept="application/json,.json" hidden>
+          <button id="libExportBtn" class="ghost" type="button">Exporter la Bibliothèque</button>
+        </div>
+      </section>
+
+      <section class="panel-box" id="libContactPanel">
+        <h2>Contact</h2>
+        <div id="libContactBody"></div>
+      </section>
+
+      <section class="panel-box" id="libLinksPanel">
+        <h2>Liens</h2>
+        <div id="libLinksBody"></div>
+      </section>
+
+      <section class="panel-box" id="libExperiencesPanel">
+        <h2>Expériences</h2>
+        <div id="libExperiencesBody"></div>
+      </section>
+
+      <section class="panel-box" id="libEducationPanel">
+        <h2>Formation</h2>
+        <div id="libEducationBody"></div>
+      </section>
+
+      <section class="panel-box" id="libProjectsPanel">
+        <h2>Projets</h2>
+        <div id="libProjectsBody"></div>
+      </section>
+
+      <section class="panel-box" id="libSkillsPanel">
+        <h2>Compétences</h2>
+        <div id="libSkillsBody"></div>
+      </section>
+
+      <section class="panel-box" id="libInterestsPanel">
+        <h2>Intérêts</h2>
+        <div id="libInterestsBody"></div>
+      </section>
+    </div>
   </main>
 
   <script src="pdf.js"></script>

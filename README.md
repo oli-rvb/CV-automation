@@ -1,13 +1,15 @@
 # Éditeur de CV
 
-Application web centrée sur les offres d'emploi : collez le texte d'une offre, l'analyse propose un nouveau CV dont les tirets sont réordonnés du plus pertinent au moins pertinent, le survol du CV montre les modifications par rapport au CV de base, et le résultat s'enregistre comme CV sauvegardé — sans jamais toucher au CV de base.
+Application web centrée sur les offres d'emploi. Vous stockez **tout** votre parcours dans la **Bibliothèque**, sans limite de longueur. Vous collez ensuite le texte d'une offre : l'analyse propose un nouveau CV dont les tirets sont réordonnés du plus pertinent au moins pertinent, et une **limite d'affichage par bloc** décide combien d'entre eux sont réellement imprimés — les autres restent enregistrés. Le survol du CV montre les modifications par rapport au CV de base, et le résultat s'enregistre comme CV sauvegardé — sans jamais toucher au CV de base.
 
-## Deux onglets
+C'est ce qui permet de postuler à deux offres très différentes sans rien réécrire : on écrit une fois, on stocke tout, et chaque CV ne retient que ce qui compte pour l'offre visée.
+
+## Trois onglets
 
 ### « Nouveau CV » — créer un CV pour une offre
 
 1. **Collez le texte de l'offre** en haut de page.
-2. **Analysez** : chaque tiret de vos expériences est comparé aux mots-clés de l'offre. Le CV affiché en dessous devient le **nouveau CV proposé**, avec les tirets du plus pertinent au moins pertinent. Le CV de base n'est **jamais modifié** : la proposition n'est qu'un ordre alternatif, posé par-dessus.
+2. **Analysez** : chaque tiret de vos expériences, formations et projets est comparé aux mots-clés de l'offre. Le CV affiché en dessous devient le **nouveau CV proposé**, avec les tirets du plus pertinent au moins pertinent. Le CV de base n'est **jamais modifié** : la proposition n'est qu'un ordre alternatif, posé par-dessus.
 3. **Survolez le CV** pour voir les modifications : chaque tiret déplacé est surligné et porte un badge « ↑ était n°X » indiquant sa position dans le CV de base. Le panneau résume les déplacements par expérience. Vous pouvez encore affiner à la main (glisser-déposer, flèches) : cela modifie la proposition, pas le CV de base.
 4. **Enregistrez ce nouveau CV** (nom proposé d'après le site de l'offre ou la date) : il rejoint les CV sauvegardés de l'onglet « CV de base ». « Ignorer la proposition » ou « Effacer » l'abandonne — le CV de base n'a jamais bougé.
 
@@ -32,6 +34,24 @@ Ce contrôle compare des **valeurs**, pas du **sens** : un total légitimement d
 ### « CV de base » — le CV de référence et les CV sauvegardés
 
 Le CV de base s'édite ici (textes, tirets, sections, photo, liens…) ; c'est lui qui sert de matrice à chaque nouvelle analyse. À côté, la liste des **CV sauvegardés** : ceux enregistrés depuis l'onglet « Nouveau CV » et ceux que vous sauvegardez manuellement. Chacun peut être chargé (il devient le CV de base), écrasé, renommé ou supprimé.
+
+#### Limite d'affichage : stocker beaucoup, imprimer peu
+
+Chaque expérience, formation et projet porte une **limite d'affichage** (champ « Aff. », visible au survol du bloc). L'**ordre** décide du classement — celui proposé par l'analyse de l'offre, ou le vôtre au glisser-déposer — et la **limite** coupe après les N premiers tirets.
+
+- **Limite vide (`∞`)** : tout s'affiche.
+- **Limite à 3** : seuls les 3 premiers tirets de l'ordre courant sont imprimés. Les autres **restent enregistrés** avec le CV, masqués derrière un discret « + N points masqués » qui les déplie pour les relire ou les faire remonter.
+- **Limite à 0** : le bloc entier disparaît du document imprimé, tout en restant visible et modifiable à l'écran (liseré et mention « non imprimé »). C'est ainsi qu'on ne garde que les 3, 2 ou même 1 expérience les plus pertinentes pour une offre.
+
+La limite se règle à tout moment et voyage avec le CV : un CV sauvegardé conserve **tous** ses tirets, leur ordre **et** ses limites. On peut le rouvrir des mois plus tard, remonter une limite ou réordonner sans rien avoir perdu. L'écran, l'impression et les deux moteurs PDF montrent exactement le même contenu.
+
+### « Bibliothèque » — le réservoir de contenu
+
+La Bibliothèque garde tout votre parcours : contacts, liens, expériences, formations, projets, compétences et intérêts, avec **autant de tirets que vous voulez** par expérience, formation ou projet, description d'entreprise comprise. Ce n'est pas une feuille A4 : ni pagination, ni contrainte de mise en page, elle défile librement.
+
+- **Indépendante du CV de base.** Les deux stocks vivent leur vie : modifier l'un ne modifie jamais l'autre. À la première ouverture, la Bibliothèque est amorcée par une copie de votre CV existant — pour ne rien retaper — puis elle diverge librement.
+- **« Envoyer vers le CV de base »** y déverse tout son contenu. Les limites d'affichage déjà réglées sont conservées pour les blocs existants ; les blocs nouveaux arrivent sans limite. Le profil (nom, titre, résumé, photo) et la mise en forme (modèle, couleurs, tailles) ne sont pas touchés. L'opération demande confirmation et s'annule avec « Annuler ».
+- **Export / import dédiés.** La Bibliothèque ne vit que dans le navigateur : « Exporter la Bibliothèque » la met dans un fichier à conserver ou à transférer, « Importer une Bibliothèque » la restaure. C'est une porte distincte de l'export/import JSON du CV, qui ne concerne que le CV affiché.
 
 ## Utilisation
 
@@ -62,6 +82,8 @@ Deux façons de lancer l'application :
 - **Contact sans intitulé** : les champs de contact n'affichent que leur valeur (un email, un numéro ou une ville se reconnaissent d'eux-mêmes) ; ajout et suppression libres.
 - **Compétences détaillées et intérêts** (encadré du modèle Design, bas de page du modèle Pro) : sous le texte libre des compétences, ajoutez autant de **groupes** que nécessaire (intitulé en gras — « Langues », « Outils »… — suivi d'un détail sur plusieurs lignes, Entrée pour aller à la ligne), puis une section **Intérêts** dont chaque entrée s'ajoute et se supprime librement. Le tout suit la taille « Compétences », voyage dans l'export JSON et les CV sauvegardés, et se retrouve à l'identique dans le PDF.
 - **CV sauvegardés** : chaque CV enregistré capture l'état complet (contenu, ordre des tirets, modèle, photo, offre analysée) sous un nom ; rechargez, écrasez, renommez ou supprimez chacun depuis l'onglet « CV de base ».
+- **Bibliothèque** : le réservoir de tout votre contenu, sans limite de longueur, indépendant du CV de base, avec « Envoyer vers le CV de base » et son propre export / import JSON (voir plus haut).
+- **Limite d'affichage par bloc** : chaque expérience, formation et projet choisit combien de ses tirets sont imprimés ; les autres restent enregistrés et se déplient d'un clic. Limite à 0 pour masquer un bloc entier du document. Voyage avec les CV sauvegardés (voir plus haut).
 - **Tirets d'expérience** :
   - réorganisation par glisser-déposer (poignée `⠿`) ou avec les flèches ↑ / ↓ ;
   - ajout via « + Ajouter un tiret » ou en appuyant sur Entrée dans un tiret ;
@@ -69,6 +91,7 @@ Deux façons de lancer l'application :
 - **Expériences, formation et projets** : ajout, suppression et réorganisation des expériences ; ajout/suppression des lignes de formation et de projets (« + Ajouter une ligne », « + Ajouter un projet », bouton ✕).
 - **Analyse de l'offre** : collez le texte de l'offre dans le panneau « Offre d'emploi ».
   - **Scores** : chaque tiret reçoit un score de pertinence (mots-clés et expressions communs avec l'offre, accents ignorés, mots vides filtrés) ; à score égal, l'ordre du CV de base est conservé.
+  - **Portée** : l'analyse réordonne les tirets des **expériences, des formations et des projets**.
   - **Proposition** : l'ordre suggéré n'est qu'une surcouche affichée dans l'onglet « Nouveau CV », conservée d'une visite à l'autre ; le CV de base garde son ordre. Les badges de diff n'existent que sur le CV survolé : ils n'apparaissent ni à l'impression ni dans le PDF (backend comme secours, qui reprennent l'ordre affiché).
 - **Sauvegarde automatique** dans le navigateur (localStorage) : vos modifications sont conservées d'une visite à l'autre.
 - **Export / import JSON** pour sauvegarder ou transférer votre CV.
@@ -81,9 +104,9 @@ Deux façons de lancer l'application :
 
 ## Structure
 
-- `index.html` — structure de la page (feuille CV + panneau offre/versions) ;
+- `index.html` — structure de la page (feuille CV + panneau offre/versions + panneau Bibliothèque) ;
 - `fonts.css` — Open Sans (fichier variable, sous-ensemble latin, licence Apache 2.0) embarqué en data-URI : la même police à l'écran, à l'impression et dans le PDF, sans CDN et sans installation ;
 - `styles.css` — styles écran et impression, dont les badges de diff de la proposition ;
-- `app.js` — état, rendu, édition, drag & drop, analyse de l'offre, proposition de nouveau CV et diff avec le CV de base (JavaScript pur, sans dépendance) ;
+- `app.js` — état, rendu, édition, drag & drop, analyse de l'offre, proposition de nouveau CV et diff avec le CV de base (JavaScript pur, sans dépendance). L'édition et le rendu sont paramétrés par un *scope* : le même code sert le CV et la Bibliothèque ;
 - `pdf.js` — générateur de PDF vectoriel de secours : police Open Sans embarquée (TrueType, largeurs de la police), mise en page avec pagination et assemblage du fichier PDF octet par octet ;
 - `server.js` — backend PDF (Node pur, sans dépendance npm) : sert l'application et imprime la feuille CV via Chrome headless, pour un PDF identique au rendu écran, Open Sans embarquée et texte extractible par les ATS.
