@@ -167,6 +167,7 @@ function defaultCV() {
           { id: uid(), text: 'Mise en place d’un tableau de bord de suivi ayant réduit les retards de livraison de 30 %' },
           { id: uid(), text: 'Relation client : animation des comités de pilotage et rédaction des propositions commerciales' },
         ],
+        maxVisible: null,
       },
       {
         id: uid(),
@@ -181,6 +182,7 @@ function defaultCV() {
           { id: uid(), text: 'Automatisation des tests et du déploiement (CI/CD), couverture de tests portée à 80 %' },
           { id: uid(), text: 'Participation aux entretiens techniques et accompagnement de 3 développeurs juniors' },
         ],
+        maxVisible: null,
       },
     ],
     education: [
@@ -192,8 +194,9 @@ function defaultCV() {
           { id: uid(), text: 'Spécialisation développement web et architectures cloud' },
           { id: uid(), text: 'Projet de fin d’études : plateforme de mise en relation freelances/clients' },
         ],
+        maxVisible: null,
       },
-      { id: uid(), title: 'Licence Informatique', detail: 'Université de Lyon (2017)', bullets: [] },
+      { id: uid(), title: 'Licence Informatique', detail: 'Université de Lyon (2017)', bullets: [], maxVisible: null },
     ],
     projects: [
       {
@@ -204,12 +207,14 @@ function defaultCV() {
           { id: uid(), text: 'Développement front-end React et back-end Node.js' },
           { id: uid(), text: '40 % de trafic en plus après la mise en ligne' },
         ],
+        maxVisible: null,
       },
       {
         id: uid(),
         title: 'Générateur de CV open source',
         detail: 'JavaScript sans dépendance (2022)',
         bullets: [{ id: uid(), text: '300 étoiles sur GitHub' }],
+        maxVisible: null,
       },
     ],
     skills: 'JavaScript, React, Node.js, Python, SQL · Gestion de projet, Scrum · Anglais courant',
@@ -246,6 +251,28 @@ function normalizeBullets(list) {
   return (Array.isArray(list) ? list : []).map((b) =>
     typeof b === 'string' ? { id: uid(), text: b } : { id: (b && b.id) || uid(), text: String((b && b.text) ?? '') }
   );
+}
+
+// Limite d'affichage d'un bloc (expérience, formation, projet) : nombre de
+// tirets montrés, dans l'ordre courant (analyse d'offre ou glissé-déposé).
+// `null` = pas de limite, tout s'affiche. Les tirets au-delà restent
+// enregistrés, seul l'affichage est tronqué.
+function normalizeMaxVisible(v, total) {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return null;
+  return Math.max(0, Math.min(total, Math.round(v)));
+}
+
+// normalizeSubsections() ne connaît pas `maxVisible` (la Bibliothèque, qui la
+// réutilisera telle quelle, n'en a pas besoin). On le rapplique ici par-dessus
+// son résultat, en relisant la valeur brute dans la liste source d'origine
+// (même ordre, même longueur, puisque normalizeSubsections() fait un simple
+// `.map()`).
+function withMaxVisible(normalizedList, rawList) {
+  const raw = Array.isArray(rawList) ? rawList : [];
+  return normalizedList.map((item, i) => ({
+    ...item,
+    maxVisible: normalizeMaxVisible(raw[i] && raw[i].maxVisible, item.bullets.length),
+  }));
 }
 
 // Coupe une ancienne ligne « Titre — Détail » (avant la scission en deux
@@ -304,19 +331,23 @@ function normalizeCV(data) {
     titleColor: normalizeHexColor(data.titleColor, TITLE_COLOR_DEFAULT),
     // Tailles de police : propres au CV, donc voyagent avec les CV sauvegardés.
     fontSizes: normalizeFontSizes(data.fontSizes),
-    experiences: (Array.isArray(data.experiences) ? data.experiences : []).map((e) => ({
-      id: e.id || uid(),
-      role: String(e.role ?? ''),
-      company: String(e.company ?? ''),
-      period: String(e.period ?? ''),
-      companyDescription: String(e.companyDescription ?? ''),
-      bullets: normalizeBullets(e.bullets),
-    })),
-    education: normalizeSubsections(data.education),
+    experiences: (Array.isArray(data.experiences) ? data.experiences : []).map((e) => {
+      const bullets = normalizeBullets(e.bullets);
+      return {
+        id: e.id || uid(),
+        role: String(e.role ?? ''),
+        company: String(e.company ?? ''),
+        period: String(e.period ?? ''),
+        companyDescription: String(e.companyDescription ?? ''),
+        bullets,
+        maxVisible: normalizeMaxVisible(e.maxVisible, bullets.length),
+      };
+    }),
+    education: withMaxVisible(normalizeSubsections(data.education), data.education),
     // Sauvegardes antérieures à la section « Projets » : pas de clé `projects`.
     // On repart d'une liste vide plutôt que des exemples, pour ne jamais
     // injecter de faux contenu dans un CV réel déjà rempli.
-    projects: normalizeSubsections(data.projects),
+    projects: withMaxVisible(normalizeSubsections(data.projects), data.projects),
     skills: typeof data.skills === 'string' ? data.skills : '',
     // Comme `projects` : une sauvegarde antérieure à ces sections repart d'une
     // liste vide, jamais des exemples du modèle.
@@ -2002,6 +2033,7 @@ cvEl.addEventListener('click', async (e) => {
         companyDescription:
           'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt.',
         bullets: [{ id: uid(), text: 'Décrivez une réalisation…' }],
+        maxVisible: null,
       });
       break;
     }
@@ -2020,7 +2052,7 @@ cvEl.addEventListener('click', async (e) => {
       break;
     }
     case 'edu-add': {
-      state.education.push({ id: uid(), title: 'Diplôme', detail: 'Établissement (année)', bullets: [] });
+      state.education.push({ id: uid(), title: 'Diplôme', detail: 'Établissement (année)', bullets: [], maxVisible: null });
       break;
     }
     case 'edu-del': {
@@ -2030,7 +2062,7 @@ cvEl.addEventListener('click', async (e) => {
       break;
     }
     case 'project-add': {
-      state.projects.push({ id: uid(), title: 'Projet', detail: 'technologies, résultat (année)', bullets: [] });
+      state.projects.push({ id: uid(), title: 'Projet', detail: 'technologies, résultat (année)', bullets: [], maxVisible: null });
       break;
     }
     case 'project-del': {
