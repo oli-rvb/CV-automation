@@ -50,7 +50,6 @@ La limite se règle à tout moment et voyage avec le CV : un CV sauvegardé cons
 La Bibliothèque garde tout votre parcours : contacts, liens, expériences, formations, projets, compétences et intérêts, avec **autant de tirets que vous voulez** par expérience, formation ou projet, description d'entreprise comprise. Ce n'est pas une feuille A4 : ni pagination, ni contrainte de mise en page, elle défile librement.
 
 - **Indépendante du CV de base.** Les deux stocks vivent leur vie : modifier l'un ne modifie jamais l'autre. À la première ouverture, la Bibliothèque est amorcée par une copie de votre CV existant — pour ne rien retaper — puis elle diverge librement.
-- **« Envoyer vers le CV de base »** y déverse tout son contenu. Les limites d'affichage déjà réglées sont conservées pour les blocs existants ; les blocs nouveaux arrivent sans limite. Le profil (nom, titre, résumé, photo) et la mise en forme (modèle, couleurs, tailles) ne sont pas touchés. L'opération demande confirmation et s'annule avec « Annuler ».
 - **Export / import dédiés.** La Bibliothèque ne vit que dans le navigateur : « Exporter la Bibliothèque » la met dans un fichier à conserver ou à transférer, « Importer une Bibliothèque » la restaure. C'est une porte distincte de l'export/import JSON du CV, qui ne concerne que le CV affiché.
 
 ## Utilisation
@@ -82,7 +81,7 @@ Deux façons de lancer l'application :
 - **Contact sans intitulé** : les champs de contact n'affichent que leur valeur (un email, un numéro ou une ville se reconnaissent d'eux-mêmes) ; ajout et suppression libres.
 - **Compétences détaillées et intérêts** (encadré du modèle Design, bas de page du modèle Pro) : sous le texte libre des compétences, ajoutez autant de **groupes** que nécessaire (intitulé en gras — « Langues », « Outils »… — suivi d'un détail sur plusieurs lignes, Entrée pour aller à la ligne), puis une section **Intérêts** dont chaque entrée s'ajoute et se supprime librement. Le tout suit la taille « Compétences », voyage dans l'export JSON et les CV sauvegardés, et se retrouve à l'identique dans le PDF.
 - **CV sauvegardés** : chaque CV enregistré capture l'état complet (contenu, ordre des tirets, modèle, photo, offre analysée) sous un nom ; rechargez, écrasez, renommez ou supprimez chacun depuis l'onglet « CV de base ».
-- **Bibliothèque** : le réservoir de tout votre contenu, sans limite de longueur, indépendant du CV de base, avec « Envoyer vers le CV de base » et son propre export / import JSON (voir plus haut).
+- **Bibliothèque** : le réservoir de tout votre contenu, sans limite de longueur, indépendant du CV de base, avec son propre export / import JSON (voir plus haut).
 - **Limite d'affichage par bloc** : chaque expérience, formation et projet choisit combien de ses tirets sont imprimés ; les autres restent enregistrés et se déplient d'un clic. Limite à 0 pour masquer un bloc entier du document. Voyage avec les CV sauvegardés (voir plus haut).
 - **Tirets d'expérience** :
   - réorganisation par glisser-déposer (poignée `⠿`) ou avec les flèches ↑ / ↓ ;

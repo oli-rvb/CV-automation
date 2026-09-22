@@ -2556,52 +2556,6 @@ installEditing(cvEl, cvScope);
 // d'affichage).
 installEditing($('#libraryPanel'), libraryScope);
 
-// « Envoyer vers le CV de base » : le pont entre le réservoir et le document
-// imprimé. Déverse tout le contenu réutilisable de la Bibliothèque dans le CV
-// de base — jamais l'inverse, la Bibliothèque ne doit jamais partager de
-// référence avec le CV (copies profondes ci-dessous). Le profil (nom, titre,
-// résumé, photo) et la mise en forme (modèle, couleurs, tailles de police) ne
-// sont pas concernés : la Bibliothèque ne les porte pas (voir libraryFromCV).
-$('#libSendToBaseBtn').addEventListener('click', async () => {
-  if (!(await customConfirm(
-    'Remplacer, dans le CV de base, le contact, les liens, les expériences, ' +
-      'les formations, les projets, les compétences et les intérêts par le ' +
-      'contenu actuel de la Bibliothèque ? Le profil (nom, titre, résumé, ' +
-      'photo) et la mise en forme du CV ne sont pas concernés.',
-    { confirmLabel: 'Remplacer', danger: true }
-  ))) return;
-
-  const lib = state.library;
-  // Un id déjà présent dans le CV garde sa limite d'affichage réglée ; un
-  // nouvel id (ajouté depuis la Bibliothèque) n'a pas de limite (null) — pour
-  // que régler ses limites une fois, puis renvoyer une Bibliothèque enrichie,
-  // ne fasse pas tout perdre.
-  const carryMaxVisible = (currentList, newList) => {
-    const prevById = new Map(currentList.map((it) => [it.id, it.maxVisible]));
-    return newList.map((it) => ({
-      ...it,
-      maxVisible: normalizeMaxVisible(prevById.has(it.id) ? prevById.get(it.id) : null, it.bullets.length),
-    }));
-  };
-
-  state.profile.contact = JSON.parse(JSON.stringify(lib.contact));
-  state.profile.links = JSON.parse(JSON.stringify(lib.links));
-  state.experiences = carryMaxVisible(state.experiences, JSON.parse(JSON.stringify(lib.experiences)));
-  state.education = carryMaxVisible(state.education, JSON.parse(JSON.stringify(lib.education)));
-  state.projects = carryMaxVisible(state.projects, JSON.parse(JSON.stringify(lib.projects)));
-  state.skills = lib.skills;
-  state.skillGroups = JSON.parse(JSON.stringify(lib.skillGroups));
-  state.interests = JSON.parse(JSON.stringify(lib.interests));
-
-  // Le CV affiché n'est plus la version chargée, et une éventuelle
-  // proposition en cours n'a plus de sens sur ce nouveau contenu.
-  state.proposal = null;
-  state.activeVersionId = null;
-  // Retour attendu après une action aussi lourde : voir le résultat.
-  state.activeTab = 'base';
-  rerender();
-});
-
 // Export / import de la Bibliothèque : sa seule porte de sortie, puisqu'elle
 // ne vit que dans le localStorage de ce navigateur. Même mécanique que
 // l'export/import JSON du CV (exportBtn/importCvFile plus bas dans ce
