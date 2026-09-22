@@ -35,6 +35,8 @@ Five files, no framework, no modules/bundler — `index.html` loads `pdf.js` the
 - The "Design" template's sheet is pinned to exactly 297mm (not "at least") — overflow is truncated with a visible on-screen notice rather than silently spilling to a second page. The "Pro" template can span multiple pages.
 - Data persists in `localStorage`, scoped per-origin — switching between `file://` and `http://localhost:3333` requires JSON export/import to carry data across.
 - Any change to font-size roles, side-bar color defaults, or A4 page metrics touches three places that must stay in sync: `app.js` (screen rendering), `pdf.js` (fallback PDF), and `server.js`'s Chrome-print path (which reuses `styles.css`/`fonts.css` directly, so it stays in sync automatically).
+- Section titles ("Expériences professionnelles", "Formation", …) are editable and stored per-CV in `sectionTitles`, normalized key-by-key (`normalizeSectionTitles`) so a save from before this field existed just falls back to the defaults. CV-only, like `maxVisible` — the Bibliothèque never reads or writes it. Touches `app.js` (`sectionTitle()`), `pdf.js` (`secTitle()`), and the explicit field lists in `snapshotCV()`/`applyCV()` (named versions), which must stay in sync.
+- Drag & drop has two granularities sharing the same `installEditing` handlers: bullets (`.drag-handle` inside `li.bullet`, reorders `owner.bullets`) and whole blocks — experience/education/project (`.block-drag-handle` inside `.exp-head`, reorders `state.experiences`/`.education`/`.projects`). They're kept apart via separate drag-state variables (`dragEl` vs `dragBlockEl`); touch both carefully if you change this code.
 
 ## Backlog / workflow
 
@@ -43,5 +45,6 @@ This project's task backlog lives in Notion (not in this repo), driven via the `
 ## Dev workflow
 
 - Commit after each change validated by a test; push, PR and merge only when asked.
-- The user's app runs on port 3333 (`node server.js`). Agents test on another port (`PORT=3399`) and never stop the user's server.
+- The user's app runs on port 3333 (`node server.js`). Agents test on the dedicated `cv-editor-3411` server (`.claude/launch.json`, port 3411) and never stop the user's own server.
+- When a change is a new/changed feature the user should try themselves, leave that test server running after verifying it (don't stop it) and give them the URL — don't make them ask for it.
 - The Chrome extension (`extension/`) is loaded unpacked from the main repo checkout, not from a worktree. After changing `extension/`, remind the user to click ↻ in `chrome://extensions`.
