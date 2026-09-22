@@ -1187,6 +1187,10 @@ li.bullet:hover .bullet-controls,
    réglable comme les autres (section « Taille des textes »). */
 .exp-company-desc { color: var(--muted); font-size: var(--fs-company-desc, 7px); margin-top: 2px; white-space: pre-wrap; }
 
+/* Bibliothèque : lecture à l'écran uniquement (pas d'impression), donc pas
+   soumise à la taille réglable du CV — plus lisible que le défaut d'impression. */
+#libraryPanel .exp-company-desc { font-size: 13px; }
+
 /* ↑ ↓ ✕ d'un bloc (expérience/formation/projet) : sous-rangée de .exp-footer,
    en bas du bloc (voir « Limite d'affichage » plus bas) — plus jamais en haut
    à droite du titre comme auparavant, où ils recouvraient la fin de la
