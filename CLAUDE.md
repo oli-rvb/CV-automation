@@ -45,5 +45,6 @@ This project's task backlog lives in Notion (not in this repo), driven via the `
 ## Dev workflow
 
 - Commit after each change validated by a test; push, PR and merge only when asked.
-- The user's app runs on port 3333 (`node server.js`). Agents test on another port (`PORT=3399`) and never stop the user's server.
+- The user's app runs on port 3333 (`node server.js`). Agents test on the dedicated `cv-editor-3411` server (`.claude/launch.json`, port 3411) and never stop the user's own server.
+- When a change is a new/changed feature the user should try themselves, leave that test server running after verifying it (don't stop it) and give them the URL — don't make them ask for it.
 - The Chrome extension (`extension/`) is loaded unpacked from the main repo checkout, not from a worktree. After changing `extension/`, remind the user to click ↻ in `chrome://extensions`.
