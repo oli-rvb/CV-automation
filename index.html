@@ -133,7 +133,9 @@
       <h2>Offre d'emploi</h2>
       <p class="hint">
         Collez le <strong>texte</strong> de l'offre, puis analysez-la&nbsp;:
-        le CV ci-contre se réordonne pour elle, sans toucher au CV de base.
+        le CV ci-contre se réordonne pour elle, sans toucher au CV de base,
+        et se complète des tirets les plus pertinents de la Bibliothèque pour
+        chaque expérience, formation ou projet.
       </p>
       <p class="hint">
         Deux façons de faire&nbsp;: collez le <strong>lien</strong> de l'offre ci-dessous, ou collez directement son texte plus bas.
@@ -144,6 +146,10 @@
       </div>
       <span id="jobUrlStatus" class="job-url-status" role="status" aria-live="polite"></span>
       <textarea id="jobText" rows="5" placeholder="Texte de l'offre d'emploi"></textarea>
+      <div class="job-suggest-limit-row">
+        <label for="librarySuggestLimit">Suggestions Bibliothèque par expérience&nbsp;: max</label>
+        <input type="number" id="librarySuggestLimit" min="0" max="20" step="1" value="4">
+      </div>
       <div class="panel-actions">
         <button id="analyzeBtn" type="button">Analyser l'offre</button>
         <button id="clearAnalysisBtn" class="ghost" type="button">Effacer</button>
@@ -319,14 +325,6 @@
           Bibliothèque restent indépendants — modifier l'un ne modifie jamais
           l'autre.
         </p>
-        <p class="hint">
-          Quand la Bibliothèque est prête, envoyez-la vers le CV de base pour
-          le remplir&nbsp;: cela remplace tout son contenu réutilisable (le
-          profil et la mise en forme du CV ne sont pas concernés).
-        </p>
-        <div class="panel-actions">
-          <button id="libSendToBaseBtn" class="ghost danger" type="button">Envoyer vers le CV de base</button>
-        </div>
         <p class="hint">
           La Bibliothèque n'existe que dans ce navigateur&nbsp;: exportez-la
           dans un fichier pour la conserver ou la transférer ailleurs, puis

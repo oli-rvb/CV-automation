@@ -1209,6 +1209,10 @@ li.bullet:hover .bullet-controls,
    réglable comme les autres (section « Taille des textes »). */
 .exp-company-desc { color: var(--muted); font-size: var(--fs-company-desc, 7px); margin-top: 2px; white-space: pre-wrap; }
 
+/* Bibliothèque : lecture à l'écran uniquement (pas d'impression), donc pas
+   soumise à la taille réglable du CV — plus lisible que le défaut d'impression. */
+#libraryPanel .exp-company-desc { font-size: 13px; }
+
 /* ↑ ↓ ✕ d'un bloc (expérience/formation/projet) : sous-rangée de .exp-footer,
    en bas du bloc (voir « Limite d'affichage » plus bas) — plus jamais en haut
    à droite du titre comme auparavant, où ils recouvraient la fin de la
@@ -1476,6 +1480,47 @@ ul.bullets.expanded-cut li.bullet.below-cut {
 /* Même logique que pour .diff-badge : au survol d'un tiret précis, les
    contrôles ✕ / ↑ / ↓ reprennent la place en fin de ligne. */
 #cv li.bullet:hover .match-badge {
+  display: none;
+  opacity: 0;
+}
+
+/* ---------- Origine Bibliothèque ----------
+   Contrairement à .diff-badge/.match-badge, ce badge n'est PAS réservé à une
+   proposition en cours : il s'affiche dès qu'un tiret porte `libraryOrigin`
+   (réel ou encore suggéré), CV de base comme Nouveau CV — voir
+   libraryOriginBadge()/app.js. Décalé sous .match-badge (top: 36px). Même
+   mécanique de survol, jamais imprimé (voir @media print plus bas). */
+.library-badge {
+  position: absolute;
+  right: 0;
+  top: 36px;
+  z-index: 2;
+  display: none;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+  border-radius: 5px;
+  padding: 1px 7px;
+  background: #ecfdf5;
+  border: 1px solid #6ee7b7;
+  color: #047857;
+  opacity: 0;
+  transition: opacity 120ms ease, display 120ms allow-discrete;
+}
+
+#cv:is(:hover, :focus-within) .library-badge {
+  display: inline-block;
+  opacity: 1;
+}
+
+@starting-style {
+  #cv:is(:hover, :focus-within) .library-badge { opacity: 0; }
+}
+
+#cv li.bullet:hover .library-badge {
   display: none;
   opacity: 0;
 }
@@ -1923,6 +1968,29 @@ main.tab-create #createLeft {
 }
 
 #jobText:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+
+/* Limite de suggestions Bibliothèque par bloc (voir buildProposal/app.js) :
+   un simple réglage numérique, lu au clic sur « Analyser l'offre » suivant,
+   pas de rendu immédiat. */
+.job-suggest-limit-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.job-suggest-limit-row input {
+  width: 52px;
+  font: inherit;
+  font-size: 13px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 5px 6px;
+}
+
+.job-suggest-limit-row input:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
 
 .panel-actions {
   display: flex;
@@ -2419,7 +2487,7 @@ main.tab-create #createLeft {
      désormais ✕ / ↑ / ↓ (ex-.exp-controls), en plus de l'ajout de tiret et du
      réglage de limite. */
   .bullet-controls, .exp-footer, .photo-controls,
-  .bullet-badges, .match-badge { display: none !important; }
+  .bullet-badges, .match-badge, .library-badge { display: none !important; }
 
   /* Limite d'affichage (voir « Limite d'affichage » plus haut) : à l'écran,
      un bloc déplié réaffiche ses .below-cut et .exp.limit-zero reste visible

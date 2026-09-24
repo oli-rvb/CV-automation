@@ -269,7 +269,15 @@ function defaultCV() {
 }
 
 function defaultState() {
-  const s = { ...defaultCV(), versions: [], activeVersionId: null, proposal: null, activeTab: 'create', recentColors: [] };
+  const s = {
+    ...defaultCV(),
+    versions: [],
+    activeVersionId: null,
+    proposal: null,
+    activeTab: 'create',
+    recentColors: [],
+    librarySuggestLimit: 4,
+  };
   // Amorçage unique de la Bibliothèque à partir du CV d'exemple : simple
   // valeur de départ (pour ne pas repartir de zéro), aucun lien permanent
   // avec le CV ensuite — voir le commentaire détaillé dans normalizeState().
@@ -279,10 +287,25 @@ function defaultState() {
 
 /* ---------- Chargement / sauvegarde ---------- */
 
+// `libraryOrigin` (optionnel) : { id, text } du tiret de Bibliothèque dont un
+// tiret du CV est issu (suggestion matérialisée — voir materializePendingBullet
+// et buildProposal). N'existe que sur les tirets du CV ; conservé tel quel
+// s'il est bien formé, silencieusement abandonné sinon (jamais de crash sur
+// une sauvegarde corrompue ou antérieure à cette fonctionnalité).
+function normalizeLibraryOrigin(lo) {
+  if (!lo || typeof lo !== 'object') return undefined;
+  if (typeof lo.id !== 'string' || typeof lo.text !== 'string') return undefined;
+  return { id: lo.id, text: lo.text };
+}
+
 function normalizeBullets(list) {
-  return (Array.isArray(list) ? list : []).map((b) =>
-    typeof b === 'string' ? { id: uid(), text: b } : { id: (b && b.id) || uid(), text: String((b && b.text) ?? '') }
-  );
+  return (Array.isArray(list) ? list : []).map((b) => {
+    if (typeof b === 'string') return { id: uid(), text: b };
+    const out = { id: (b && b.id) || uid(), text: String((b && b.text) ?? '') };
+    const lo = normalizeLibraryOrigin(b && b.libraryOrigin);
+    if (lo) out.libraryOrigin = lo;
+    return out;
+  });
 }
 
 // Limite d'affichage d'un bloc (expérience, formation, projet) : nombre de
@@ -491,8 +514,20 @@ function normalizeState(data) {
     for (const [expId, ids] of Object.entries(p.orders)) {
       if (Array.isArray(ids)) orders[expId] = ids.map(String);
     }
-    if (Object.keys(orders).length > 0) {
-      s.proposal = { orders };
+    // Suggestions Bibliothèque encore en attente, par propriétaire (tirets
+    // pas encore matérialisés dans owner.bullets — voir buildProposal et
+    // materializePendingBullet). Même forme qu'un tiret normal (normalizeBullets),
+    // `libraryOrigin` compris.
+    const added = {};
+    if (p.added && typeof p.added === 'object') {
+      for (const [ownerId, bullets] of Object.entries(p.added)) {
+        if (!Array.isArray(bullets)) continue;
+        const norm = normalizeBullets(bullets);
+        if (norm.length) added[ownerId] = norm;
+      }
+    }
+    if (Object.keys(orders).length > 0 || Object.keys(added).length > 0) {
+      s.proposal = { orders, added };
     }
   }
   // d'anciennes données peuvent contenir data.rewrite (ex-feature de
@@ -517,6 +552,12 @@ function normalizeState(data) {
     .map(normalizeSideColor)
     .filter((hex) => !seen.has(hex) && seen.add(hex))
     .slice(0, 5);
+  // Nombre max de suggestions Bibliothèque proposées par bloc à chaque
+  // analyse (voir buildProposal) : réglage persistant, comme recentColors.
+  s.librarySuggestLimit =
+    Number.isFinite(data.librarySuggestLimit) && data.librarySuggestLimit >= 0
+      ? Math.min(20, Math.round(data.librarySuggestLimit))
+      : 4;
   return s;
 }
 
@@ -629,6 +670,7 @@ const cvEl = $('#cv');
 const cvScaleEl = $('#cvScale');
 const resultsEl = $('#results');
 const jobTextEl = $('#jobText');
+const librarySuggestLimitEl = $('#librarySuggestLimit');
 const jobUrlEl = $('#jobUrl');
 const jobUrlStatusEl = $('#jobUrlStatus');
 const aiResponseTextEl = $('#aiResponseText');
@@ -1212,11 +1254,27 @@ function displayBullets(exp) {
   return out;
 }
 
+// Comme displayBullets(), PLUS les suggestions Bibliothèque encore en attente
+// (state.proposal.added[exp.id]) ajoutées en fin de liste, dans l'onglet
+// « Nouveau CV » seulement. Wrapper séparé, réservé au rendu ÉCRAN de
+// bulletsUl (voir experiencesBlock/subsectionsBlock) : jamais utilisé par
+// visibleBullets()/cvFullText()/l'export PDF, qui appellent displayBullets()
+// directement — une suggestion pas encore matérialisée dans owner.bullets
+// n'est pas un tiret réel du CV, elle ne doit ni s'imprimer ni compter dans
+// la couverture de mots-clés (voir cvFullText() plus bas).
+function displayBulletsForScreen(exp) {
+  const base = displayBullets(exp);
+  const added = inCreateTab() && state.proposal && state.proposal.added && state.proposal.added[exp.id];
+  return added && added.length ? [...base, ...added] : base;
+}
+
 // Tirets réellement imprimés d'un bloc (expérience, formation, projet) :
 // l'ordre affiché, tronqué à maxVisible. Pas de coupe si maxVisible est
 // `null` ou couvre déjà tous les tirets — voir normalizeMaxVisible/bulletsUl.
 // Utilisé partout où le rendu doit ignorer les tirets repliés (PDF client,
-// couverture de mots-clés, mesures de pagination).
+// couverture de mots-clés, mesures de pagination) : s'appuie sur
+// displayBullets() (jamais displayBulletsForScreen()), donc ne voit jamais une
+// suggestion encore en attente.
 function visibleBullets(item) {
   const bullets = displayBullets(item);
   if (typeof item.maxVisible !== 'number' || item.maxVisible >= bullets.length) return bullets;
@@ -1266,6 +1324,22 @@ function matchBadge(scope, text, ownerId) {
   });
 }
 
+// Badge « vient de la Bibliothèque ». Contrairement à diffBadge/matchBadge,
+// ne dépend NI de scope.isCv NI d'une proposition en cours : seule condition,
+// le tiret porte un `libraryOrigin` (réel, déjà matérialisé, ou encore
+// suggéré) — donc visible aussi bien dans « CV de base » que « Nouveau CV »,
+// y compris après enregistrement du CV concerné. Comme les deux autres :
+// survol uniquement (voir styles.css), jamais imprimé.
+function libraryOriginBadge(bullet) {
+  if (!bullet.libraryOrigin) return null;
+  const modified = bullet.text !== bullet.libraryOrigin.text;
+  return el('span', {
+    class: 'library-badge',
+    title: 'Tiret importé depuis la Bibliothèque',
+    text: modified ? 'Vient de la Bibliothèque (modifié)' : 'Vient de la Bibliothèque',
+  });
+}
+
 // Ids des blocs (expérience/formation/projet) dont la coupe d'affichage est
 // dépliée à l'écran — purement éphémère : jamais persisté, jamais dans
 // `state`, donc toujours replié après un rechargement de la page.
@@ -1302,6 +1376,7 @@ function bulletsUl(scope, bullets, ownerId, maxVisible) {
         ),
         badge && el('span', { class: 'bullet-badges' }, badge),
         matchBadge(scope, b.text, ownerId),
+        libraryOriginBadge(b),
         el(
           'div',
           { class: 'bullet-controls' },
@@ -1385,7 +1460,7 @@ function experiencesBlock(scope) {
         { class: 'exp' + (scope.isCv && exp.maxVisible === 0 ? ' limit-zero' : ''), 'data-exp-id': exp.id },
         head,
         companyDesc,
-        bulletsUl(scope, scope.isCv ? displayBullets(exp) : exp.bullets, exp.id, exp.maxVisible),
+        bulletsUl(scope, scope.isCv ? displayBulletsForScreen(exp) : exp.bullets, exp.id, exp.maxVisible),
         footer
       )
     );
@@ -1445,7 +1520,7 @@ function subsectionsBlock(scope, titleKey, items, kind, addLabel, side = false) 
         'section',
         { class: 'exp' + (scope.isCv && it.maxVisible === 0 ? ' limit-zero' : ''), [`data-${kind}-id`]: it.id },
         head,
-        bulletsUl(scope, scope.isCv ? displayBullets(it) : it.bullets, it.id, it.maxVisible),
+        bulletsUl(scope, scope.isCv ? displayBulletsForScreen(it) : it.bullets, it.id, it.maxVisible),
         footer
       )
     );
@@ -2208,6 +2283,30 @@ function proposalRemove(ownerId, bulletId) {
   if (i !== -1) ord.splice(i, 1);
 }
 
+// Matérialise une suggestion Bibliothèque encore en attente : la sort de
+// state.proposal.added[owner.id] (surcouche d'affichage) et l'ajoute à
+// owner.bullets (données RÉELLES du CV), `libraryOrigin` conservé, dès que
+// l'utilisateur interagit avec elle (texte modifié, glissée) — voir
+// installEditing(). Rejoint aussi la fin de l'ordre proposé pour que les
+// gestes suivants (flèches, glisser-déposer) la traitent comme un tiret
+// normal. Si `bulletId` est déjà un vrai tiret, no-op (le retourne tel quel) ;
+// s'il n'est ni réel ni en attente, renvoie null. Uniquement pour le CV —
+// appelant responsable de ne jamais l'invoquer pour la Bibliothèque
+// (scope.isCv === false), qui n'a pas de proposition.
+function materializePendingBullet(owner, bulletId) {
+  const existing = owner.bullets.find((b) => b.id === bulletId);
+  if (existing) return existing;
+  const added = state.proposal && state.proposal.added && state.proposal.added[owner.id];
+  if (!added) return null;
+  const idx = added.findIndex((b) => b.id === bulletId);
+  if (idx === -1) return null;
+  const [bullet] = added.splice(idx, 1);
+  owner.bullets.push(bullet);
+  const ord = proposalOrderFor(owner.id);
+  if (ord && !ord.includes(bullet.id)) ord.push(bullet.id);
+  return bullet;
+}
+
 function updateTabs() {
   const layout = $('#layout');
   layout.classList.toggle('tab-create', state.activeTab === 'create');
@@ -2299,7 +2398,10 @@ function installEditing(rootEl, scope) {
       const section = t.closest('section.exp');
       const bulletId = t.dataset.bulletId;
       const owner = ownerFromSection(scope, section);
-      const b = owner && owner.bullets.find((x) => x.id === bulletId);
+      // Éditer une suggestion Bibliothèque encore en attente la matérialise :
+      // voir materializePendingBullet(). N'existe que pour le CV — la
+      // Bibliothèque n'a pas de proposition (scope.isCv === false).
+      const b = owner && (scope.isCv ? materializePendingBullet(owner, bulletId) : owner.bullets.find((x) => x.id === bulletId));
       if (b) b.text = text;
       if (scope.isCv) scheduleSuggestions();
     } else if (t.dataset.field) {
@@ -2379,8 +2481,18 @@ function installEditing(rootEl, scope) {
       }
       case 'bullet-del': {
         if (!owner || !li) return;
-        owner.bullets = owner.bullets.filter((b) => b.id !== li.dataset.bulletId);
-        if (scope.isCv) proposalRemove(owner.id, li.dataset.bulletId);
+        const bulletId = li.dataset.bulletId;
+        const pending = scope.isCv && state.proposal && state.proposal.added && state.proposal.added[owner.id];
+        const pendingIdx = pending ? pending.findIndex((b) => b.id === bulletId) : -1;
+        if (pendingIdx !== -1) {
+          // Suggestion Bibliothèque encore en attente (pas dans owner.bullets) :
+          // on la retire de la proposition, jamais du CV de base — voir
+          // buildProposal/materializePendingBullet.
+          pending.splice(pendingIdx, 1);
+        } else {
+          owner.bullets = owner.bullets.filter((b) => b.id !== bulletId);
+          if (scope.isCv) proposalRemove(owner.id, bulletId);
+        }
         break;
       }
       case 'bullet-more': {
@@ -2392,12 +2504,16 @@ function installEditing(rootEl, scope) {
       case 'bullet-up':
       case 'bullet-down': {
         if (!owner || !li) return;
+        const bulletId = li.dataset.bulletId;
+        // Une suggestion encore en attente se matérialise dès qu'on la
+        // déplace, comme pour l'édition de texte (voir materializePendingBullet).
+        if (scope.isCv && inCreateTab()) materializePendingBullet(owner, bulletId);
         // Dans l'onglet « Nouveau CV » pendant une proposition, les flèches
         // réordonnent la proposition ; sinon (ou pour la Bibliothèque, qui
         // n'a pas de proposition), le CV de base ou la Bibliothèque elle-même.
         const ord = scope.isCv && inCreateTab() ? proposalOrderFor(owner.id) : null;
         const arr = ord || owner.bullets;
-        const idx = ord ? ord.indexOf(li.dataset.bulletId) : owner.bullets.findIndex((b) => b.id === li.dataset.bulletId);
+        const idx = ord ? ord.indexOf(bulletId) : owner.bullets.findIndex((b) => b.id === bulletId);
         if (idx === -1) return;
         move(arr, idx, action === 'bullet-up' ? idx - 1 : idx + 1);
         break;
@@ -2420,7 +2536,10 @@ function installEditing(rootEl, scope) {
         if (!exp) return;
         if (!(await customConfirm('Supprimer cette expérience et tous ses tirets ?', { confirmLabel: 'Supprimer', danger: true }))) return;
         scope.data.experiences = scope.data.experiences.filter((x) => x.id !== exp.id);
-        if (scope.isCv && scope.data.proposal) delete scope.data.proposal.orders[exp.id];
+        if (scope.isCv && scope.data.proposal) {
+          delete scope.data.proposal.orders[exp.id];
+          delete scope.data.proposal.added[exp.id];
+        }
         break;
       }
       case 'exp-up':
@@ -2444,7 +2563,10 @@ function installEditing(rootEl, scope) {
         if (!expSection) return;
         if (!(await customConfirm('Supprimer cette formation et tous ses points ?', { confirmLabel: 'Supprimer', danger: true }))) return;
         scope.data.education = scope.data.education.filter((x) => x.id !== expSection.dataset.eduId);
-        if (scope.isCv && scope.data.proposal) delete scope.data.proposal.orders[expSection.dataset.eduId];
+        if (scope.isCv && scope.data.proposal) {
+          delete scope.data.proposal.orders[expSection.dataset.eduId];
+          delete scope.data.proposal.added[expSection.dataset.eduId];
+        }
         break;
       }
       case 'edu-up':
@@ -2469,7 +2591,10 @@ function installEditing(rootEl, scope) {
         if (!expSection) return;
         if (!(await customConfirm('Supprimer ce projet et tous ses points ?', { confirmLabel: 'Supprimer', danger: true }))) return;
         scope.data.projects = scope.data.projects.filter((x) => x.id !== expSection.dataset.projectId);
-        if (scope.isCv && scope.data.proposal) delete scope.data.proposal.orders[expSection.dataset.projectId];
+        if (scope.isCv && scope.data.proposal) {
+          delete scope.data.proposal.orders[expSection.dataset.projectId];
+          delete scope.data.proposal.added[expSection.dataset.projectId];
+        }
         break;
       }
       case 'project-up':
@@ -2645,8 +2770,16 @@ function installEditing(rootEl, scope) {
       const ul = dragEl.closest('ul.bullets');
       const section = dragEl.closest('section.exp');
       const owner = ownerFromSection(scope, section);
+      const draggedId = dragEl.dataset.bulletId;
       dragEl = null;
       if (owner) {
+        // Glisser une suggestion Bibliothèque encore en attente la matérialise
+        // (voir materializePendingBullet), avant de calculer l'ordre : elle
+        // rejoint alors `known` ci-dessous, à sa position réellement déposée.
+        // Les autres suggestions encore en attente restent filtrées de `order`
+        // (pas dans owner.bullets) : displayBulletsForScreen() les réaffiche en
+        // fin de liste, comme avant ce glissé.
+        if (scope.isCv && inCreateTab()) materializePendingBullet(owner, draggedId);
         const known = new Set(owner.bullets.map((b) => b.id));
         const order = [...ul.querySelectorAll('li.bullet')]
           .map((li) => li.dataset.bulletId)
@@ -2685,52 +2818,6 @@ installEditing(cvEl, cvScope);
 // court-circuite les parties propres au CV (proposition, photo, limite
 // d'affichage).
 installEditing($('#libraryPanel'), libraryScope);
-
-// « Envoyer vers le CV de base » : le pont entre le réservoir et le document
-// imprimé. Déverse tout le contenu réutilisable de la Bibliothèque dans le CV
-// de base — jamais l'inverse, la Bibliothèque ne doit jamais partager de
-// référence avec le CV (copies profondes ci-dessous). Le profil (nom, titre,
-// résumé, photo) et la mise en forme (modèle, couleurs, tailles de police) ne
-// sont pas concernés : la Bibliothèque ne les porte pas (voir libraryFromCV).
-$('#libSendToBaseBtn').addEventListener('click', async () => {
-  if (!(await customConfirm(
-    'Remplacer, dans le CV de base, le contact, les liens, les expériences, ' +
-      'les formations, les projets, les compétences et les intérêts par le ' +
-      'contenu actuel de la Bibliothèque ? Le profil (nom, titre, résumé, ' +
-      'photo) et la mise en forme du CV ne sont pas concernés.',
-    { confirmLabel: 'Remplacer', danger: true }
-  ))) return;
-
-  const lib = state.library;
-  // Un id déjà présent dans le CV garde sa limite d'affichage réglée ; un
-  // nouvel id (ajouté depuis la Bibliothèque) n'a pas de limite (null) — pour
-  // que régler ses limites une fois, puis renvoyer une Bibliothèque enrichie,
-  // ne fasse pas tout perdre.
-  const carryMaxVisible = (currentList, newList) => {
-    const prevById = new Map(currentList.map((it) => [it.id, it.maxVisible]));
-    return newList.map((it) => ({
-      ...it,
-      maxVisible: normalizeMaxVisible(prevById.has(it.id) ? prevById.get(it.id) : null, it.bullets.length),
-    }));
-  };
-
-  state.profile.contact = JSON.parse(JSON.stringify(lib.contact));
-  state.profile.links = JSON.parse(JSON.stringify(lib.links));
-  state.experiences = carryMaxVisible(state.experiences, JSON.parse(JSON.stringify(lib.experiences)));
-  state.education = carryMaxVisible(state.education, JSON.parse(JSON.stringify(lib.education)));
-  state.projects = carryMaxVisible(state.projects, JSON.parse(JSON.stringify(lib.projects)));
-  state.skills = lib.skills;
-  state.skillGroups = JSON.parse(JSON.stringify(lib.skillGroups));
-  state.interests = JSON.parse(JSON.stringify(lib.interests));
-
-  // Le CV affiché n'est plus la version chargée, et une éventuelle
-  // proposition en cours n'a plus de sens sur ce nouveau contenu.
-  state.proposal = null;
-  state.activeVersionId = null;
-  // Retour attendu après une action aussi lourde : voir le résultat.
-  state.activeTab = 'base';
-  rerender();
-});
 
 // Export / import de la Bibliothèque : sa seule porte de sortie, puisqu'elle
 // ne vit que dans le localStorage de ce navigateur. Même mécanique que
@@ -3404,6 +3491,14 @@ function normalizeText(text) {
   return text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
 
+// Cl\u00e9 de comparaison texte insensible \u00e0 la casse/accents/espaces superflus :
+// sert \u00e0 rep\u00e9rer un intitul\u00e9 identique (matchLibraryOwner) ou un doublon
+// visuel entre un tiret r\u00e9el et un tiret de Biblioth\u00e8que (buildProposal),
+// sans d\u00e9pendre de la tokenisation (mots vides, ponctuation) de tokenize().
+function normalizeMatchKey(text) {
+  return normalizeText(text).replace(/\s+/g, ' ').trim();
+}
+
 function tokenize(text) {
   const raw = normalizeText(text).match(/[a-z0-9][a-z0-9+#&]*/g) || [];
   return raw.filter((w) => {
@@ -3487,9 +3582,33 @@ function effectiveJobText() {
 let newCvNameDraft = '';
 let proposalSaved = false;
 
+// Retrouve, dans une liste de la Bibliothèque (même catégorie — expériences
+// avec expériences, formation avec formation, projets avec projets : jamais
+// croisé, voir buildProposal), le bloc correspondant à une expérience/
+// formation/projet du CV. Par id d'abord (le bloc n'a pas changé depuis
+// l'amorçage de la Bibliothèque, voir libraryFromCV) ; à défaut, par égalité
+// normalisée des champs identifiants — rôle + entreprise pour une expérience,
+// titre + détail pour formation/projet. Aucune correspondance → null, le bloc
+// garde son comportement de réordonnancement seul (pas de suggestion).
+function matchLibraryOwner(owner, libraryList) {
+  const byId = libraryList.find((o) => o.id === owner.id);
+  if (byId) return byId;
+  const isExp = 'role' in owner;
+  const key = (o) => (isExp ? normalizeMatchKey(o.role + ' ' + o.company) : normalizeMatchKey(o.title + ' ' + o.detail));
+  const ownerKey = key(owner);
+  return libraryList.find((o) => key(o) === ownerKey) || null;
+}
+
 // Construit la proposition : l'ordre suggéré par l'analyse, par expérience,
-// formation et projet. Le CV de base n'est PAS modifié — la proposition
-// n'est qu'une surcouche d'ordre, affichée dans l'onglet « Nouveau CV ».
+// formation et projet, PLUS les suggestions Bibliothèque à ajouter en fin de
+// liste (state.proposal.added) pour chaque bloc ayant un équivalent dans la
+// Bibliothèque. Le CV de base n'est PAS modifié — la proposition n'est qu'une
+// surcouche, affichée dans l'onglet « Nouveau CV » (ordre) et matérialisée
+// tiret par tiret à la demande (ajouts, voir materializePendingBullet).
+// Remplace entièrement l'ancienne proposition à chaque appel : les
+// suggestions pas encore matérialisées sont recalculées de zéro (les tirets
+// déjà matérialisés/édités sont de vrais owner.bullets, gérés par le
+// réordonnancement + dédoublonnage ci-dessous, jamais touchés ici).
 function buildProposal() {
   newCvNameDraft = '';
   proposalSaved = false;
@@ -3498,14 +3617,50 @@ function buildProposal() {
     state.proposal = null;
     return;
   }
+  const limit = Number.isFinite(state.librarySuggestLimit) ? state.librarySuggestLimit : 4;
   const orders = {};
+  const added = {};
   let changed = false;
-  for (const owner of [...state.experiences, ...state.education, ...state.projects]) {
-    const suggested = suggestOrder(owner, model).scored.map((s) => s.bullet.id);
-    orders[owner.id] = suggested;
-    if (suggested.some((id, i) => owner.bullets[i].id !== id)) changed = true;
+  const categories = [
+    { list: state.experiences, lib: state.library.experiences },
+    { list: state.education, lib: state.library.education },
+    { list: state.projects, lib: state.library.projects },
+  ];
+  for (const { list, lib } of categories) {
+    for (const owner of list) {
+      const suggested = suggestOrder(owner, model).scored.map((s) => s.bullet.id);
+      orders[owner.id] = suggested;
+      if (suggested.some((id, i) => owner.bullets[i].id !== id)) changed = true;
+
+      if (limit <= 0) continue;
+      const libOwner = matchLibraryOwner(owner, lib);
+      if (!libOwner) continue;
+      // Jamais re-suggérer un tiret déjà importé (id de provenance déjà
+      // présent, même modifié depuis) ni un doublon visuel (même texte
+      // normalisé) déjà réel dans owner.bullets.
+      const importedIds = new Set(owner.bullets.filter((b) => b.libraryOrigin).map((b) => b.libraryOrigin.id));
+      const usedTexts = new Set(owner.bullets.map((b) => normalizeMatchKey(b.text)));
+      const candidates = libOwner.bullets.filter(
+        (lb) => !importedIds.has(lb.id) && !usedTexts.has(normalizeMatchKey(lb.text))
+      );
+      // Score TOUS les tirets candidats, sans exclure les scores nuls : un
+      // tiret sans mot-clé matché finit juste en bas du classement plutôt que
+      // hors liste. Tri stable (comme suggestOrder) : à score égal, l'ordre
+      // de la Bibliothèque est conservé.
+      const scored = candidates
+        .map((lb) => ({ bullet: lb, ...scoreBullet(lb.text, model) }))
+        .sort((a, b) => b.score - a.score);
+      const top = scored.slice(0, limit);
+      if (top.length) {
+        added[owner.id] = top.map((s) => ({
+          id: uid(),
+          text: s.bullet.text,
+          libraryOrigin: { id: s.bullet.id, text: s.bullet.text },
+        }));
+      }
+    }
   }
-  state.proposal = changed ? { orders } : null;
+  state.proposal = changed || Object.keys(added).length > 0 ? { orders, added } : null;
 }
 
 // Nom proposé pour le CV enregistré : dérivé de l'offre analysée
@@ -3579,13 +3734,34 @@ function applyProposalOrder(list) {
   }
 }
 
+// Ajoute, en fin de liste des tirets réels, les suggestions Bibliothèque
+// encore en attente (state.proposal.added) pour chaque élément de `list` — le
+// pendant, pour les ajouts, d'applyProposalOrder() pour l'ordre. `list` est
+// toujours le CLONE renvoyé par snapshotCV() (jamais state.experiences/
+// education/projects) : un CV enregistré doit reprendre exactement ce qui
+// était affiché à l'écran, y compris les suggestions pas encore touchées par
+// l'utilisateur, sans que ça matérialise quoi que ce soit dans le CV de base
+// réel.
+function applyProposalAdditions(list) {
+  for (const owner of list) {
+    const added = state.proposal && state.proposal.added && state.proposal.added[owner.id];
+    if (added && added.length) {
+      owner.bullets = [...owner.bullets, ...JSON.parse(JSON.stringify(added))];
+    }
+  }
+}
+
 // Le CV de base, avec les tirets de chaque expérience/formation/projet dans
-// l'ordre proposé : c'est ce qui est enregistré comme nouveau CV.
+// l'ordre proposé et les suggestions encore en attente ajoutées en fin de
+// liste : c'est ce qui est enregistré comme nouveau CV.
 function snapshotProposalCV() {
   const snap = snapshotCV();
   applyProposalOrder(snap.experiences);
   applyProposalOrder(snap.education);
   applyProposalOrder(snap.projects);
+  applyProposalAdditions(snap.experiences);
+  applyProposalAdditions(snap.education);
+  applyProposalAdditions(snap.projects);
   return snap;
 }
 
@@ -3702,12 +3878,16 @@ function renderSuggestions() {
       displayBullets(owner).forEach((b, i) => {
         if (!owner.bullets[i] || owner.bullets[i].id !== b.id) moved += 1;
       });
+      const added = state.proposal.added && state.proposal.added[owner.id];
+      const parts = [];
+      if (moved) parts.push(`${moved} tiret${moved > 1 ? 's' : ''} déplacé${moved > 1 ? 's' : ''}`);
+      if (added && added.length) parts.push(`${added.length} suggestion${added.length > 1 ? 's' : ''} Bibliothèque`);
       box.append(
         el(
           'div',
           { class: 'proposal-exp-line' },
           el('strong', { text: owner.role || owner.title || 'Élément' }),
-          ` : ${moved ? `${moved} tiret${moved > 1 ? 's' : ''} déplacé${moved > 1 ? 's' : ''}` : 'ordre inchangé'}`
+          ` : ${parts.length ? parts.join(', ') : 'ordre inchangé'}`
         )
       );
     }
@@ -3825,6 +4005,16 @@ jobTextEl.addEventListener('input', () => {
   // L'analyse ne se relance qu'au clic sur « Analyser », mais on mémorise la saisie
   state.jobText = jobTextEl.value;
   save(true); // frappe en cours : une seule étape d'historique, close au blur
+});
+
+// Limite de suggestions Bibliothèque par bloc : simple réglage, lu au
+// prochain clic sur « Analyser l'offre » (voir buildProposal) — pas de
+// rerender immédiat.
+librarySuggestLimitEl.addEventListener('change', () => {
+  const raw = Number(librarySuggestLimitEl.value);
+  state.librarySuggestLimit = Number.isFinite(raw) ? Math.max(0, Math.min(20, Math.round(raw))) : 4;
+  librarySuggestLimitEl.value = state.librarySuggestLimit;
+  save();
 });
 
 /* ---------- Récupération de l'offre depuis une URL ----------
@@ -4101,9 +4291,10 @@ $('#pdfBtn').addEventListener('click', async () => {
 $('#resetBtn').addEventListener('click', async () => {
   if (!(await customConfirm('Réinitialiser le CV avec le contenu d’exemple ? Les versions sauvegardées sont conservées.', { confirmLabel: 'Réinitialiser', danger: true }))) return;
   // La Bibliothèque est indépendante du CV de base (voir normalizeState) :
-  // la réinitialisation de celui-ci ne doit surtout pas y toucher.
-  const { versions, activeTab, library } = state;
-  state = { ...defaultCV(), versions, activeVersionId: null, proposal: null, activeTab, library };
+  // la réinitialisation de celui-ci ne doit surtout pas y toucher. Même chose
+  // pour librarySuggestLimit, un réglage global comme recentColors.
+  const { versions, activeTab, library, librarySuggestLimit } = state;
+  state = { ...defaultCV(), versions, activeVersionId: null, proposal: null, activeTab, library, librarySuggestLimit };
   jobTextEl.value = '';
   rerender();
 });
@@ -4205,4 +4396,5 @@ window.cvPromptForJob = (job) => {
 /* ---------- Démarrage ---------- */
 
 jobTextEl.value = state.jobText;
+librarySuggestLimitEl.value = state.librarySuggestLimit;
 rerender();
