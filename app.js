@@ -3123,9 +3123,13 @@ function snapshotCV() {
 // Le CV actuel est-il déjà identique à l'une des sauvegardes ? Sert à ne pas
 // demander de confirmation avant de charger une autre version quand il n'y a
 // justement rien à perdre.
-function isCurrentCvSaved() {
-  const current = JSON.stringify(snapshotCV());
-  return state.versions.some((v) => JSON.stringify(v.data) === current);
+// `ignoreJobText` : l'offre collée pour l'analyse fait partie de l'instantané
+// mais n'est pas du contenu de CV — la coller ne doit pas faire croire à des
+// modifications non enregistrées (flux « Enregistrer ce nouveau CV »).
+function isCurrentCvSaved({ ignoreJobText = false } = {}) {
+  const key = (data) => JSON.stringify(ignoreJobText ? { ...data, jobText: '' } : data);
+  const current = key(snapshotCV());
+  return state.versions.some((v) => key(v.data) === current);
 }
 
 // Le CV affiché diffère-t-il de la version actuellement chargée ? Sert à
@@ -3335,6 +3339,7 @@ versionListEl.addEventListener('click', async (e) => {
       applyCV(v.data);
       // La proposition référençait l'ancien CV : plus de sens.
       state.proposal = null;
+      proposalSaved = false;
       state.activeVersionId = v.id;
       rerender();
       break;
@@ -3584,11 +3589,28 @@ function snapshotProposalCV() {
   return snap;
 }
 
-function saveProposalVersion() {
+// Enregistre la proposition comme nouveau CV ET le charge comme CV affiché :
+// la liste le marque « chargée » et « Télécharger PDF » exporte le CV affiché,
+// donc sans ce chargement le PDF serait celui de l'ancien CV de base. Même
+// garde-fou que « Charger » : si le CV de base actuel n'est sauvegardé nulle
+// part, on demande quoi en faire avant de le remplacer.
+async function saveProposalVersion() {
   const input = $('#newCvName');
   const name = (input && input.value.trim()) || defaultVersionName();
-  const v = { id: uid(), name, createdAt: Date.now(), data: snapshotProposalCV() };
+  const data = snapshotProposalCV();
+  if (!isCurrentCvSaved({ ignoreJobText: true })) {
+    const choice = await customConfirm(
+      `Enregistrer « ${name} » et le charger comme CV de base ? Le CV de base actuel a des modifications non enregistrées.`,
+      { confirmLabel: 'Sauvegarder et charger', extraLabel: 'Ne pas sauvegarder' }
+    );
+    if (choice === false) return;
+    if (choice === true) saveCurrentCvAsVersion();
+  }
+  const v = { id: uid(), name, createdAt: Date.now(), data };
   state.versions.unshift(v);
+  applyCV(v.data);
+  // L'ordre proposé est désormais celui du CV chargé : plus de surcouche.
+  state.proposal = null;
   state.activeVersionId = v.id;
   proposalSaved = true;
   rerender();
@@ -3670,7 +3692,7 @@ function renderSuggestions() {
         class: 'hint',
         text: 'Le CV ci-dessous est réordonné pour cette offre — le CV de base n’est pas modifié. ' +
           'Survolez le CV pour voir les tirets déplacés (badge « était n°X »), ' +
-          'puis enregistrez ce nouveau CV pour le retrouver dans l’onglet « CV de base ». ' +
+          'puis enregistrez ce nouveau CV : il sera chargé comme CV de base et exporté par « Télécharger PDF ». ' +
           'Ré-analyser l’offre reconstruit la proposition.',
       })
     );
@@ -3711,10 +3733,14 @@ function renderSuggestions() {
         el('button', { type: 'button', id: 'discardProposalBtn', class: 'link-btn', text: 'Ignorer la proposition' })
       )
     );
-    if (proposalSaved) {
-      box.append(el('p', { class: 'apply-note', text: 'Nouveau CV enregistré ✓ — retrouvez-le dans l’onglet « CV de base ».' }));
-    }
     resultsEl.append(box);
+  } else if (proposalSaved) {
+    resultsEl.append(
+      el('p', {
+        class: 'apply-note',
+        text: 'Nouveau CV enregistré et chargé comme CV de base ✓ — « Télécharger PDF » exporte celui-ci.',
+      })
+    );
   } else {
     const upToDate = [...state.experiences, ...state.education, ...state.projects].every(
       (owner) => suggestOrder(owner, model).alreadyApplied

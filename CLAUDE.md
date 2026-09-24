@@ -28,7 +28,7 @@ Five files, no framework, no modules/bundler — `index.html` loads `pdf.js` the
 
 ### Key invariants worth knowing before editing
 
-- The base CV (`CV de base`) is never mutated by the job-analysis flow. A "proposal" is a display-only bullet reorder layered on top; saving it creates a new named CV. The proposal covers experiences, education **and** projects.
+- The base CV (`CV de base`) is never mutated by the job-analysis flow itself. A "proposal" is a display-only bullet reorder layered on top; saving it (`saveProposalVersion`) creates a new named CV **and loads it** as the displayed CV (like « Charger », including the unsaved-changes confirm, which ignores `jobText`), because « Télécharger PDF » exports whatever is displayed. The proposal covers experiences, education **and** projects.
 - The Bibliothèque (`state.library`) and the CV are **independent stores**. `normalizeState` seeds the library from the CV once, keyed on the *presence* of the `library` key (not its validity) so a momentarily malformed state never re-seeds over the user's work. Only « Envoyer vers le CV de base » copies library → CV, never the reverse.
 - `maxVisible` is display-only: bullets past the cut stay in the data. Screen, print and both PDF paths must show the same thing — the cut is applied in `visibleBullets()`, in `@media print`, and in the `generateCvPdf` call site, which must stay in sync.
 - Editing affordances are absolutely positioned overlays that are `display:none` at rest and never take flow space, so the sheet on screen is pixel-identical to the PDF. They fade with `transition: display … allow-discrete`, which means `getComputedStyle().display` lags — wait for `getAnimations().length === 0` before asserting on print visibility.
