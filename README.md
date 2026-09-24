@@ -13,24 +13,6 @@ C'est ce qui permet de postuler à deux offres très différentes sans rien ré�
 3. **Survolez le CV** pour voir les modifications : chaque tiret déplacé est surligné et porte un badge « ↑ était n°X » indiquant sa position dans le CV de base ; un tiret suggéré porte un badge « Vient de la Bibliothèque ». Le panneau résume les déplacements et suggestions par expérience. Vous pouvez encore affiner à la main (glisser-déposer, flèches, modifier le texte) : une suggestion touchée de cette façon devient aussitôt un tiret réel et permanent du CV (tagué « Vient de la Bibliothèque », visible même hors de cet onglet) ; tout le reste ne modifie que la proposition, jamais le CV de base.
 4. **Enregistrez ce nouveau CV** (nom proposé d'après le site de l'offre ou la date) : il rejoint les CV sauvegardés de l'onglet « CV de base », en conservant les suggestions encore en attente. « Ignorer la proposition » ou « Effacer » abandonne tout ce qui n'a pas été touché — le CV de base n'a jamais bougé.
 
-#### Recalibrer les lignes d'expérience sur l'offre
-
-Réordonner ne suffit pas toujours : les tirets eux-mêmes peuvent être réécrits pour parler le langage de l'offre. Le panneau **« Recalibrer les lignes d'expérience »**, sous l'offre, s'en charge en trois gestes.
-
-1. **« Copier le prompt »** : l'application compose un prompt à partir de l'offre collée et de votre parcours (expériences avec leurs tirets, formation, projets, compétences). Il impose l'anatomie d'une bonne ligne de CV — verbe d'action au passé, objet quantifié, méthode, résultat quantifié, destinataire —, interdit d'inventer un chiffre, et demande la réponse dans **la langue de l'offre** (détectée automatiquement). Aucune clé d'API n'est nécessaire : vous passez le prompt à l'assistant de votre choix. « Voir le prompt » l'affiche pour une copie à la main si le navigateur refuse le presse-papiers.
-2. **Collez la réponse** dans le champ prévu, puis **« Appliquer tout »** : **toutes** les lignes entrent d'un coup et un **nouveau CV nommé** est créé aussitôt (nom déduit de l'en-tête de l'offre, ex. « Nortis Group — Product Owner Data »), visible dans les CV sauvegardés. Le CV de base, lui, n'est pas touché : la relecture est une surcouche d'affichage.
-3. **Relisez le diff** : sous le bouton, chaque ligne montre le texte du CV de base et la ligne recalibrée, **mot à mot** — mots retirés barrés en rouge, mots ajoutés en vert. Dans le CV lui-même, les tirets concernés portent au survol un badge « ↻ réécrite » (texte d'origine en infobulle) ou « + ajoutée ». Ces repères ne sont jamais imprimés ni exportés.
-
-Rien n'est irréversible : **« Annuler »** sur une ligne la ramène au texte du CV de base, **« Rétablir »** la réapplique, et **« Tout annuler » / « Tout réappliquer »** font de même en bloc. Le CV nommé suit chacune de ces décisions. « Abandonner » retire la surcouche sans supprimer le CV déjà enregistré.
-
-Si l'assistant rend **moins** de lignes qu'il n'y a de tirets, les tirets restants sont conservés tels quels et le rapport le dit ; s'il en rend **plus**, le surplus est ajouté en fin d'expérience et reste supprimable d'un ✕.
-
-##### Provenance des chiffres
-
-Un chiffre halluciné par l'assistant part directement chez un recruteur : chaque ligne appliquée est passée au crible avant de compter comme validée. Les nombres qu'elle contient sont comparés à ceux du tiret d'origine puis, à défaut, à l'ensemble du CV source (« 100 000 », « 100,000 », « 100k » et « 1e5 » sont reconnus comme la même valeur, quel que soit le format). Tout chiffre introuvable est signalé à trois endroits, jamais imprimés : le mot lui-même dans le diff (souligné en rouge), un badge « ⚠ N chiffre(s) à vérifier » sur la ligne concernée et au survol du tiret dans le CV, et une bannière globale en tête du rapport — pour qu'un chiffre fautif ne se perde pas dans un panneau qu'il faut faire défiler.
-
-Ce contrôle compare des **valeurs**, pas du **sens** : un total légitimement dérivé de deux chiffres présents (« 5 développeurs et 2 designers » → « 7 personnes ») est signalé comme les autres, faute de savoir faire une addition ; et un chiffre réel du CV mais rattaché à la mauvaise réalisation ne sera pas détecté par le repli « CV entier ». Les nombres écrits en toutes lettres (« cent mille clients ») échappent aussi à la détection. Le signal reste une aide à la relecture, pas une garantie.
-
 ### « CV de base » — le CV de référence et les CV sauvegardés
 
 Le CV de base s'édite ici (textes, tirets, sections, photo, liens…) ; c'est lui qui sert de matrice à chaque nouvelle analyse. À côté, la liste des **CV sauvegardés** : ceux enregistrés depuis l'onglet « Nouveau CV » et ceux que vous sauvegardez manuellement. Chacun peut être chargé (il devient le CV de base), écrasé, renommé ou supprimé.

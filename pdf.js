@@ -1473,6 +1473,14 @@ function interestsBlock(col, interests, { size, color }) {
   }
 }
 
+// Titre de section, lu dans state.sectionTitles (voir app.js) avec repli sur
+// l'intitulé par défaut : une sauvegarde antérieure à cette fonctionnalité,
+// ou un état passé directement sans cette clé, n'a pas `sectionTitles`.
+function secTitle(state, key, fallback) {
+  const v = state.sectionTitles && state.sectionTitles[key];
+  return typeof v === 'string' ? v : fallback;
+}
+
 /* ---------- Modèle « Pro » (une colonne) ---------- */
 
 function renderPro(doc, state, photo) {
@@ -1517,16 +1525,16 @@ function renderPro(doc, state, photo) {
   };
   const subSizes = { title: f.item, detail: f.detail, bullet: f.bullet };
   // Les titres de section sont toujours affichés, même sans contenu, comme à l'écran
-  sectionTitle(col, 'Expériences professionnelles', st);
+  sectionTitle(col, secTitle(state, 'experiences', 'Expériences professionnelles'), st);
   for (const exp of state.experiences) experienceBlock(col, exp, palette, expSizes);
-  sectionTitle(col, 'Formation', st);
+  sectionTitle(col, secTitle(state, 'education', 'Formation'), st);
   for (const ed of state.education) subsectionBlock(col, ed, palette, subSizes);
-  sectionTitle(col, 'Projets', st);
+  sectionTitle(col, secTitle(state, 'projects', 'Projets'), st);
   for (const pr of state.projects) subsectionBlock(col, pr, palette, subSizes);
-  sectionTitle(col, 'Compétences', st);
+  sectionTitle(col, secTitle(state, 'skills', 'Compétences'), st);
   paragraph(col, state.skills, { size: f.skills * PX, color: C.ink }, { editable: true });
   skillGroupsBlock(col, state.skillGroups, { size: f.skills * PX, labelColor: C.ink, textColor: C.ink });
-  sectionTitle(col, 'Intérêts', st);
+  sectionTitle(col, secTitle(state, 'interests', 'Intérêts'), st);
   interestsBlock(col, state.interests, { size: f.skills * PX, color: C.ink });
 }
 
@@ -1562,11 +1570,11 @@ function renderDesign(doc, state, photo) {
   paragraph(main, state.profile.summary, { size: fm.summary * PX, color: C.ink }, { pre: true, editable: true });
   main.space(px(10)); // air supplémentaire avant le premier titre de section (cf. styles.css)
 
-  sectionTitle(main, 'Expériences professionnelles', stMain);
+  sectionTitle(main, secTitle(state, 'experiences', 'Expériences professionnelles'), stMain);
   for (const exp of state.experiences) experienceBlock(main, exp, palette, expSizes);
-  sectionTitle(main, 'Formation', stMain);
+  sectionTitle(main, secTitle(state, 'education', 'Formation'), stMain);
   for (const ed of state.education) subsectionBlock(main, ed, palette, subSizes);
-  sectionTitle(main, 'Projets', stMain);
+  sectionTitle(main, secTitle(state, 'projects', 'Projets'), stMain);
   for (const pr of state.projects) subsectionBlock(main, pr, palette, subSizes);
 
   // Barre latérale : photo, Contact, Liens, Compétences, Intérêts.
@@ -1590,17 +1598,17 @@ function renderDesign(doc, state, photo) {
   side.margin(px(10));
   paragraph(side, state.profile.name, { weight: 700, size: fs.name * PX, color: S.fg }, { align: 'center' });
 
-  sectionTitle(side, 'Contact', stSide);
+  sectionTitle(side, secTitle(state, 'contact', 'Contact'), stSide);
   contactLines(side, state, { valueColor: S.ink, valueSize: fs.contactValue * PX, pad: 0 });
-  sectionTitle(side, 'Liens', stSide);
+  sectionTitle(side, secTitle(state, 'links', 'Liens'), stSide);
   for (const l of state.profile.links) {
     linkItem(side, l, { urlColor: S.ink, urlSize: fs.contactValue * PX, pad: 0 });
   }
   // Bandeau : uniquement les groupes intitulés — le texte libre `skills`
   // n'apparaît que dans le modèle « pro » (voir renderDesign dans app.js).
-  sectionTitle(side, 'Compétences', stSide);
+  sectionTitle(side, secTitle(state, 'skills', 'Compétences'), stSide);
   skillGroupsBlock(side, state.skillGroups, { size: fs.skills * PX, labelColor: S.fg, textColor: S.ink });
-  sectionTitle(side, 'Intérêts', stSide);
+  sectionTitle(side, secTitle(state, 'interests', 'Intérêts'), stSide);
   interestsBlock(side, state.interests, { size: fs.skills * PX, color: S.ink });
 }
 

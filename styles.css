@@ -871,13 +871,13 @@ main.tab-create #cvScale #cv {
    À l'impression, aucune règle :hover / :focus-within ne s'applique (pas de
    souris) : le PDF reprend l'état au repos. */
 
-.drag-handle,
+.drag-handle, .block-drag-handle,
 .add-exp, .add-edu, .add-project, .add-link, .add-contact,
 .add-group, .add-interest,
 .exp-footer,
 .photo-box:not(:has(.cv-photo)) { display: none; }
 
-.exp:is(:hover, :focus-within) .drag-handle,
+.exp:is(:hover, :focus-within) :is(.drag-handle, .block-drag-handle),
 .cv-header:is(:hover, :focus-within) .photo-box:not(:has(.cv-photo)),
 .side:is(:hover, :focus-within) .photo-box:not(:has(.cv-photo)) { display: block; }
 
@@ -907,7 +907,7 @@ main.tab-create #cvScale #cv {
    La liste des états visibles est répétée dans @starting-style : c'est le prix
    à payer, il n'y a pas de raccourci en CSS. */
 
-.drag-handle,
+.drag-handle, .block-drag-handle,
 .bullet-controls, .photo-controls,
 .add-exp, .add-edu, .add-project, .add-link, .add-contact,
 .add-group, .add-interest,
@@ -917,7 +917,7 @@ main.tab-create #cvScale #cv {
   transition: opacity 120ms ease, display 120ms allow-discrete;
 }
 
-.exp:is(:hover, :focus-within) :is(.drag-handle, .exp-footer),
+.exp:is(:hover, :focus-within) :is(.drag-handle, .block-drag-handle, .exp-footer),
 .cv-block:is(:hover, :focus-within) :is(.add-exp, .add-edu, .add-project),
 .cv-links:is(:hover, :focus-within) .add-link,
 .cv-contact-block:is(:hover, :focus-within) .add-contact,
@@ -935,7 +935,7 @@ li.bullet:hover .bullet-controls,
 }
 
 @starting-style {
-  .exp:is(:hover, :focus-within) :is(.drag-handle, .exp-footer),
+  .exp:is(:hover, :focus-within) :is(.drag-handle, .block-drag-handle, .exp-footer),
   .cv-block:is(:hover, :focus-within) :is(.add-exp, .add-edu, .add-project),
   .cv-links:is(:hover, :focus-within) .add-link,
   .cv-contact-block:is(:hover, :focus-within) .add-contact,
@@ -1172,12 +1172,34 @@ li.bullet:hover .bullet-controls,
 
 .exp:hover { background: #fafafa; }
 
+.exp.dragging { opacity: 0.4; background: var(--accent-soft); }
+
 .exp-head {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
   gap: 12px;
 }
+
+/* Poignée de réordonnancement du BLOC entier (expérience/formation/projet),
+   à distinguer de .drag-handle (le tiret) : même habillage visuel, posée
+   dans la marge intérieure de la feuille au niveau de l'en-tête du bloc.
+   .exp-head est son conteneur positionné (voir la liste `position: relative`
+   plus haut), absolue donc hors du flux flex de .exp-head — elle ne pousse
+   jamais le rôle/l'entreprise. */
+.block-drag-handle {
+  position: absolute;
+  left: -18px;
+  top: 2px;
+  cursor: grab;
+  color: #cbd5e1;
+  user-select: none;
+  font-size: 14px;
+  line-height: 1.45;
+  padding: 0 2px;
+}
+
+.exp:hover .block-drag-handle { color: var(--muted); }
 
 .exp-role { font-weight: 700; font-size: var(--fs-item, 15px); }
 .exp-company { color: var(--muted); font-size: var(--fs-detail, 14px); }

@@ -124,6 +124,32 @@ function normalizeContact(p, base) {
   return base.profile.contact;
 }
 
+// Intitulés par défaut des titres de section du CV (voir sectionTitle) :
+// propres au CV, jamais à la Bibliothèque (voir normalizeSectionTitles).
+const SECTION_TITLE_DEFAULTS = {
+  experiences: 'Expériences professionnelles',
+  education: 'Formation',
+  projects: 'Projets',
+  skills: 'Compétences',
+  interests: 'Intérêts',
+  contact: 'Contact',
+  links: 'Liens',
+};
+
+// Normalise clé par clé, avec repli individuel sur le défaut : un CV/version
+// sauvegardé avant cette fonctionnalité n'a pas la clé `sectionTitles` (ou
+// n'a qu'une partie des clés) et doit retomber sur les défauts, jamais planter
+// ni laisser `undefined`. Un titre vide (utilisateur qui a tout effacé) est
+// accepté tel quel, sans repli forcé.
+function normalizeSectionTitles(v) {
+  const src = v && typeof v === 'object' ? v : {};
+  const out = {};
+  for (const key of Object.keys(SECTION_TITLE_DEFAULTS)) {
+    out[key] = typeof src[key] === 'string' ? src[key] : SECTION_TITLE_DEFAULTS[key];
+  }
+  return out;
+}
+
 // Partie « CV courant » de l'état (ce qui est capturé dans une version)
 function defaultCV() {
   return {
@@ -149,6 +175,7 @@ function defaultCV() {
       ],
     },
     template: 'pro',
+    sectionTitles: normalizeSectionTitles(null),
     sideColor: SIDE_BG_DEFAULT,
     titleColorMode: 'complement',
     titleColor: TITLE_COLOR_DEFAULT,
@@ -426,6 +453,7 @@ function normalizeCV(data) {
       })),
     },
     template: data.template === 'design' ? 'design' : 'pro',
+    sectionTitles: normalizeSectionTitles(data.sectionTitles),
     sideColor: normalizeSideColor(data.sideColor),
     titleColorMode: normalizeTitleMode(data.titleColorMode),
     titleColor: normalizeHexColor(data.titleColor, TITLE_COLOR_DEFAULT),
@@ -1177,8 +1205,17 @@ function interestsBlock(scope) {
   return wrap;
 }
 
-function sectionTitle(text, side = false) {
-  return el('div', { class: side ? 'side-title' : 'cv-section-title', text });
+// Titre de section du CV (« Expériences professionnelles », « Formation »…),
+// éditable comme les autres champs texte (voir `data-sectiontitle` dans
+// installEditing). N'est appelé que pour le CV, jamais la Bibliothèque (voir
+// les commentaires dans experiencesBlock/subsectionsBlock et renderPro/
+// renderDesign) : `scope.data.sectionTitles` existe donc toujours ici.
+function sectionTitle(scope, key, side = false) {
+  return el(
+    'div',
+    { class: side ? 'side-title' : 'cv-section-title', contenteditable: 'true', 'data-sectiontitle': key },
+    scope.data.sectionTitles[key]
+  );
 }
 
 /* ---------- Onglets « Nouveau CV » / « CV de base » ---------- */
@@ -1372,7 +1409,7 @@ function experiencesBlock(scope) {
   // Le titre de section « CV » (bleu souligné) n'a de sens que sur le CV : la
   // Bibliothèque, formulaire et non document imprimé, porte son propre titre
   // de panneau dans index.html (voir renderLibrary et le <h2> de son panneau).
-  if (scope.isCv) frag.append(sectionTitle('Expériences professionnelles'));
+  if (scope.isCv) frag.append(sectionTitle(scope, 'experiences'));
   scope.data.experiences.forEach((exp, i) => {
     // Rangée unique en bas du bloc : « + Ajouter un tiret » à gauche, puis à
     // droite le réglage de limite et les icônes ↑ ↓ ✕ (voir « Limite
@@ -1401,6 +1438,7 @@ function experiencesBlock(scope) {
     const head = el(
       'div',
       { class: 'exp-head' },
+      el('span', { class: 'block-drag-handle', title: 'Glisser pour réordonner le bloc', text: '⠿' }),
       el(
         'div',
         {},
@@ -1434,16 +1472,16 @@ function experiencesBlock(scope) {
 // Sous-sections titre + détail + points (formation, projets) : même structure
 // et mêmes classes qu'une expérience (exp / exp-head / exp-role / exp-company),
 // sans période ni réordonnancement de l'élément lui-même.
-function subsectionsBlock(scope, title, items, kind, addLabel, side = false) {
+function subsectionsBlock(scope, titleKey, items, kind, addLabel, side = false) {
   // Même conteneur que les expériences : le bouton d'ajout ne se révèle qu'au
   // survol de ce bloc (voir styles.css).
   const frag = el('section', { class: 'cv-block' });
   // Comme experiencesBlock() : pas de titre de section « CV » dans la
   // Bibliothèque, qui a déjà le sien en <h2> de panneau.
-  if (scope.isCv) frag.append(sectionTitle(title, side));
-  items.forEach((it) => {
+  if (scope.isCv) frag.append(sectionTitle(scope, titleKey, side));
+  items.forEach((it, i) => {
     // Même rangée unique qu'une expérience (voir experiencesBlock) : « +
-    // Ajouter un point » à gauche, réglage de limite et ✕ à droite. Comme
+    // Ajouter un point » à gauche, réglage de limite et ↑ ↓ ✕ à droite. Comme
     // dans experiencesBlock, le réglage de limite est propre au CV.
     const footer = el(
       'div',
@@ -1454,13 +1492,20 @@ function subsectionsBlock(scope, title, items, kind, addLabel, side = false) {
         { class: 'exp-footer-right' },
         scope.isCv && visibleLimitCtl(it),
         scope.isCv && it.maxVisible === 0 && el('span', { class: 'limit-zero-note', text: 'non imprimé' }),
-        el('div', { class: 'exp-controls' }, iconBtn('✕', `${kind}-del`, 'Supprimer', 'del'))
+        el(
+          'div',
+          { class: 'exp-controls' },
+          i > 0 && iconBtn('↑', `${kind}-up`, 'Monter le bloc'),
+          i < items.length - 1 && iconBtn('↓', `${kind}-down`, 'Descendre le bloc'),
+          iconBtn('✕', `${kind}-del`, 'Supprimer', 'del')
+        )
       )
     );
 
     const head = el(
       'div',
       { class: 'exp-head' },
+      el('span', { class: 'block-drag-handle', title: 'Glisser pour réordonner le bloc', text: '⠿' }),
       el(
         'div',
         {},
@@ -1485,11 +1530,11 @@ function subsectionsBlock(scope, title, items, kind, addLabel, side = false) {
 }
 
 function educationBlock(scope, side = false) {
-  return subsectionsBlock(scope, 'Formation', scope.data.education, 'edu', '+ Ajouter une formation', side);
+  return subsectionsBlock(scope, 'education', scope.data.education, 'edu', '+ Ajouter une formation', side);
 }
 
 function projectsBlock(scope, side = false) {
-  return subsectionsBlock(scope, 'Projets', scope.data.projects, 'project', '+ Ajouter un projet', side);
+  return subsectionsBlock(scope, 'projects', scope.data.projects, 'project', '+ Ajouter un projet', side);
 }
 
 /* ---------- Les deux modèles ---------- */
@@ -1506,10 +1551,10 @@ function renderPro() {
     experiencesBlock(cvScope),
     educationBlock(cvScope),
     projectsBlock(cvScope),
-    sectionTitle('Compétences'),
+    sectionTitle(cvScope, 'skills'),
     skillsBlock(cvScope),
     skillGroupsBlock(cvScope),
-    sectionTitle('Intérêts'),
+    sectionTitle(cvScope, 'interests'),
     interestsBlock(cvScope)
   );
 }
@@ -1522,16 +1567,16 @@ function renderDesign() {
     { class: 'side' },
     photoBlock(),
     nameEl(),
-    sectionTitle('Contact', true),
+    sectionTitle(cvScope, 'contact', true),
     contactBlock(cvScope),
-    sectionTitle('Liens', true),
+    sectionTitle(cvScope, 'links', true),
     linksBlock(cvScope),
-    sectionTitle('Compétences', true),
+    sectionTitle(cvScope, 'skills', true),
     // Pas de skillsBlock() ici : dans le bandeau, les compétences ne
     // s'écrivent que par groupes intitulés. Le texte libre `skills` reste
     // éditable dans le modèle « pro ».
     skillGroupsBlock(cvScope),
-    sectionTitle('Intérêts', true),
+    sectionTitle(cvScope, 'interests', true),
     interestsBlock(cvScope)
   );
   // Formation et Projets vivent dans la colonne principale : la barre latérale
@@ -2207,6 +2252,18 @@ function ownerFromSection(scope, section) {
   return id ? findOwnerById(scope, id) : null;
 }
 
+// Retrouve la liste (experiences/education/projects) à laquelle appartient un
+// <section class="exp"> — utilisé par le glisser-déposer des BLOCS (voir
+// installEditing), qui réordonne cette liste elle-même, contrairement à
+// ownerFromSection qui retrouve l'élément DEDANS la liste.
+function arrayFromSection(scope, section) {
+  if (!section) return null;
+  if (section.dataset.expId) return scope.data.experiences;
+  if (section.dataset.eduId) return scope.data.education;
+  if (section.dataset.projectId) return scope.data.projects;
+  return null;
+}
+
 // Tient l'ordre proposé d'une expérience en phase avec ses tirets : un tiret
 // ajouté rejoint la proposition (après son voisin, sinon en fin), un tiret
 // supprimé la quitte. Sans proposition (ou pour formation/projets), no-op —
@@ -2312,7 +2369,11 @@ function installEditing(rootEl, scope) {
     // textContent les avalerait (les <br> n'ont pas de texte).
     const text = isLineBreakField(t) ? t.innerText.replace(/\n$/, '') : t.textContent;
 
-    if (t.dataset.gfield === 'interest') {
+    if (t.dataset.sectiontitle) {
+      // N'existe que pour le CV (voir sectionTitle) : scope.data.sectionTitles
+      // n'est jamais lu ni écrit pour la Bibliothèque.
+      scope.data.sectionTitles[t.dataset.sectiontitle] = text;
+    } else if (t.dataset.gfield === 'interest') {
       const row = t.closest('[data-interest-id]');
       const item = row && scope.data.interests.find((x) => x.id === row.dataset.interestId);
       if (item) item.text = text;
@@ -2508,6 +2569,14 @@ function installEditing(rootEl, scope) {
         }
         break;
       }
+      case 'edu-up':
+      case 'edu-down': {
+        if (!expSection) return;
+        const idx = scope.data.education.findIndex((x) => x.id === expSection.dataset.eduId);
+        if (idx === -1) return;
+        move(scope.data.education, idx, action === 'edu-up' ? idx - 1 : idx + 1);
+        break;
+      }
       case 'project-add': {
         scope.data.projects.push({
           id: uid(),
@@ -2526,6 +2595,14 @@ function installEditing(rootEl, scope) {
           delete scope.data.proposal.orders[expSection.dataset.projectId];
           delete scope.data.proposal.added[expSection.dataset.projectId];
         }
+        break;
+      }
+      case 'project-up':
+      case 'project-down': {
+        if (!expSection) return;
+        const idx = scope.data.projects.findIndex((x) => x.id === expSection.dataset.projectId);
+        if (idx === -1) return;
+        move(scope.data.projects, idx, action === 'project-up' ? idx - 1 : idx + 1);
         break;
       }
       case 'link-add': {
@@ -2607,76 +2684,129 @@ function installEditing(rootEl, scope) {
     rerender();
   });
 
-  /* ---------- Drag & drop des tirets ---------- */
-  // `dragEl` est une variable locale à cet appel : deux éditeurs installés
-  // séparément (CV, puis Bibliothèque) ont chacun leur propre glissement en
-  // cours, sans interférence.
-  let dragEl = null;
+  /* ---------- Drag & drop : tirets ET blocs ----------
+     Deux granularités coexistent sur le même conteneur : les tirets (poignée
+     .drag-handle, à l'intérieur d'un <li.bullet>) réordonnent owner.bullets
+     comme avant ; les blocs (poignée .block-drag-handle, dans l'en-tête d'un
+     <section class="exp">) réordonnent la liste (experiences/education/
+     projects) qui les contient. `dragEl`/`dragBlockEl` sont des variables
+     locales à cet appel : deux éditeurs installés séparément (CV, puis
+     Bibliothèque) ont chacun leur propre glissement en cours, sans
+     interférence. Au plus l'un des deux est actif à la fois (mousedown ne
+     rend draggable que l'élément visé par LA poignée cliquée). */
+  let dragEl = null; // <li.bullet> en cours de glissement
+  let dragBlockEl = null; // <section.exp> en cours de glissement
 
   rootEl.addEventListener('mousedown', (e) => {
     const handle = e.target.closest('.drag-handle');
-    if (handle) handle.closest('li.bullet').draggable = true;
+    if (handle) {
+      handle.closest('li.bullet').draggable = true;
+      return;
+    }
+    const blockHandle = e.target.closest('.block-drag-handle');
+    if (blockHandle) blockHandle.closest('section.exp').draggable = true;
   });
 
   rootEl.addEventListener('dragstart', (e) => {
     const li = e.target.closest('li.bullet');
-    if (!li || !li.draggable) {
-      e.preventDefault();
+    if (li && li.draggable) {
+      dragEl = li;
+      li.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      try {
+        e.dataTransfer.setData('text/plain', '');
+      } catch {
+        /* IE/anciens navigateurs */
+      }
       return;
     }
-    dragEl = li;
-    li.classList.add('dragging');
-    e.dataTransfer.effectAllowed = 'move';
-    try {
-      e.dataTransfer.setData('text/plain', '');
-    } catch {
-      /* IE/anciens navigateurs */
+    const section = e.target.closest('section.exp');
+    if (section && section.draggable) {
+      dragBlockEl = section;
+      section.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      try {
+        e.dataTransfer.setData('text/plain', '');
+      } catch {
+        /* IE/anciens navigateurs */
+      }
+      return;
     }
+    e.preventDefault();
   });
 
   rootEl.addEventListener('dragover', (e) => {
-    if (!dragEl) return;
-    const list = dragEl.parentElement;
-    const over = e.target.closest('li.bullet');
-    if (over && over !== dragEl && over.parentElement === list) {
-      e.preventDefault();
-      const r = over.getBoundingClientRect();
-      const before = e.clientY < r.top + r.height / 2;
-      list.insertBefore(dragEl, before ? over : over.nextSibling);
-    } else if (e.target.closest('ul.bullets') === list) {
-      e.preventDefault();
+    if (dragEl) {
+      const list = dragEl.parentElement;
+      const over = e.target.closest('li.bullet');
+      if (over && over !== dragEl && over.parentElement === list) {
+        e.preventDefault();
+        const r = over.getBoundingClientRect();
+        const before = e.clientY < r.top + r.height / 2;
+        list.insertBefore(dragEl, before ? over : over.nextSibling);
+      } else if (e.target.closest('ul.bullets') === list) {
+        e.preventDefault();
+      }
+      return;
+    }
+    if (dragBlockEl) {
+      const container = dragBlockEl.parentElement; // .cv-block
+      const over = e.target.closest('section.exp');
+      if (over && over !== dragBlockEl && over.parentElement === container) {
+        e.preventDefault();
+        const r = over.getBoundingClientRect();
+        const before = e.clientY < r.top + r.height / 2;
+        container.insertBefore(dragBlockEl, before ? over : over.nextSibling);
+      } else if (e.target.closest('.cv-block') === container) {
+        e.preventDefault();
+      }
     }
   });
 
   rootEl.addEventListener('dragend', () => {
-    if (!dragEl) return;
-    dragEl.classList.remove('dragging');
-    dragEl.draggable = false;
-    const ul = dragEl.closest('ul.bullets');
-    const section = dragEl.closest('section.exp');
-    const owner = ownerFromSection(scope, section);
-    const draggedId = dragEl.dataset.bulletId;
-    dragEl = null;
-    if (owner) {
-      // Glisser une suggestion Bibliothèque encore en attente la matérialise
-      // (voir materializePendingBullet), avant de calculer l'ordre : elle
-      // rejoint alors `known` ci-dessous, à sa position réellement déposée.
-      // Les autres suggestions encore en attente restent filtrées de `order`
-      // (pas dans owner.bullets) : displayBulletsForScreen() les réaffiche en
-      // fin de liste, comme avant ce glissé.
-      if (scope.isCv && inCreateTab()) materializePendingBullet(owner, draggedId);
-      const known = new Set(owner.bullets.map((b) => b.id));
-      const order = [...ul.querySelectorAll('li.bullet')]
-        .map((li) => li.dataset.bulletId)
-        .filter((id) => known.has(id));
-      // Pendant une proposition (onglet « Nouveau CV »), le glisser-déposer
-      // réordonne la proposition ; sinon (ou pour la Bibliothèque), la liste
-      // de base.
-      const ord = scope.isCv && inCreateTab() ? proposalOrderFor(owner.id) : null;
-      if (ord) ord.splice(0, ord.length, ...order);
-      else owner.bullets.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+    if (dragEl) {
+      dragEl.classList.remove('dragging');
+      dragEl.draggable = false;
+      const ul = dragEl.closest('ul.bullets');
+      const section = dragEl.closest('section.exp');
+      const owner = ownerFromSection(scope, section);
+      const draggedId = dragEl.dataset.bulletId;
+      dragEl = null;
+      if (owner) {
+        // Glisser une suggestion Bibliothèque encore en attente la matérialise
+        // (voir materializePendingBullet), avant de calculer l'ordre : elle
+        // rejoint alors `known` ci-dessous, à sa position réellement déposée.
+        // Les autres suggestions encore en attente restent filtrées de `order`
+        // (pas dans owner.bullets) : displayBulletsForScreen() les réaffiche en
+        // fin de liste, comme avant ce glissé.
+        if (scope.isCv && inCreateTab()) materializePendingBullet(owner, draggedId);
+        const known = new Set(owner.bullets.map((b) => b.id));
+        const order = [...ul.querySelectorAll('li.bullet')]
+          .map((li) => li.dataset.bulletId)
+          .filter((id) => known.has(id));
+        // Pendant une proposition (onglet « Nouveau CV »), le glisser-déposer
+        // réordonne la proposition ; sinon (ou pour la Bibliothèque), la liste
+        // de base.
+        const ord = scope.isCv && inCreateTab() ? proposalOrderFor(owner.id) : null;
+        if (ord) ord.splice(0, ord.length, ...order);
+        else owner.bullets.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+      }
+      rerender();
+      return;
     }
-    rerender();
+    if (dragBlockEl) {
+      dragBlockEl.classList.remove('dragging');
+      dragBlockEl.draggable = false;
+      const container = dragBlockEl.parentElement; // .cv-block
+      const arr = arrayFromSection(scope, dragBlockEl);
+      dragBlockEl = null;
+      if (arr && container) {
+        const order = [...container.querySelectorAll(':scope > section.exp')]
+          .map((s) => s.dataset.expId || s.dataset.eduId || s.dataset.projectId);
+        arr.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+      }
+      rerender();
+    }
   });
 }
 
@@ -3061,6 +3191,7 @@ function snapshotCV() {
     JSON.stringify({
       profile: state.profile,
       template: state.template,
+      sectionTitles: state.sectionTitles,
       sideColor: state.sideColor,
       titleColorMode: state.titleColorMode,
       titleColor: state.titleColor,
@@ -3079,9 +3210,13 @@ function snapshotCV() {
 // Le CV actuel est-il déjà identique à l'une des sauvegardes ? Sert à ne pas
 // demander de confirmation avant de charger une autre version quand il n'y a
 // justement rien à perdre.
-function isCurrentCvSaved() {
-  const current = JSON.stringify(snapshotCV());
-  return state.versions.some((v) => JSON.stringify(v.data) === current);
+// `ignoreJobText` : l'offre collée pour l'analyse fait partie de l'instantané
+// mais n'est pas du contenu de CV — la coller ne doit pas faire croire à des
+// modifications non enregistrées (flux « Enregistrer ce nouveau CV »).
+function isCurrentCvSaved({ ignoreJobText = false } = {}) {
+  const key = (data) => JSON.stringify(ignoreJobText ? { ...data, jobText: '' } : data);
+  const current = key(snapshotCV());
+  return state.versions.some((v) => key(v.data) === current);
 }
 
 // Le CV affiché diffère-t-il de la version actuellement chargée ? Sert à
@@ -3135,6 +3270,7 @@ function applyCV(data) {
   const cv = normalizeCV(JSON.parse(JSON.stringify(data)));
   state.profile = cv.profile;
   state.template = cv.template;
+  state.sectionTitles = cv.sectionTitles;
   state.sideColor = cv.sideColor;
   state.titleColorMode = cv.titleColorMode;
   state.titleColor = cv.titleColor;
@@ -3290,6 +3426,7 @@ versionListEl.addEventListener('click', async (e) => {
       applyCV(v.data);
       // La proposition référençait l'ancien CV : plus de sens.
       state.proposal = null;
+      proposalSaved = false;
       state.activeVersionId = v.id;
       rerender();
       break;
@@ -3628,11 +3765,28 @@ function snapshotProposalCV() {
   return snap;
 }
 
-function saveProposalVersion() {
+// Enregistre la proposition comme nouveau CV ET le charge comme CV affiché :
+// la liste le marque « chargée » et « Télécharger PDF » exporte le CV affiché,
+// donc sans ce chargement le PDF serait celui de l'ancien CV de base. Même
+// garde-fou que « Charger » : si le CV de base actuel n'est sauvegardé nulle
+// part, on demande quoi en faire avant de le remplacer.
+async function saveProposalVersion() {
   const input = $('#newCvName');
   const name = (input && input.value.trim()) || defaultVersionName();
-  const v = { id: uid(), name, createdAt: Date.now(), data: snapshotProposalCV() };
+  const data = snapshotProposalCV();
+  if (!isCurrentCvSaved({ ignoreJobText: true })) {
+    const choice = await customConfirm(
+      `Enregistrer « ${name} » et le charger comme CV de base ? Le CV de base actuel a des modifications non enregistrées.`,
+      { confirmLabel: 'Sauvegarder et charger', extraLabel: 'Ne pas sauvegarder' }
+    );
+    if (choice === false) return;
+    if (choice === true) saveCurrentCvAsVersion();
+  }
+  const v = { id: uid(), name, createdAt: Date.now(), data };
   state.versions.unshift(v);
+  applyCV(v.data);
+  // L'ordre proposé est désormais celui du CV chargé : plus de surcouche.
+  state.proposal = null;
   state.activeVersionId = v.id;
   proposalSaved = true;
   rerender();
@@ -3714,7 +3868,7 @@ function renderSuggestions() {
         class: 'hint',
         text: 'Le CV ci-dessous est réordonné pour cette offre — le CV de base n’est pas modifié. ' +
           'Survolez le CV pour voir les tirets déplacés (badge « était n°X »), ' +
-          'puis enregistrez ce nouveau CV pour le retrouver dans l’onglet « CV de base ». ' +
+          'puis enregistrez ce nouveau CV : il sera chargé comme CV de base et exporté par « Télécharger PDF ». ' +
           'Ré-analyser l’offre reconstruit la proposition.',
       })
     );
@@ -3759,10 +3913,14 @@ function renderSuggestions() {
         el('button', { type: 'button', id: 'discardProposalBtn', class: 'link-btn', text: 'Ignorer la proposition' })
       )
     );
-    if (proposalSaved) {
-      box.append(el('p', { class: 'apply-note', text: 'Nouveau CV enregistré ✓ — retrouvez-le dans l’onglet « CV de base ».' }));
-    }
     resultsEl.append(box);
+  } else if (proposalSaved) {
+    resultsEl.append(
+      el('p', {
+        class: 'apply-note',
+        text: 'Nouveau CV enregistré et chargé comme CV de base ✓ — « Télécharger PDF » exporte celui-ci.',
+      })
+    );
   } else {
     const upToDate = [...state.experiences, ...state.education, ...state.projects].every(
       (owner) => suggestOrder(owner, model).alreadyApplied
@@ -4111,8 +4269,12 @@ $('#pdfBtn').addEventListener('click', async () => {
         projects: printedBlocks(state.projects),
       }, title);
     }
-    const name = (state.profile.name || 'CV').trim().replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ');
-    const a = el('a', { href: URL.createObjectURL(blob), download: `CV - ${name}.pdf` });
+    // Fichier nommé comme le CV sauvegardé chargé ; sans version chargée, repli
+    // sur « CV - <nom du profil> ».
+    const active = state.activeVersionId && state.versions.find((v) => v.id === state.activeVersionId);
+    const clean = (s) => s.trim().replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim();
+    const fileBase = (active && clean(active.name).slice(0, 120).trim()) || `CV - ${clean(state.profile.name || 'CV')}`;
+    const a = el('a', { href: URL.createObjectURL(blob), download: `${fileBase}.pdf` });
     document.body.append(a);
     a.click();
     a.remove();
