@@ -4079,8 +4079,12 @@ $('#pdfBtn').addEventListener('click', async () => {
         projects: printedBlocks(state.projects),
       }, title);
     }
-    const name = (state.profile.name || 'CV').trim().replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ');
-    const a = el('a', { href: URL.createObjectURL(blob), download: `CV - ${name}.pdf` });
+    // Fichier nommé comme le CV sauvegardé chargé ; sans version chargée, repli
+    // sur « CV - <nom du profil> ».
+    const active = state.activeVersionId && state.versions.find((v) => v.id === state.activeVersionId);
+    const clean = (s) => s.trim().replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim();
+    const fileBase = (active && clean(active.name).slice(0, 120).trim()) || `CV - ${clean(state.profile.name || 'CV')}`;
+    const a = el('a', { href: URL.createObjectURL(blob), download: `${fileBase}.pdf` });
     document.body.append(a);
     a.click();
     a.remove();
