@@ -13,7 +13,7 @@
   <header id="toolbar">
     <h1>Éditeur de CV</h1>
     <nav class="tabs" role="tablist" aria-label="Pages">
-      <button id="tabBase" class="tab-btn" type="button" role="tab">CV de base</button>
+      <button id="tabBase" class="tab-btn" type="button" role="tab">Mes CV</button>
       <button id="tabCreate" class="tab-btn" type="button" role="tab">Nouveau CV</button>
       <button id="tabLibrary" class="tab-btn" type="button" role="tab">Bibliothèque</button>
     </nav>
@@ -105,6 +105,28 @@
     </div>
   </div>
 
+  <!-- Pop-up de choix du point de départ, ouverte par « Créer un nouveau CV »
+       (état vide de l'onglet « Nouveau CV »). Liste construite par app.js
+       (renderCreateChoiceModal) : Bibliothèque, CV actuel, puis chaque CV
+       sauvegardé — la liste des CV change au fil de la session. -->
+  <div class="app-modal" id="createChoiceModal" hidden role="dialog" aria-modal="true"
+       aria-labelledby="createChoiceTitle">
+    <div class="app-modal-card create-choice-card">
+      <h2 id="createChoiceTitle">Créer un nouveau CV</h2>
+      <p class="app-modal-hint">
+        Choisissez le contenu de départ. Vous pourrez ensuite l'adapter à une
+        offre ou le remplir avec l'IA.
+      </p>
+      <div class="create-choice-list" id="createChoiceList"></div>
+      <div class="app-modal-actions">
+        <span></span>
+        <div class="app-modal-actions-right">
+          <button type="button" id="createChoiceCancelBtn" class="cancel">Annuler</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <main id="layout" class="tab-create">
     <!-- Onglet « Nouveau CV », colonne de gauche : l'offre d'emploi, puis
          l'import/export JSON juste en dessous. -->
@@ -133,9 +155,9 @@
       <h2>Offre d'emploi</h2>
       <p class="hint">
         Collez le <strong>texte</strong> de l'offre, puis analysez-la&nbsp;:
-        le CV ci-contre se réordonne pour elle, sans toucher au CV de base,
-        et se complète des tirets les plus pertinents de la Bibliothèque pour
-        chaque expérience, formation ou projet.
+        le CV affiché ci-contre se réordonne pour elle, sans modifier vos CV
+        déjà sauvegardés, et se complète des tirets les plus pertinents de la
+        Bibliothèque pour chaque expérience, formation ou projet.
       </p>
       <p class="hint">
         Deux façons de faire&nbsp;: collez le <strong>lien</strong> de l'offre ci-dessous, ou collez directement son texte plus bas.
@@ -184,14 +206,33 @@
     </div><!-- #createLeft -->
 
     <!-- La feuille CV, partagée par les deux onglets : ordre proposé dans
-         « Nouveau CV » (si une analyse est en cours), ordre de base sinon.
+         « Nouveau CV » (si une analyse est en cours), ordre courant sinon.
          #cvScale est un cadre de mise à l'échelle pur (voir styles.css et
-         app.js) : dans l'onglet « CV de base » il n'a aucun effet (le CV
+         app.js) : dans l'onglet « Mes CV » il n'a aucun effet (le CV
          garde sa taille réelle), dans « Nouveau CV » il réduit visuellement
          le CV à la largeur de la colonne — sans changer sa largeur interne
          de 210mm, donc sans changer un seul retour à la ligne par rapport au
          PDF exporté. -->
     <div id="cvColumn">
+      <!-- État vide de l'onglet « Nouveau CV » : tant qu'aucun CV n'a été créé
+           (ni proposition en cours, y compris une ancienne sauvegarde qui en
+           porte une), rien n'est affiché ici — juste le point de départ de la
+           création. Masqué par app.js (updateTabs) dans tous les autres cas. -->
+      <div class="panel-box create-empty" id="createEmptyState" hidden>
+        <h2>Créez votre nouveau CV</h2>
+        <p class="hint">
+          Partez de votre Bibliothèque ou d'un CV déjà sauvegardé, puis
+          analysez une offre ou remplissez-le avec l'IA pour l'adapter.
+        </p>
+        <button id="createCvBtn" type="button">Créer un nouveau CV</button>
+      </div>
+
+      <!-- Repropose le choix une fois un CV déjà créé/affiché dans cet onglet. -->
+      <button id="newDraftBtn" class="ghost" type="button" hidden>Créer un autre CV</button>
+
+      <!-- Regroupe tout ce qui affiche/édite le CV lui-même : masqué en bloc
+           par app.js tant que l'état vide ci-dessus est affiché. -->
+      <div id="cvDisplay">
       <!-- Choix du modèle et de la couleur du bandeau, juste au-dessus du CV. -->
       <div id="cvTools">
         <div class="seg" role="group" aria-label="Modèle de CV">
@@ -274,15 +315,16 @@
       <div id="cvScale">
         <div id="cv" class="sheet" aria-label="CV éditable"></div>
       </div>
+      </div><!-- #cvDisplay -->
     </div>
 
-    <!-- Onglet « CV de base » : les CV sauvegardés, à côté du CV. -->
+    <!-- Onglet « Mes CV » : les CV sauvegardés, à côté du CV. -->
     <aside id="versionsPanel">
       <section class="panel-box" id="versionsBox">
         <h2>CV sauvegardés</h2>
         <p class="hint">
           Les nouveaux CV enregistrés depuis l'onglet «&nbsp;Nouveau CV&nbsp;»
-          apparaissent ici. Vous pouvez aussi sauvegarder le CV de base affiché
+          apparaissent ici. Vous pouvez aussi sauvegarder votre CV actuel
           sous un nom.
         </p>
         <div class="version-new">
@@ -321,9 +363,8 @@
         <p class="hint">
           Stockez ici tout votre contenu professionnel, sans limite ni
           contrainte de mise en page&nbsp;: autant de points que vous voulez
-          par expérience, formation ou projet. Le CV de base et la
-          Bibliothèque restent indépendants — modifier l'un ne modifie jamais
-          l'autre.
+          par expérience, formation ou projet. Vos CV et la Bibliothèque
+          restent indépendants — modifier l'un ne modifie jamais l'autre.
         </p>
         <p class="hint">
           La Bibliothèque n'existe que dans ce navigateur&nbsp;: exportez-la
