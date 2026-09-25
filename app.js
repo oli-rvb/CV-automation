@@ -275,6 +275,10 @@ function defaultState() {
     activeVersionId: null,
     proposal: null,
     activeTab: 'create',
+    // Onglet « Nouveau CV » : tant qu'aucun CV n'a été créé, on affiche l'état
+    // vide plutôt que le CV d'exemple (voir showCvInCreateTab/updateTabs) —
+    // même au tout premier lancement, sans données sauvegardées.
+    createDraft: false,
     recentColors: [],
     librarySuggestLimit: 4,
   };
@@ -533,6 +537,11 @@ function normalizeState(data) {
   // d'anciennes données peuvent contenir data.rewrite (ex-feature de
   // recalibrage semi-auto) : ignoré, il n'existe plus dans l'état.
   s.activeTab = ['base', 'library'].includes(data.activeTab) ? data.activeTab : 'create';
+  // Brouillon créé dans l'onglet « Nouveau CV » (voir defaultState) : une
+  // ancienne sauvegarde n'a pas cette clé, elle vaut alors false — mais une
+  // proposition en cours (voir plus bas) affiche quand même le CV, ancienne
+  // sauvegarde ou non (voir showCvInCreateTab).
+  s.createDraft = data.createDraft === true;
   // Bibliothèque : on teste la PRÉSENCE de la clé (`'library' in data`), pas
   // sa validité (`data.library && ...`) — si elle existe mais est malformée,
   // normalizeLibrary() la répare quand même. Un test de validité ferait
@@ -678,6 +687,13 @@ const aiOnboardingStatusEl = $('#aiOnboardingStatus');
 const versionListEl = $('#versionList');
 const versionNameEl = $('#versionName');
 const overflowNoticeEl = $('#overflowNotice');
+const createEmptyStateEl = $('#createEmptyState');
+const createCvBtnEl = $('#createCvBtn');
+const newDraftBtnEl = $('#newDraftBtn');
+const cvDisplayEl = $('#cvDisplay');
+const createChoiceModalEl = $('#createChoiceModal');
+const createChoiceListEl = $('#createChoiceList');
+const createChoiceCancelBtnEl = $('#createChoiceCancelBtn');
 const pageCountEl = $('#pageCount');
 const photoFileEl = $('#photoFile');
 
@@ -824,6 +840,10 @@ function applyAiResponse() {
     state.profile.photo = photo;
     state.profile.photoSrc = photoSrc;
     state.profile.photoCrop = photoCrop;
+    // Un CV vient d'être rempli : le révéler dans l'onglet « Nouveau CV »
+    // même si l'utilisateur n'était pas encore passé par « Créer un nouveau
+    // CV » (voir showCvInCreateTab).
+    state.createDraft = true;
     jobTextEl.value = state.jobText;
     aiResponseTextEl.value = '';
     rerender();
@@ -1224,6 +1244,16 @@ function inCreateTab() {
   return state.activeTab === 'create';
 }
 
+// Le CV doit-il être affiché dans l'onglet « Nouveau CV » ? Faux tant que
+// l'utilisateur n'a pas créé de CV via l'état vide (state.createDraft) —
+// SAUF si une proposition est déjà en cours (state.proposal), y compris une
+// ancienne sauvegarde antérieure à cette fonctionnalité qui en porte une :
+// elle prouve qu'un CV a déjà été construit pour cet onglet. Sans lien avec
+// l'onglet « Mes CV », qui affiche toujours le CV (voir updateTabs).
+function showCvInCreateTab() {
+  return state.createDraft || !!state.proposal;
+}
+
 // Ordre proposé pour une expérience (null hors proposition). Le tableau
 // renvoyé est CELUI de l'état : le modifier (drag & drop, flèches…) modifie
 // la proposition, jamais le CV de base.
@@ -1293,7 +1323,7 @@ function diffBadge(scope, bulletId, index, ownerId) {
   const arrow = baseIdx > index ? '↑' : '↓';
   return el('span', {
     class: 'diff-badge',
-    title: 'Position dans le CV de base',
+    title: 'Position avant réorganisation par l’offre',
     text: `${arrow} était n°${baseIdx + 1}`,
   });
 }
@@ -2318,6 +2348,15 @@ function updateTabs() {
     b.classList.toggle('active', on);
     b.setAttribute('aria-selected', String(on));
   }
+  // Onglet « Nouveau CV » : état vide tant qu'aucun CV n'a été créé, CV +
+  // bouton « Créer un autre CV » sinon. L'onglet « Mes CV » n'est jamais
+  // concerné : il affiche toujours le CV (#cvDisplay n'y est masqué que par
+  // cette condition, qui vaut false hors « Nouveau CV »).
+  const inCreate = state.activeTab === 'create';
+  const showCv = showCvInCreateTab();
+  createEmptyStateEl.hidden = !(inCreate && !showCv);
+  newDraftBtnEl.hidden = !(inCreate && showCv);
+  cvDisplayEl.hidden = inCreate && !showCv;
 }
 
 function rerender() {
@@ -3180,6 +3219,7 @@ document.addEventListener('keydown', (e) => {
   if (!photoModalEl.hidden) closePhotoModal();
   else if (!linkModalEl.hidden) closeLinkModal();
   else if (!confirmModalEl.hidden) closeConfirmModal(false);
+  else if (!createChoiceModalEl.hidden) closeCreateChoiceModal();
 });
 
 /* ============================================================
@@ -3412,20 +3452,12 @@ versionListEl.addEventListener('click', async (e) => {
   switch (btn.dataset.vaction) {
     case 'load': {
       // Rien à perdre si le CV affiché est déjà sauvegardé quelque part :
-      // pas besoin de confirmation dans ce cas.
-      if (!isCurrentCvSaved()) {
-        const choice = await customConfirm(
-          `Charger « ${v.name} » comme CV de base ? Le CV de base actuel a des modifications non enregistrées.`,
-          { confirmLabel: 'Sauvegarder et charger', extraLabel: 'Ne pas sauvegarder' }
-        );
-        if (choice === false) return;
-        if (choice === true) saveCurrentCvAsVersion();
-        // choice === 'extra' : on charge sans rien sauvegarder, les
-        // modifications en cours sont perdues.
-      }
-      applyCV(v.data);
-      // La proposition référençait l'ancien CV : plus de sens.
-      state.proposal = null;
+      // replaceDisplayedCv() ne demande alors pas de confirmation.
+      const ok = await replaceDisplayedCv(
+        v.data,
+        `Charger « ${v.name} » ? Votre CV actuel a des modifications non enregistrées.`
+      );
+      if (!ok) return;
       proposalSaved = false;
       state.activeVersionId = v.id;
       rerender();
@@ -3599,6 +3631,185 @@ function matchLibraryOwner(owner, libraryList) {
   return libraryList.find((o) => key(o) === ownerKey) || null;
 }
 
+/* ---------- Création d'un nouveau CV (onglet « Nouveau CV », état vide) ----------
+
+   « Créer un nouveau CV » construit un CV complet et le rend affiché à la
+   place de l'état vide, mais ne le sauvegarde pas : comme un import ou un
+   « Charger », c'est un brouillon tant que l'utilisateur ne clique pas sur
+   « Sauvegarder » (Mes CV) ou « Enregistrer ce nouveau CV » (proposition). */
+
+// Depuis la Bibliothèque : TOUS les blocs, TOUS les tirets (elle n'a pas de
+// limite d'affichage, voir libraryFromCV) ; le formatage propre au CV, que la
+// Bibliothèque ne porte pas (nom, titre, résumé, photo, gabarit, couleurs,
+// tailles, intitulés de section…), vient tel quel de `currentCv`.
+//
+// Chaque bloc (expérience/formation/projet) REPREND L'ID de son équivalent
+// Bibliothèque plutôt qu'un id neuf : c'est le premier critère testé par
+// matchLibraryOwner(), donc « Analyser l'offre » retrouve immédiatement le
+// bon bloc Bibliothèque pour ce CV, sans dépendre d'un texte resté
+// identique. Chaque tiret importé porte `libraryOrigin` (id + texte du tiret
+// Bibliothèque), exactement comme un tiret matérialisé depuis une suggestion
+// (voir materializePendingBullet) : buildProposal() exclut déjà tout
+// candidat dont l'id figure dans les `libraryOrigin` de owner.bullets, donc
+// une analyse ultérieure ne re-suggère jamais ce qui vient d'être importé.
+//
+// `maxVisible` de chaque bloc : celui du bloc correspondant dans le CV
+// actuellement affiché (matchLibraryOwner, sens inverse — la fonction est
+// symétrique), à défaut `null` (pas de limite), le même défaut qu'un bloc
+// nouvellement créé ailleurs dans l'éditeur.
+function buildCvFromLibrary(currentCv) {
+  const lib = state.library;
+  const cloneBullets = (bullets) =>
+    bullets.map((b) => ({ id: uid(), text: b.text, libraryOrigin: { id: b.id, text: b.text } }));
+  const maxVisibleFrom = (libBlock, currentList) => {
+    const match = matchLibraryOwner(libBlock, currentList);
+    return match ? match.maxVisible : null;
+  };
+  return {
+    ...currentCv,
+    profile: {
+      ...currentCv.profile,
+      contact: JSON.parse(JSON.stringify(lib.contact)),
+      links: JSON.parse(JSON.stringify(lib.links)),
+    },
+    experiences: lib.experiences.map((e) => ({
+      id: e.id,
+      role: e.role,
+      company: e.company,
+      period: e.period,
+      companyDescription: e.companyDescription,
+      bullets: cloneBullets(e.bullets),
+      maxVisible: maxVisibleFrom(e, currentCv.experiences),
+    })),
+    education: lib.education.map((s) => ({
+      id: s.id,
+      title: s.title,
+      detail: s.detail,
+      bullets: cloneBullets(s.bullets),
+      maxVisible: maxVisibleFrom(s, currentCv.education),
+    })),
+    projects: lib.projects.map((s) => ({
+      id: s.id,
+      title: s.title,
+      detail: s.detail,
+      bullets: cloneBullets(s.bullets),
+      maxVisible: maxVisibleFrom(s, currentCv.projects),
+    })),
+    skills: lib.skills,
+    skillGroups: JSON.parse(JSON.stringify(lib.skillGroups)),
+    interests: JSON.parse(JSON.stringify(lib.interests)),
+  };
+}
+
+// Remplace le CV actuellement affiché par `data`, avec le même garde-fou que
+// « Charger » une version (voir versionListEl plus bas) : si rien n'est
+// perdu (CV affiché déjà identique à une sauvegarde), pas de confirmation ;
+// sinon, propose de sauvegarder avant de remplacer. Renvoie false si
+// l'utilisateur a annulé (rien n'a été fait), true si le remplacement a eu
+// lieu.
+async function replaceDisplayedCv(data, confirmMessage) {
+  if (!isCurrentCvSaved()) {
+    const choice = await customConfirm(confirmMessage, {
+      confirmLabel: 'Sauvegarder et remplacer',
+      extraLabel: 'Ne pas sauvegarder',
+    });
+    if (choice === false) return false;
+    if (choice === true) saveCurrentCvAsVersion();
+  }
+  applyCV(data);
+  state.proposal = null;
+  proposalSaved = false;
+  return true;
+}
+
+function closeCreateChoiceModal() {
+  createChoiceModalEl.hidden = true;
+}
+
+// La fenêtre de choix est fermée AVANT la confirmation « modifications non
+// enregistrées » (sinon celle-ci s'afficherait dessous) ; si l'utilisateur
+// annule, on la rouvre pour qu'il puisse choisir une autre source.
+async function createCvFromLibrary() {
+  closeCreateChoiceModal();
+  const ok = await replaceDisplayedCv(
+    buildCvFromLibrary(snapshotCV()),
+    'Créer un nouveau CV depuis la Bibliothèque ? Le CV actuellement affiché a des modifications non enregistrées.'
+  );
+  if (!ok) return openCreateChoiceModal();
+  state.activeVersionId = null;
+  state.createDraft = true;
+  rerender();
+}
+
+async function createCvFromVersion(v) {
+  closeCreateChoiceModal();
+  const ok = await replaceDisplayedCv(
+    v.data,
+    `Charger « ${v.name} » comme nouveau CV ? Le CV actuellement affiché a des modifications non enregistrées.`
+  );
+  if (!ok) return openCreateChoiceModal();
+  state.activeVersionId = v.id;
+  state.createDraft = true;
+  rerender();
+}
+
+// « CV actuel » : rien à construire, le CV affiché EST déjà celui-là — on ne
+// fait que révéler la colonne CV de l'onglet « Nouveau CV » (voir
+// showCvInCreateTab). Jamais de confirmation, aucune donnée n'est remplacée.
+function createCvFromCurrent() {
+  state.createDraft = true;
+  closeCreateChoiceModal();
+  rerender();
+}
+
+// Construit la liste de choix à chaque ouverture (les CV sauvegardés peuvent
+// avoir changé depuis le dernier appel) : Bibliothèque, CV actuel, puis
+// chaque CV sauvegardé, le plus récent en premier (même ordre que Mes CV).
+function renderCreateChoiceModal() {
+  createChoiceListEl.textContent = '';
+  createChoiceListEl.append(
+    el('button', { type: 'button', class: 'create-choice-option', 'data-source': 'library' },
+      el('span', { class: 'create-choice-name', text: 'Ma Bibliothèque' }),
+      el('span', { class: 'create-choice-hint', text: 'Tous les blocs et tirets de la Bibliothèque' })
+    ),
+    el('button', { type: 'button', class: 'create-choice-option', 'data-source': 'current' },
+      el('span', { class: 'create-choice-name', text: 'CV actuel' }),
+      el('span', { class: 'create-choice-hint', text: 'Repart du CV actuellement affiché' })
+    )
+  );
+  for (const v of state.versions) {
+    createChoiceListEl.append(
+      el('button', { type: 'button', class: 'create-choice-option', 'data-source': 'version', 'data-version-id': v.id },
+        el('span', { class: 'create-choice-name', text: v.name }),
+        el('span', { class: 'create-choice-hint', text: 'CV sauvegardé' })
+      )
+    );
+  }
+}
+
+function openCreateChoiceModal() {
+  renderCreateChoiceModal();
+  createChoiceModalEl.hidden = false;
+}
+
+createCvBtnEl.addEventListener('click', openCreateChoiceModal);
+newDraftBtnEl.addEventListener('click', openCreateChoiceModal);
+createChoiceCancelBtnEl.addEventListener('click', closeCreateChoiceModal);
+createChoiceModalEl.addEventListener('mousedown', (e) => {
+  if (e.target === createChoiceModalEl) closeCreateChoiceModal();
+});
+createChoiceListEl.addEventListener('click', (e) => {
+  const btn = e.target.closest('.create-choice-option');
+  if (!btn) return;
+  const source = btn.dataset.source;
+  if (source === 'library') createCvFromLibrary();
+  else if (source === 'current') createCvFromCurrent();
+  else if (source === 'version') {
+    const v = state.versions.find((x) => x.id === btn.dataset.versionId);
+    if (v) createCvFromVersion(v);
+  }
+});
+
 // Construit la proposition : l'ordre suggéré par l'analyse, par expérience,
 // formation et projet, PLUS les suggestions Bibliothèque à ajouter en fin de
 // liste (state.proposal.added) pour chaque bloc ayant un équivalent dans la
@@ -3767,8 +3978,8 @@ function snapshotProposalCV() {
 
 // Enregistre la proposition comme nouveau CV ET le charge comme CV affiché :
 // la liste le marque « chargée » et « Télécharger PDF » exporte le CV affiché,
-// donc sans ce chargement le PDF serait celui de l'ancien CV de base. Même
-// garde-fou que « Charger » : si le CV de base actuel n'est sauvegardé nulle
+// donc sans ce chargement le PDF serait celui de l'ancien CV. Même garde-fou
+// que « Charger » : si le CV actuellement affiché n'est sauvegardé nulle
 // part, on demande quoi en faire avant de le remplacer.
 async function saveProposalVersion() {
   const input = $('#newCvName');
@@ -3776,7 +3987,7 @@ async function saveProposalVersion() {
   const data = snapshotProposalCV();
   if (!isCurrentCvSaved({ ignoreJobText: true })) {
     const choice = await customConfirm(
-      `Enregistrer « ${name} » et le charger comme CV de base ? Le CV de base actuel a des modifications non enregistrées.`,
+      `Enregistrer « ${name} » et le charger comme CV actuel ? Le CV actuellement affiché a des modifications non enregistrées.`,
       { confirmLabel: 'Sauvegarder et charger', extraLabel: 'Ne pas sauvegarder' }
     );
     if (choice === false) return;
@@ -3788,6 +3999,10 @@ async function saveProposalVersion() {
   // L'ordre proposé est désormais celui du CV chargé : plus de surcouche.
   state.proposal = null;
   state.activeVersionId = v.id;
+  // Toujours vrai à ce stade (une proposition suppose un CV déjà affiché,
+  // voir showCvInCreateTab), posé explicitement pour rester correct même si
+  // cet enchaînement change un jour.
+  state.createDraft = true;
   proposalSaved = true;
   rerender();
 }
@@ -3866,9 +4081,9 @@ function renderSuggestions() {
       el('h3', { text: 'Nouveau CV proposé' }),
       el('p', {
         class: 'hint',
-        text: 'Le CV ci-dessous est réordonné pour cette offre — le CV de base n’est pas modifié. ' +
+        text: 'Le CV ci-dessus est réordonné pour cette offre — vos CV déjà sauvegardés ne sont pas modifiés. ' +
           'Survolez le CV pour voir les tirets déplacés (badge « était n°X »), ' +
-          'puis enregistrez ce nouveau CV : il sera chargé comme CV de base et exporté par « Télécharger PDF ». ' +
+          'puis enregistrez ce nouveau CV : il devient le CV actuellement affiché et exporté par « Télécharger PDF ». ' +
           'Ré-analyser l’offre reconstruit la proposition.',
       })
     );
@@ -3918,7 +4133,7 @@ function renderSuggestions() {
     resultsEl.append(
       el('p', {
         class: 'apply-note',
-        text: 'Nouveau CV enregistré et chargé comme CV de base ✓ — « Télécharger PDF » exporte celui-ci.',
+        text: 'Nouveau CV enregistré et chargé ✓ — « Télécharger PDF » exporte celui-ci.',
       })
     );
   } else {
@@ -3929,7 +4144,7 @@ function renderSuggestions() {
       el('p', {
         class: upToDate ? 'apply-note' : 'empty-note',
         text: upToDate
-          ? 'Le CV de base est déjà dans l’ordre le plus pertinent pour cette offre ✓'
+          ? 'Le CV affiché est déjà dans l’ordre le plus pertinent pour cette offre ✓'
           : 'Cliquez sur « Analyser l’offre » pour obtenir un nouveau CV proposé.',
       })
     );
@@ -3988,7 +4203,7 @@ $('#analyzeBtn').addEventListener('click', runAnalysis);
 
 $('#clearAnalysisBtn').addEventListener('click', async () => {
   if (state.proposal && !(await customConfirm(
-    'Effacer l’offre et la proposition en cours ? Le CV de base n’est pas affecté, et les CV enregistrés sont conservés.',
+    'Effacer l’offre et la proposition en cours ? Le CV affiché n’est pas modifié, et les CV enregistrés sont conservés.',
     { confirmLabel: 'Effacer' }
   ))) return;
   state.proposal = null;
@@ -4293,8 +4508,8 @@ $('#resetBtn').addEventListener('click', async () => {
   // La Bibliothèque est indépendante du CV de base (voir normalizeState) :
   // la réinitialisation de celui-ci ne doit surtout pas y toucher. Même chose
   // pour librarySuggestLimit, un réglage global comme recentColors.
-  const { versions, activeTab, library, librarySuggestLimit } = state;
-  state = { ...defaultCV(), versions, activeVersionId: null, proposal: null, activeTab, library, librarySuggestLimit };
+  const { versions, activeTab, library, librarySuggestLimit, createDraft } = state;
+  state = { ...defaultCV(), versions, activeVersionId: null, proposal: null, activeTab, library, librarySuggestLimit, createDraft };
   jobTextEl.value = '';
   rerender();
 });
@@ -4338,6 +4553,10 @@ function importCvFile(file) {
       state.profile.photoCrop = photoCrop;
       state.proposal = null;
       state.activeVersionId = null;
+      // Un CV vient d'être importé : le révéler dans l'onglet « Nouveau CV »
+      // même si l'utilisateur n'était pas encore passé par « Créer un
+      // nouveau CV » (voir showCvInCreateTab).
+      state.createDraft = true;
       rerender();
     } catch {
       alert('Fichier invalide : attendu un export JSON de cet éditeur.');

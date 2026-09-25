@@ -176,6 +176,31 @@ button.icon-btn-history svg {
   margin-bottom: 12px;
 }
 
+/* ---------- État vide de l'onglet « Nouveau CV » ----------
+   Prend la place de la feuille CV tant qu'aucun CV n'a été créé (voir
+   updateTabs/showCvInCreateTab, app.js). Centré comme un point de départ,
+   pas comme un simple panneau d'information. */
+#createEmptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  min-height: 260px;
+  justify-content: center;
+  text-align: center;
+}
+
+#createEmptyState .hint { max-width: 46ch; margin: 0; }
+
+/* display: flex ci-dessus l'emporterait sur [hidden] (même spécificité,
+   déclaré avant) : on rétablit explicitement le masquage, comme pour les
+   autres blocs à display non-initial de l'application (.photo-crop-empty…). */
+#createEmptyState[hidden] { display: none; }
+
+/* Reproposer le choix une fois un CV déjà créé/affiché dans cet onglet :
+   petit bouton discret au-dessus de la feuille, jamais dans « Mes CV ». */
+#newDraftBtn { margin-bottom: 12px; }
+
 /* Sélecteur de modèle Pro / Design */
 
 .seg {
@@ -530,7 +555,55 @@ button.icon-btn-history svg {
 .app-modal-actions button {
   padding: 7px 14px;
   font-size: 13px;
+  white-space: nowrap;
 }
+
+/* La confirmation peut porter trois boutons (Annuler / Ne pas sauvegarder /
+   Sauvegarder et remplacer) : carte plus large pour les garder sur une ligne,
+   retour à la ligne des boutons (pas de leurs libellés) sur écran étroit. */
+#confirmModal .app-modal-card { width: 520px; }
+#confirmModal .app-modal-actions-right {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* --- Pop-up de choix du point de départ (« Créer un nouveau CV ») ---
+   Plus large que la carte par défaut (320px) : elle doit accueillir le nom
+   de chaque CV sauvegardé sans le tronquer à outrance. */
+.create-choice-card { width: 420px; }
+
+.create-choice-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.create-choice-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: 10px 12px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.create-choice-option:hover,
+.create-choice-option:focus-visible {
+  border-color: var(--accent);
+  background: #f6f9ff;
+}
+
+.create-choice-name { font-weight: 600; font-size: 14px; }
+
+.create-choice-hint { font-size: 12px; color: var(--muted); }
 
 /* --- Pop-up de la photo de profil (recadrage / centrage) --- */
 
@@ -2457,7 +2530,8 @@ main.tab-create #createLeft {
      débordait de la zone imprimable du modèle pro (210 − 2×16 mm) et Chrome
      réduisait tout le PDF à ≈ 85 % (« shrink to fit »), marge droite en prime. */
   html, body { background: #fff; }
-  #toolbar, #cvTools, #createLeft, #versionsPanel, #libraryPanel, #overflowNotice { display: none; }
+  #toolbar, #cvTools, #createLeft, #versionsPanel, #libraryPanel, #overflowNotice,
+  #createEmptyState, #newDraftBtn { display: none; }
   main { display: block; padding: 0; margin: 0; max-width: none; }
   .sheet { box-shadow: none; border-radius: 0; margin: 0; }
   /* Modèle pro : les marges de chaque page viennent de @page. On neutralise donc
@@ -2479,6 +2553,13 @@ main.tab-create #createLeft {
      onglet — sans quoi le PDF imprimé sortirait réduit et rogné. */
   #cvScale { width: auto !important; aspect-ratio: auto !important; overflow: visible !important; }
   #cvScale #cv { transform: none !important; }
+
+  /* Autre filet de sécurité : #cvDisplay est masqué par app.js tant que
+     l'état vide de « Nouveau CV » est affiché (voir updateTabs), mais le CV
+     sous-jacent existe toujours — « Imprimer » doit rester utilisable même
+     depuis cet état, comme « Télécharger PDF » (qui lit cvEl.outerHTML,
+     jamais affecté par ce masquage). */
+  #cvDisplay[hidden] { display: block !important; }
 
   /* Les affordances d'édition (poignées, boutons d'ajout, « + Photo ») sont
      déjà hors du flux au repos et ne reviennent que sur :hover / :focus-within,
