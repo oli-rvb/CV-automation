@@ -555,6 +555,16 @@ button.icon-btn-history svg {
 .app-modal-actions button {
   padding: 7px 14px;
   font-size: 13px;
+  white-space: nowrap;
+}
+
+/* La confirmation peut porter trois boutons (Annuler / Ne pas sauvegarder /
+   Sauvegarder et remplacer) : carte plus large pour les garder sur une ligne,
+   retour à la ligne des boutons (pas de leurs libellés) sur écran étroit. */
+#confirmModal .app-modal-card { width: 520px; }
+#confirmModal .app-modal-actions-right {
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 /* --- Pop-up de choix du point de départ (« Créer un nouveau CV ») ---

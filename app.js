@@ -3726,27 +3726,30 @@ function closeCreateChoiceModal() {
   createChoiceModalEl.hidden = true;
 }
 
+// La fenêtre de choix est fermée AVANT la confirmation « modifications non
+// enregistrées » (sinon celle-ci s'afficherait dessous) ; si l'utilisateur
+// annule, on la rouvre pour qu'il puisse choisir une autre source.
 async function createCvFromLibrary() {
+  closeCreateChoiceModal();
   const ok = await replaceDisplayedCv(
     buildCvFromLibrary(snapshotCV()),
     'Créer un nouveau CV depuis la Bibliothèque ? Le CV actuellement affiché a des modifications non enregistrées.'
   );
-  if (!ok) return;
+  if (!ok) return openCreateChoiceModal();
   state.activeVersionId = null;
   state.createDraft = true;
-  closeCreateChoiceModal();
   rerender();
 }
 
 async function createCvFromVersion(v) {
+  closeCreateChoiceModal();
   const ok = await replaceDisplayedCv(
     v.data,
     `Charger « ${v.name} » comme nouveau CV ? Le CV actuellement affiché a des modifications non enregistrées.`
   );
-  if (!ok) return;
+  if (!ok) return openCreateChoiceModal();
   state.activeVersionId = v.id;
   state.createDraft = true;
-  closeCreateChoiceModal();
   rerender();
 }
 
